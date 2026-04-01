@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-build-backup
+.npm-cache
+.tmp
+.chrome-lighthouse
+.vercel/.env.*
+.env
+*.log
+*.err.log
+auth-cookies.txt
+*.report.html
+.lighthouse-*.json

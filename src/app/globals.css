@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 33% 98%;
+  --foreground: 224 28% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 28% 12%;
+  --primary: 244 74% 59%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 230 33% 95%;
+  --secondary-foreground: 228 20% 24%;
+  --muted: 220 28% 95%;
+  --muted-foreground: 220 12% 45%;
+  --accent: 249 79% 96%;
+  --accent-foreground: 244 54% 34%;
+  --border: 226 26% 88%;
+  --input: 226 26% 88%;
+  --ring: 244 74% 59%;
+  --radius: 1.5rem;
+}
+
+* {
+  @apply border-border;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.09), transparent 24%),
+    linear-gradient(180deg, rgba(249, 250, 251, 1) 0%, rgba(244, 247, 252, 1) 100%);
+  min-height: 100vh;
+}
+
+a {
+  @apply transition-colors duration-200;
+}
+
+::selection {
+  background: rgba(79, 70, 229, 0.18);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.surface-grid {
+  background-image:
+    linear-gradient(rgba(79, 70, 229, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
