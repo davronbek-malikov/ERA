@@ -1,9 +1,8 @@
 import { PublicationStatus, UserRole } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
-import { demoEnrollments, demoLessons } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
-import { retryOnDatabaseFailure, withDatabaseFallback } from "@/lib/server-data";
+import { retryOnDatabaseFailure } from "@/lib/server-data";
 
 const XP_PER_LESSON = 50;
 
@@ -202,92 +201,54 @@ export async function syncGamificationForUser(userId: string) {
 }
 
 export async function getGamificationSummary(userId: string) {
-  return withDatabaseFallback(
-    async () => {
-      await syncGamificationForUser(userId);
+  await syncGamificationForUser(userId);
 
-      const [xp, streak, badges, completedLessons] = await Promise.all([
-        retryOnDatabaseFailure(() =>
-          prisma.userXp.findUnique({
-            where: {
-              userId
-            }
-          })
-        ),
-        retryOnDatabaseFailure(() =>
-          prisma.streak.findUnique({
-            where: {
-              userId
-            }
-          })
-        ),
-        retryOnDatabaseFailure(() =>
-          prisma.badge.findMany({
-            where: {
-              userId
-            },
-            orderBy: [{ earnedAt: "desc" }]
-          })
-        ),
-        retryOnDatabaseFailure(() =>
-          prisma.lessonCompletion.count({
-            where: {
-              userId,
-              lesson: {
-                status: PublicationStatus.PUBLISHED
-              }
-            }
-          })
-        )
-      ]);
+  const [xp, streak, badges, completedLessons] = await Promise.all([
+    retryOnDatabaseFailure(() =>
+      prisma.userXp.findUnique({
+        where: {
+          userId
+        }
+      })
+    ),
+    retryOnDatabaseFailure(() =>
+      prisma.streak.findUnique({
+        where: {
+          userId
+        }
+      })
+    ),
+    retryOnDatabaseFailure(() =>
+      prisma.badge.findMany({
+        where: {
+          userId
+        },
+        orderBy: [{ earnedAt: "desc" }]
+      })
+    ),
+    retryOnDatabaseFailure(() =>
+      prisma.lessonCompletion.count({
+        where: {
+          userId,
+          lesson: {
+            status: PublicationStatus.PUBLISHED
+          }
+        }
+      })
+    )
+  ]);
 
-      return {
-        totalXp: xp?.totalXp ?? 0,
-        level: xp?.level ?? 1,
-        levelTitle: getLevelTitle(xp?.level ?? 1),
-        currentLevelXp: xp?.currentLevelXp ?? 0,
-        nextLevelXp: xp?.nextLevelXp ?? 100,
-        streak: streak?.currentStreak ?? 0,
-        longestStreak: streak?.longestStreak ?? 0,
-        completedLessons,
-        badges
-      };
-    },
-    () => {
-      const demoCompletedLessons = demoEnrollments
-        .filter((entry) => entry.userId === userId)
-        .reduce((sum, entry) => {
-          const lessonCount = demoLessons.filter((lesson) => lesson.courseId === entry.courseId).length;
-          return sum + Math.round((entry.progress / 100) * lessonCount);
-        }, 0);
-      const totalXp = demoCompletedLessons * XP_PER_LESSON;
-      const levelData = getLevelFromXp(totalXp);
-      const streak = demoCompletedLessons > 0 ? 3 : 0;
-
-      return {
-        totalXp,
-        level: levelData.level,
-        levelTitle: getLevelTitle(levelData.level),
-        currentLevelXp: levelData.currentLevelXp,
-        nextLevelXp: levelData.nextLevelXp,
-        streak,
-        longestStreak: streak,
-        completedLessons: demoCompletedLessons,
-        badges: badgeDefinitions
-          .filter((badge) => badge.qualifies({ completedLessons: demoCompletedLessons, streak }))
-          .map((badge, index) => ({
-            id: `demo-badge-${index}`,
-            userId,
-            code: badge.code,
-            title: badge.title,
-            description: badge.description,
-            icon: badge.icon,
-            earnedAt: new Date()
-          }))
-      };
-    },
-    { context: "gamification-summary" }
-  );
+  return {
+    totalXp: xp?.totalXp ?? 0,
+    level: xp?.level ?? 1,
+    levelTitle: getLevelTitle(xp?.level ?? 1),
+    currentLevelXp: xp?.currentLevelXp ?? 0,
+    nextLevelXp: xp?.nextLevelXp ?? 100,
+    streak: streak?.currentStreak ?? 0,
+    longestStreak: streak?.longestStreak ?? 0,
+    completedLessons,
+    badges
+  };
 }
 
 export async function getCurrentUserGamificationSummary() {
