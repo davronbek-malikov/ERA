@@ -12,6 +12,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { assertRateLimit, clearRateLimit, getRequestRateLimitKeyParts, RateLimitError } from "@/lib/rate-limit";
 import { isDatabaseOfflineError, retryOnDatabaseFailure } from "@/lib/server-data";
+import { getOnboardingGateStatus } from "@/server/onboarding";
 
 function asString(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -111,6 +112,10 @@ export async function signInAction(formData: FormData) {
   if (user.role === "ADMIN" || user.role === "INSTRUCTOR") {
     const target = nextPath.startsWith("/admin") ? nextPath : "/admin";
     redirect(`${target}${target.includes("?") ? "&" : "?"}signedIn=1`);
+  }
+
+  if (await getOnboardingGateStatus(user.id)) {
+    redirect("/onboarding?returning=1");
   }
 
   const target = nextPath === "/admin" ? "/my-learning" : nextPath;

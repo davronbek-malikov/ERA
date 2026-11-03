@@ -9,12 +9,13 @@ import { siteConfig } from "@/lib/site";
 const display = Poppins({
   subsets: ["latin"],
   variable: "--font-display",
-  weight: ["500", "600", "700"]
+  weight: ["600", "700"]
 });
 
 const sans = Inter({
   subsets: ["latin"],
-  variable: "--font-sans"
+  variable: "--font-sans",
+  weight: ["400", "500", "600"]
 });
 
 export const metadata: Metadata = {
@@ -81,7 +82,7 @@ export default async function RootLayout({
     <html lang={locale}>
       <body className={`${display.variable} ${sans.variable}`}>
         <div className="relative min-h-screen">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_top,rgba(254,249,240,0.95),transparent_62%)]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_top,rgba(255,247,237,0.96),transparent_62%)]" />
           {children}
         </div>
         <Analytics />

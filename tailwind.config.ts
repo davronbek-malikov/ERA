@@ -42,17 +42,35 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))"
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))"
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))"
+        },
+        error: {
+          DEFAULT: "hsl(var(--error))",
+          foreground: "hsl(var(--error-foreground))"
+        },
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          muted: "hsl(var(--surface-muted))",
+          elevated: "hsl(var(--surface-elevated))"
         }
       },
       borderRadius: {
-        xl: "calc(var(--radius) + 4px)",
+        "2xl": "var(--radius-xl)",
+        xl: "var(--radius-lg)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)"
       },
       boxShadow: {
-        soft: "0 18px 46px rgba(15, 23, 42, 0.08)",
-        panel: "0 28px 70px rgba(79, 70, 229, 0.12)"
+        soft: "var(--shadow-soft)",
+        panel: "var(--shadow-panel)"
       },
       fontFamily: {
         display: ["var(--font-display)"],

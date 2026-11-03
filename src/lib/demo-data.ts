@@ -1,6 +1,7 @@
 import { ActivityType, CourseDifficulty, PublicationStatus, UserRole } from "@prisma/client";
 
 const now = new Date("2026-03-17T12:00:00.000Z");
+const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
 export const demoUsers = [
   {
@@ -197,8 +198,11 @@ export const demoCourses = [
     ],
     isFeatured: true,
     isPopular: true,
+    homepagePriority: 9,
+    viewCount: 1480,
     status: PublicationStatus.PUBLISHED,
     position: 1,
+    publishedAt: daysAgo(40),
     createdAt: now,
     updatedAt: now
   },
@@ -223,8 +227,11 @@ export const demoCourses = [
     ],
     isFeatured: false,
     isPopular: true,
+    homepagePriority: 7,
+    viewCount: 1260,
     status: PublicationStatus.PUBLISHED,
     position: 2,
+    publishedAt: daysAgo(12),
     createdAt: now,
     updatedAt: now
   },
@@ -249,8 +256,11 @@ export const demoCourses = [
     ],
     isFeatured: true,
     isPopular: false,
+    homepagePriority: 8,
+    viewCount: 980,
     status: PublicationStatus.PUBLISHED,
     position: 1,
+    publishedAt: daysAgo(5),
     createdAt: now,
     updatedAt: now
   },
@@ -275,8 +285,11 @@ export const demoCourses = [
     ],
     isFeatured: false,
     isPopular: false,
+    homepagePriority: 5,
+    viewCount: 610,
     status: PublicationStatus.PUBLISHED,
     position: 1,
+    publishedAt: daysAgo(22),
     createdAt: now,
     updatedAt: now
   },
@@ -301,8 +314,11 @@ export const demoCourses = [
     ],
     isFeatured: false,
     isPopular: false,
+    homepagePriority: 4,
+    viewCount: 430,
     status: PublicationStatus.PUBLISHED,
     position: 1,
+    publishedAt: daysAgo(2),
     createdAt: now,
     updatedAt: now
   },
@@ -327,8 +343,11 @@ export const demoCourses = [
     ],
     isFeatured: true,
     isPopular: true,
+    homepagePriority: 8,
+    viewCount: 1185,
     status: PublicationStatus.PUBLISHED,
     position: 1,
+    publishedAt: daysAgo(18),
     createdAt: now,
     updatedAt: now
   }
@@ -486,12 +505,52 @@ export const demoEnrollments = [
   { id: "enroll-3", userId: "user-daniel", courseId: "course-exam-strategy", progress: 80, createdAt: now, updatedAt: now }
 ];
 
+export const demoCourseReviews = [
+  {
+    id: "review-1",
+    userId: "user-mina",
+    courseId: "course-deep-learning",
+    rating: 5,
+    comment: "Clear explanations and a strong beginner-friendly flow.",
+    createdAt: now,
+    updatedAt: now
+  },
+  {
+    id: "review-2",
+    userId: "user-daniel",
+    courseId: "course-deep-learning",
+    rating: 4,
+    comment: "Well structured and easy to continue lesson by lesson.",
+    createdAt: now,
+    updatedAt: now
+  },
+  {
+    id: "review-3",
+    userId: "user-mina",
+    courseId: "course-ai-productivity",
+    rating: 5,
+    comment: "The workflow examples feel practical right away.",
+    createdAt: now,
+    updatedAt: now
+  },
+  {
+    id: "review-4",
+    userId: "user-daniel",
+    courseId: "course-exam-strategy",
+    rating: 4,
+    comment: "Helpful pacing advice and calm strategy guidance.",
+    createdAt: now,
+    updatedAt: now
+  }
+];
+
 export const demoActivityLog = [
   {
     id: "act-1",
     type: ActivityType.COURSE_CREATED,
     message: "Deep Learning Fundamentals was published.",
     userId: "user-admin",
+    context: null,
     createdAt: now
   },
   {
@@ -499,6 +558,7 @@ export const demoActivityLog = [
     type: ActivityType.LESSON_CREATED,
     message: "Added a new lesson to Applied Prompt Engineering.",
     userId: "user-admin",
+    context: null,
     createdAt: now
   },
   {
@@ -506,6 +566,7 @@ export const demoActivityLog = [
     type: ActivityType.ENROLLMENT_CREATED,
     message: "Mina Park enrolled in AI Tools for Productivity.",
     userId: "user-admin",
+    context: null,
     createdAt: now
   },
   {
@@ -513,6 +574,7 @@ export const demoActivityLog = [
     type: ActivityType.USER_CREATED,
     message: "Created student account for Daniel Kim.",
     userId: "user-admin",
+    context: null,
     createdAt: now
   }
 ];

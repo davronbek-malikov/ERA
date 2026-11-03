@@ -69,7 +69,7 @@ export function FeaturedCoursesSection({
                     <Star className="h-4 w-4" />
                   </div>
                 </div>
-                <CardTitle className="text-2xl font-semibold leading-tight sm:text-3xl">
+                <CardTitle className="break-words text-2xl font-semibold leading-tight sm:text-3xl">
                   {course.title}
                 </CardTitle>
               </CardHeader>
@@ -95,11 +95,11 @@ export function FeaturedCoursesSection({
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="justify-between px-7 pb-7">
-                <span className="text-sm font-medium text-muted-foreground">{course.category.name}</span>
+              <CardFooter className="flex-col items-stretch gap-3 px-7 pb-7 sm:flex-row sm:items-center sm:justify-between">
+                <span className="break-words text-sm font-medium text-muted-foreground">{course.category.name}</span>
                 <Link
                   href={`/courses/${course.slug}`}
-                  className={cn(buttonVariants({ variant: "ghost" }), "px-0")}
+                  className={cn(buttonVariants({ variant: "ghost" }), "justify-start px-0 sm:justify-center")}
                 >
                   {t.home.viewCourse}
                   <Sparkles className="h-4 w-4" />

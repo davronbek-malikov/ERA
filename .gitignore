@@ -11,3 +11,4 @@ node_modules
 auth-cookies.txt
 *.report.html
 .lighthouse-*.json
+tsconfig.tsbuildinfo

@@ -37,19 +37,19 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const message = errorKey ? t.signUp.errors[errorKey as keyof typeof t.signUp.errors] : null;
 
   return (
-    <Section className="py-8 sm:py-12 lg:py-16">
-      <Container className="grid items-start gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
+    <Section className="py-6 sm:py-12 lg:py-14">
+      <Container className="grid items-start gap-5 sm:gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
         <Card className="order-1 border-white/70 bg-white/92 shadow-panel lg:order-2">
-          <CardHeader className="space-y-3 px-5 pb-4 pt-5 sm:px-8 sm:pt-8">
+          <CardHeader className="space-y-3 px-4 pb-4 pt-4 sm:px-7 sm:pt-7">
             <div className="inline-flex w-fit rounded-full bg-primary/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
               {t.signUp.join}
             </div>
-            <CardTitle className="text-2xl sm:text-3xl">{t.signUp.join}</CardTitle>
+            <CardTitle>{t.signUp.join}</CardTitle>
             <p className="text-sm leading-7 text-muted-foreground sm:text-base">
               {t.signUp.details}
             </p>
           </CardHeader>
-          <CardContent className="space-y-5 px-5 pb-5 sm:px-8 sm:pb-8">
+          <CardContent className="space-y-5 px-4 pb-4 sm:px-8 sm:pb-8">
             {message ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {message}
@@ -72,7 +72,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   name="name"
                   placeholder={t.signUp.namePlaceholder}
                   autoComplete="name"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -88,7 +88,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -102,7 +102,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   placeholder={t.signUp.phonePlaceholder}
                   autoComplete="tel"
                   inputMode="tel"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -116,7 +116,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                     type="password"
                     placeholder={t.signUp.passwordPlaceholder}
                     autoComplete="new-password"
-                    className="h-12 text-base sm:h-14"
+                    className="h-12"
                     required
                   />
                 </div>
@@ -130,7 +130,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                     type="password"
                     placeholder={t.signUp.confirmPasswordPlaceholder}
                     autoComplete="new-password"
-                    className="h-12 text-base sm:h-14"
+                    className="h-12"
                     required
                   />
                 </div>
@@ -149,30 +149,26 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           </CardContent>
         </Card>
 
-        <div className="order-2 space-y-5 lg:order-1 lg:space-y-6">
+        <div className="order-2 min-w-0 space-y-4 sm:space-y-5 lg:order-1 lg:space-y-6">
           <Badge>{t.signUp.badge}</Badge>
-          <h1 className="font-display text-3xl leading-tight sm:text-5xl lg:text-6xl">
-            {t.signUp.title}
-          </h1>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-            {t.signUp.description}
-          </p>
+          <h1 className="page-title">{t.signUp.title}</h1>
+          <p className="page-lead">{t.signUp.description}</p>
 
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
             <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <Mail className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[0]}</p>
               </CardContent>
             </Card>
             <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <Phone className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[1]}</p>
               </CardContent>
             </Card>
             <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <KeyRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[2]}</p>
               </CardContent>

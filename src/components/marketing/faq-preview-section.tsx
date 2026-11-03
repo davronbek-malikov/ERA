@@ -1,8 +1,12 @@
+import Link from "next/link";
+
 import { Container } from "@/components/layout/container";
 import { Section } from "@/components/layout/section";
 import { SectionHeading } from "@/components/marketing/section-heading";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { type Locale } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 export function FaqPreviewSection({ locale }: { locale: Locale }) {
   const faqs =
@@ -67,6 +71,11 @@ export function FaqPreviewSection({ locale }: { locale: Locale }) {
               : "The FAQ now supports trust and conversion instead of talking about internal platform setup."
           }
         />
+        <div className="flex flex-wrap gap-3">
+          <Link href="/faq" className={cn(buttonVariants({ variant: "outline" }))}>
+            {locale === "uz" ? "To'liq FAQ sahifasi" : "Open full FAQ page"}
+          </Link>
+        </div>
         <div className="space-y-4">
           {faqs.map((item) => (
             <Card key={item.question}>

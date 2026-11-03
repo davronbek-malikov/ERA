@@ -2,18 +2,16 @@ import type { Metadata } from "next";
 import Script from "next/script";
 
 import { FaqPreviewSection } from "@/components/marketing/faq-preview-section";
-import { FeaturedCoursesSection } from "@/components/marketing/featured-courses-section";
 import { FinalCtaSection } from "@/components/marketing/final-cta-section";
 import { HeroSection } from "@/components/marketing/hero-section";
-import { HomepageContentSection } from "@/components/marketing/homepage-content-section";
-import { LearningPathsSection } from "@/components/marketing/learning-paths-section";
+import { HomepageCourseSections } from "@/components/marketing/homepage-course-sections";
 import { ProofSection } from "@/components/marketing/proof-section";
 import { SubjectCardsSection } from "@/components/marketing/subject-cards-section";
 import { getLocale } from "@/lib/i18n-server";
 import { createMetadata } from "@/lib/site";
 import { getHomepageData } from "@/server/courses";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = createMetadata({
   title: "AI Learning, Math, English & Exam Prep",
@@ -45,8 +43,7 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <HeroSection locale={locale} stats={homepageData.stats} />
-      <FeaturedCoursesSection locale={locale} featuredCourses={homepageData.featuredCourses} />
-      <HomepageContentSection locale={locale} />
+      <HomepageCourseSections locale={locale} collections={homepageData.collections} />
       <SubjectCardsSection locale={locale} subjects={homepageData.subjects} />
       <ProofSection
         locale={locale}
@@ -54,7 +51,6 @@ export default async function HomePage() {
         learnerMomentum={homepageData.learnerMomentum}
         supportEmail={homepageData.settings?.supportEmail}
       />
-      <LearningPathsSection locale={locale} />
       <FaqPreviewSection locale={locale} />
       <FinalCtaSection locale={locale} />
     </>

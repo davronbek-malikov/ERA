@@ -1,21 +1,86 @@
 import {
   ActivityType,
   CourseDifficulty,
+  LearningGoal,
+  OnboardingStage,
+  Prisma,
   PrismaClient,
   PublicationStatus,
+  TimeAvailability,
   UserRole
 } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+function buildLessonContent(title: string, description: string | null, courseTitle: string) {
+  const summary = description ?? `${title} is part of the ${courseTitle} learning path.`;
+
+  return {
+    overview: `${title} helps students understand the main idea before moving into practice.`,
+    content: [
+      `Lesson: ${title}`,
+      `Course: ${courseTitle}`,
+      "",
+      "What this lesson covers:",
+      summary,
+      "",
+      "Step-by-step guide:",
+      `1. Start with the core concept behind ${title.toLowerCase()}.`,
+      "2. Break the idea into smaller parts and connect it to a simple real-world example.",
+      "3. Review one short practice task before moving to the next lesson.",
+      "",
+      "Example:",
+      `Imagine explaining ${title.toLowerCase()} to a classmate in one minute. Focus on the goal, the process, and one practical use case.`,
+      "",
+      "Code example:",
+      "```python",
+      "def explain(topic: str) -> str:",
+      '    return f"Learning {topic} works best when we move one step at a time."',
+      "",
+      `print(explain("${title}"))`,
+      "```"
+    ].join("\n"),
+    learningObjectives: [
+      `Understand the main concept in ${title}.`,
+      "Follow a simple step-by-step explanation.",
+      "Apply the idea to an example or short exercise."
+    ],
+    keyPoints: [
+      summary,
+      "Small steps improve clarity and reduce confusion.",
+      "Examples make abstract ideas easier to remember."
+    ]
+  };
+}
+
+function daysAgo(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
 async function main() {
   const adminPasswordHash = await hash("EraAdmin2026!", 12);
   const studentPasswordHash = await hash("EraStudent2026!", 12);
 
   await prisma.activityLog.deleteMany();
+  await prisma.courseReview.deleteMany();
+  await prisma.practiceSubmission.deleteMany();
+  await prisma.practiceExercise.deleteMany();
+  await prisma.badge.deleteMany();
+  await prisma.streak.deleteMany();
+  await prisma.userXp.deleteMany();
+  await prisma.userPathProgress.deleteMany();
+  await prisma.pathCourse.deleteMany();
+  await prisma.learningPath.deleteMany();
+  await prisma.userOnboarding.deleteMany();
+  await prisma.courseViewEvent.deleteMany();
+  await prisma.chatMessage.deleteMany();
   await prisma.enrollment.deleteMany();
+  await prisma.lessonQuizQuestion.deleteMany();
+  await prisma.lessonSubskill.deleteMany();
+  await prisma.lessonContent.deleteMany();
   await prisma.lesson.deleteMany();
+  await prisma.courseModule.deleteMany();
   await prisma.course.deleteMany();
   await prisma.category.deleteMany();
   await prisma.subject.deleteMany();
@@ -221,8 +286,11 @@ async function main() {
         ],
         isFeatured: true,
         isPopular: true,
+        homepagePriority: 9,
+        viewCount: 1480,
         status: PublicationStatus.PUBLISHED,
         position: 1,
+        publishedAt: daysAgo(40),
         lessons: {
           create: [
             {
@@ -273,8 +341,11 @@ async function main() {
           "Apply prompting patterns to research and teaching workflows."
         ],
         isPopular: true,
+        homepagePriority: 7,
+        viewCount: 1260,
         status: PublicationStatus.PUBLISHED,
         position: 2,
+        publishedAt: daysAgo(12),
         lessons: {
           create: [
             {
@@ -317,8 +388,11 @@ async function main() {
           "Avoid chaotic tool usage with structured systems."
         ],
         isFeatured: true,
+        homepagePriority: 8,
+        viewCount: 980,
         status: PublicationStatus.PUBLISHED,
         position: 1,
+        publishedAt: daysAgo(5),
         lessons: {
           create: [
             {
@@ -360,8 +434,11 @@ async function main() {
           "Improve accuracy under timed conditions.",
           "Build repeatable problem-solving habits."
         ],
+        homepagePriority: 5,
+        viewCount: 610,
         status: PublicationStatus.PUBLISHED,
         position: 1,
+        publishedAt: daysAgo(22),
         lessons: {
           create: [
             {
@@ -403,8 +480,11 @@ async function main() {
           "Improve clarity in arguments and explanations.",
           "Develop editing habits that elevate academic work."
         ],
+        homepagePriority: 4,
+        viewCount: 430,
         status: PublicationStatus.PUBLISHED,
         position: 1,
+        publishedAt: daysAgo(2),
         lessons: {
           create: [
             {
@@ -447,8 +527,11 @@ async function main() {
           "Approach assessments with stronger confidence."
         ],
         isPopular: true,
+        homepagePriority: 8,
+        viewCount: 1185,
         status: PublicationStatus.PUBLISHED,
         position: 1,
+        publishedAt: daysAgo(18),
         lessons: {
           create: [
             {
@@ -497,6 +580,196 @@ async function main() {
     })
   ]);
 
+  await prisma.courseReview.createMany({
+    data: [
+      {
+        userId: studentUser.id,
+        courseId: courses[0].id,
+        rating: 5,
+        comment: "Clear explanations and a strong beginner-friendly flow."
+      },
+      {
+        userId: secondStudent.id,
+        courseId: courses[0].id,
+        rating: 4,
+        comment: "Well structured and easy to continue lesson by lesson."
+      },
+      {
+        userId: studentUser.id,
+        courseId: courses[2].id,
+        rating: 5,
+        comment: "The workflow examples feel practical right away."
+      },
+      {
+        userId: secondStudent.id,
+        courseId: courses[5].id,
+        rating: 4,
+        comment: "Helpful pacing advice and calm strategy guidance."
+      }
+    ]
+  });
+
+  const learningPaths = await Promise.all([
+    prisma.learningPath.create({
+      data: {
+        title: "AI Momentum Path",
+        slug: "ai-momentum-path",
+        description:
+          "A structured AI roadmap that takes learners from foundations into stronger applied thinking and workflow habits.",
+        subjectSlug: "ai",
+        difficulty: CourseDifficulty.INTERMEDIATE,
+        position: 1,
+        courses: {
+          create: [
+            {
+              courseId: courses[0].id,
+              position: 1,
+              stageLabel: "Begin"
+            },
+            {
+              courseId: courses[2].id,
+              position: 2,
+              stageLabel: "Practice"
+            },
+            {
+              courseId: courses[1].id,
+              position: 3,
+              stageLabel: "Apply"
+            }
+          ]
+        }
+      }
+    }),
+    prisma.learningPath.create({
+      data: {
+        title: "Academic Confidence Path",
+        slug: "academic-confidence-path",
+        description:
+          "A cross-skill path for students who want stronger writing, cleaner reasoning, and more reliable exam execution.",
+        difficulty: CourseDifficulty.INTERMEDIATE,
+        position: 2,
+        courses: {
+          create: [
+            {
+              courseId: courses[4].id,
+              position: 1,
+              stageLabel: "Write"
+            },
+            {
+              courseId: courses[3].id,
+              position: 2,
+              stageLabel: "Reason"
+            },
+            {
+              courseId: courses[5].id,
+              position: 3,
+              stageLabel: "Perform"
+            }
+          ]
+        }
+      }
+    })
+  ]);
+
+  await Promise.all([
+    prisma.userPathProgress.create({
+      data: {
+        userId: studentUser.id,
+        pathId: learningPaths[0].id,
+        progressPercent: 30,
+        completedCourseCount: 0,
+        currentCourseId: courses[0].id,
+        nextCourseId: courses[0].id,
+        lastSyncedAt: new Date()
+      }
+    }),
+    prisma.userPathProgress.create({
+      data: {
+        userId: secondStudent.id,
+        pathId: learningPaths[1].id,
+        progressPercent: 27,
+        completedCourseCount: 0,
+        currentCourseId: courses[5].id,
+        nextCourseId: courses[5].id,
+        lastSyncedAt: new Date()
+      }
+    })
+  ]);
+
+  await prisma.userOnboarding.create({
+    data: {
+      userId: studentUser.id,
+      goal: LearningGoal.AI,
+      level: CourseDifficulty.BEGINNER,
+      recommendedLevel: CourseDifficulty.BEGINNER,
+      timeAvailability: TimeAvailability.MODERATE,
+      stage: OnboardingStage.COMPLETED,
+      assessmentScore: 4,
+      assessmentAnswers: {
+        "ai-1": "a",
+        "ai-2": "b",
+        "ai-3": "a",
+        "ai-4": "a",
+        "ai-5": "b",
+        "ai-6": "a"
+      },
+      recommendedSubjectSlug: "ai",
+      recommendedCourseId: courses[0].id,
+      personalizedPlan: [
+        "Start with Deep Learning Fundamentals as your first guided course.",
+        "Study at a beginner pace with about 270 minutes per week.",
+        "Finish your first lesson, then use practice or tutor support to lock in the habit."
+      ],
+      checklistProfileCompleted: true,
+      completedAt: new Date()
+    }
+  });
+
+  await prisma.courseViewEvent.createMany({
+    data: [
+      ...Array.from({ length: 22 }, () => ({
+        courseId: courses[0].id,
+        createdAt: daysAgo(2)
+      })),
+      ...Array.from({ length: 14 }, () => ({
+        courseId: courses[0].id,
+        createdAt: daysAgo(10)
+      })),
+      ...Array.from({ length: 28 }, () => ({
+        courseId: courses[1].id,
+        createdAt: daysAgo(3)
+      })),
+      ...Array.from({ length: 10 }, () => ({
+        courseId: courses[1].id,
+        createdAt: daysAgo(11)
+      })),
+      ...Array.from({ length: 24 }, () => ({
+        courseId: courses[2].id,
+        createdAt: daysAgo(1)
+      })),
+      ...Array.from({ length: 8 }, () => ({
+        courseId: courses[2].id,
+        createdAt: daysAgo(9)
+      })),
+      ...Array.from({ length: 11 }, () => ({
+        courseId: courses[3].id,
+        createdAt: daysAgo(4)
+      })),
+      ...Array.from({ length: 9 }, () => ({
+        courseId: courses[4].id,
+        createdAt: daysAgo(1)
+      })),
+      ...Array.from({ length: 20 }, () => ({
+        courseId: courses[5].id,
+        createdAt: daysAgo(5)
+      })),
+      ...Array.from({ length: 12 }, () => ({
+        courseId: courses[5].id,
+        createdAt: daysAgo(13)
+      }))
+    ]
+  });
+
   await prisma.activityLog.createMany({
     data: [
       {
@@ -521,6 +794,297 @@ async function main() {
       }
     ]
   });
+
+  const lessons = await prisma.lesson.findMany({
+    include: {
+      course: {
+        select: {
+          title: true
+        }
+      }
+    }
+  });
+
+  await prisma.lessonContent.createMany({
+    data: lessons.map((lesson) => ({
+      lessonId: lesson.id,
+      ...buildLessonContent(lesson.title, lesson.description, lesson.course.title),
+      practicePrompt: `Practice ${lesson.title.toLowerCase()} by writing one short explanation and one applied example.`,
+      practiceChecklist: [
+        "Summarize the core lesson idea in your own words.",
+        "Write one simple example or use case.",
+        "Check your answer against the lesson key points."
+      ]
+    }))
+  });
+
+  const modulePlans: Record<string, Array<{ title: string; slug: string; description: string; lessonSlugs: string[] }>> = {
+    "deep-learning-fundamentals": [
+      {
+        title: "Foundations",
+        slug: "foundations",
+        description: "Start with the ideas behind deep learning and why they matter.",
+        lessonSlugs: ["why-deep-learning-matters", "neurons-layers-and-representations"]
+      },
+      {
+        title: "Model Training",
+        slug: "model-training",
+        description: "Learn how training works and what shapes better results.",
+        lessonSlugs: ["training-and-optimization-basics"]
+      }
+    ],
+    "applied-prompt-engineering": [
+      {
+        title: "Prompt Basics",
+        slug: "prompt-basics",
+        description: "Build strong prompting habits and feedback loops.",
+        lessonSlugs: ["prompt-design-principles", "evaluation-loops"]
+      }
+    ],
+    "ai-tools-for-productivity": [
+      {
+        title: "Workflow Systems",
+        slug: "workflow-systems",
+        description: "Use AI tools inside calm, repeatable workflows.",
+        lessonSlugs: ["workflow-design-basics", "research-and-synthesis"]
+      }
+    ],
+    "problem-solving-intensive": [
+      {
+        title: "Problem Framework",
+        slug: "problem-framework",
+        description: "Break difficult problems into a sequence you can manage.",
+        lessonSlugs: ["problem-framing", "solution-patterns"]
+      }
+    ],
+    "academic-writing-clarity": [
+      {
+        title: "Writing Structure",
+        slug: "writing-structure",
+        description: "Improve flow, clarity, and revision habits.",
+        lessonSlugs: ["writing-with-structure", "clarity-through-revision"]
+      }
+    ],
+    "exam-strategy-blueprint": [
+      {
+        title: "Exam Execution",
+        slug: "exam-execution",
+        description: "Build timing, planning, and performance discipline.",
+        lessonSlugs: ["planning-the-exam-window", "timed-decision-making"]
+      }
+    ]
+  };
+
+  for (const course of courses) {
+    const plans = modulePlans[course.slug] ?? [];
+
+    for (const [index, plan] of plans.entries()) {
+      const module = await prisma.courseModule.create({
+        data: {
+          courseId: course.id,
+          title: plan.title,
+          slug: plan.slug,
+          description: plan.description,
+          position: index + 1,
+          status: PublicationStatus.PUBLISHED
+        }
+      });
+
+      const courseLessons = await prisma.lesson.findMany({
+        where: {
+          courseId: course.id,
+          slug: {
+            in: plan.lessonSlugs
+          }
+        },
+        orderBy: {
+          position: "asc"
+        }
+      });
+
+      for (const lesson of courseLessons) {
+        await prisma.lesson.update({
+          where: { id: lesson.id },
+          data: {
+            moduleId: module.id
+          }
+        });
+
+        await prisma.lessonSubskill.createMany({
+          data: [
+            {
+              lessonId: lesson.id,
+              title: `${lesson.title} core idea`,
+              description: "Understand the key concept before moving into practice.",
+              position: 1
+            },
+            {
+              lessonId: lesson.id,
+              title: `${lesson.title} applied example`,
+              description: "Connect the concept to one simple real-world example.",
+              position: 2
+            }
+          ]
+        });
+
+        await prisma.lessonQuizQuestion.createMany({
+          data: [
+            {
+              lessonId: lesson.id,
+              prompt: `What is the best first goal in ${lesson.title}?`,
+              options: [
+                "Understand the main concept clearly",
+                "Skip to advanced topics immediately",
+                "Avoid examples and practice"
+              ],
+              correctOption: 0,
+              explanation: "ERA lessons start by building clear understanding first.",
+              position: 1
+            },
+            {
+              lessonId: lesson.id,
+              prompt: `What makes ${lesson.title} easier to remember?`,
+              options: [
+                "Using a practical example",
+                "Reading the title only",
+                "Skipping the explanation"
+              ],
+              correctOption: 0,
+              explanation: "Practical application helps learners retain the idea.",
+              position: 2
+            }
+          ]
+        });
+      }
+    }
+  }
+
+  const exerciseBlueprints: Record<string, Array<{
+    type: "CODING" | "MINI_PROJECT";
+    title: string;
+    slug: string;
+    instructions: string;
+    starterCode: string;
+    solutionCode: string;
+    hints: string[];
+    solutionNotes: string;
+    testCases: Array<{ input: unknown[]; expected: unknown; description: string }>;
+    position: number;
+  }>> = {
+    "why-deep-learning-matters": [
+      {
+        type: "CODING",
+        title: "Explain model value",
+        slug: "explain-model-value",
+        instructions:
+          "Write a function named solve that receives a model name and returns the sentence `Model: <name> helps turn patterns into predictions.`",
+        starterCode: [
+          "function solve(modelName) {",
+          "  // Return the expected sentence.",
+          "}",
+          "",
+          "module.exports = solve;"
+        ].join("\n"),
+        solutionCode: [
+          "function solve(modelName) {",
+          "  return `Model: ${modelName} helps turn patterns into predictions.`;",
+          "}",
+          "",
+          "module.exports = solve;"
+        ].join("\n"),
+        hints: [
+          "Use a function named solve.",
+          "Return a string instead of logging it.",
+          "Template literals make it easier to place the model name in the sentence."
+        ],
+        solutionNotes: "Return the exact sentence format with the provided model name inserted in the middle.",
+        testCases: [
+          {
+            input: ["Neural Net"],
+            expected: "Model: Neural Net helps turn patterns into predictions.",
+            description: "Builds the sentence for a basic model name."
+          },
+          {
+            input: ["Vision Transformer"],
+            expected: "Model: Vision Transformer helps turn patterns into predictions.",
+            description: "Handles model names with spaces."
+          }
+        ],
+        position: 1
+      }
+    ],
+    "workflow-design-basics": [
+      {
+        type: "MINI_PROJECT",
+        title: "Plan a calm workflow",
+        slug: "plan-a-calm-workflow",
+        instructions:
+          "Build a function named solve that receives three workflow steps as strings and returns them joined with ` -> ` in the same order. This mini project helps learners organize a simple AI workflow clearly.",
+        starterCode: [
+          "function solve(stepOne, stepTwo, stepThree) {",
+          "  // Join the steps in order.",
+          "}",
+          "",
+          "module.exports = solve;"
+        ].join("\n"),
+        solutionCode: [
+          "function solve(stepOne, stepTwo, stepThree) {",
+          "  return [stepOne, stepTwo, stepThree].join(\" -> \");",
+          "}",
+          "",
+          "module.exports = solve;"
+        ].join("\n"),
+        hints: [
+          "Store the steps in an array first.",
+          "Array join can combine items with a custom separator.",
+          "Keep the original order unchanged."
+        ],
+        solutionNotes: "The project passes when the three steps are returned in order with ` -> ` between them.",
+        testCases: [
+          {
+            input: ["Collect notes", "Summarize insights", "Draft output"],
+            expected: "Collect notes -> Summarize insights -> Draft output",
+            description: "Returns the expected workflow sequence."
+          },
+          {
+            input: ["Research", "Review", "Ship"],
+            expected: "Research -> Review -> Ship",
+            description: "Handles short workflow labels too."
+          }
+        ],
+        position: 1
+      }
+    ]
+  };
+
+  const seededLessons = await prisma.lesson.findMany({
+    select: {
+      id: true,
+      slug: true
+    }
+  });
+
+  for (const lesson of seededLessons) {
+    const exercises = exerciseBlueprints[lesson.slug] ?? [];
+
+    for (const exercise of exercises) {
+      await prisma.practiceExercise.create({
+        data: {
+          lessonId: lesson.id,
+          type: exercise.type,
+          title: exercise.title,
+          slug: exercise.slug,
+          instructions: exercise.instructions,
+          starterCode: exercise.starterCode,
+          solutionCode: exercise.solutionCode,
+          hints: exercise.hints,
+          solutionNotes: exercise.solutionNotes,
+          testCases: exercise.testCases as Prisma.InputJsonValue,
+          position: exercise.position
+        }
+      });
+    }
+  }
 }
 
 main()
