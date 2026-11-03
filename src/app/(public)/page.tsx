@@ -48,7 +48,6 @@ export default async function HomePage() {
       <ProofSection
         locale={locale}
         instructors={homepageData.instructors}
-        learnerMomentum={homepageData.learnerMomentum}
         supportEmail={homepageData.settings?.supportEmail}
       />
       <FaqPreviewSection locale={locale} />

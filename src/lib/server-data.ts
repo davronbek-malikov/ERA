@@ -30,33 +30,6 @@ export function isDatabaseOfflineError(error: unknown) {
   );
 }
 
-export async function withDatabaseFallback<T>(
-  query: () => Promise<T>,
-  fallback: () => T | Promise<T>,
-  options?: {
-    allowFallback?: boolean;
-    context?: string;
-  }
-) {
-  try {
-    return await query();
-  } catch (error) {
-    if (isDatabaseOfflineError(error)) {
-      if (options?.allowFallback === false) {
-        throw error;
-      }
-
-      console.error(
-        `Falling back to demo data after database access failed${options?.context ? ` (${options.context})` : ""}.`,
-        error
-      );
-      return await fallback();
-    }
-
-    throw error;
-  }
-}
-
 function wait(delayMs: number) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

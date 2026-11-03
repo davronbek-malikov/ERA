@@ -1,8 +1,7 @@
 import { PracticeExerciseType, PublicationStatus, type ChatMessageRole } from "@prisma/client";
 
-import { demoCourses, demoLessons } from "@/lib/demo-data";
 import { prisma } from "@/lib/prisma";
-import { isDatabaseOfflineError, retryOnDatabaseFailure } from "@/lib/server-data";
+import { retryOnDatabaseFailure } from "@/lib/server-data";
 
 export type LessonContextRecord = {
   lessonId: string;
@@ -118,38 +117,6 @@ export type LessonPageData = {
   } | null;
 };
 
-function createDemoLessonContent(title: string, description: string | null) {
-  return {
-    overview: description ?? `${title} introduces the main idea for this lesson.`,
-    content: [
-      `Lesson: ${title}`,
-      "",
-      description ?? "This lesson uses a short general explanation because full lesson context is unavailable.",
-      "",
-      "Step-by-step:",
-      "1. Understand the idea.",
-      "2. Review an example.",
-      "3. Practice the concept in a small way."
-    ].join("\n"),
-    practicePrompt: `Practice ${title.toLowerCase()} with one short written example.`,
-    practiceChecklist: [
-      "Explain the main idea.",
-      "Write one simple example.",
-      "Review your answer with the key points."
-    ],
-    learningObjectives: [
-      `Understand ${title.toLowerCase()}.`,
-      "Follow a simple explanation.",
-      "Apply the idea with a short example."
-    ],
-    keyPoints: [
-      description ?? "General lesson summary.",
-      "Break big concepts into small steps.",
-      "Use examples to reinforce understanding."
-    ]
-  };
-}
-
 function mapLessonPracticeExercises(
   exercises: Array<{
     id: string;
@@ -193,196 +160,88 @@ export async function getLessonBySlugs(
   lessonSlug: string,
   currentUserId?: string | null
 ): Promise<LessonPageData | null> {
-  try {
-    const course = await prisma.course.findFirst({
-      where: {
-        slug: courseSlug,
-        status: PublicationStatus.PUBLISHED
+  const course = await prisma.course.findFirst({
+    where: {
+      slug: courseSlug,
+      status: PublicationStatus.PUBLISHED
+    },
+    include: {
+      instructor: true,
+      category: {
+        include: {
+          subject: true
+        }
       },
-      include: {
-        instructor: true,
-        category: {
-          include: {
-            subject: true
-          }
+      lessons: {
+        where: {
+          status: PublicationStatus.PUBLISHED
         },
-        lessons: {
-          where: {
-            status: PublicationStatus.PUBLISHED
+        orderBy: [{ position: "asc" }],
+        include: {
+          module: {
+            select: {
+              id: true,
+              title: true,
+              description: true
+            }
           },
-          orderBy: [{ position: "asc" }],
-          include: {
-            module: {
-              select: {
-                id: true,
-                title: true,
-                description: true
-              }
-            },
-            materials: {
-              orderBy: [{ position: "asc" }, { createdAt: "asc" }]
-            },
-            content: true,
-            subskills: {
-              orderBy: [{ position: "asc" }]
-            },
-            quizQuestions: {
-              orderBy: [{ position: "asc" }]
-            },
-            practiceExercises: {
-              orderBy: [{ position: "asc" }],
-              include: {
-                submissions: currentUserId
-                  ? {
-                      where: { userId: currentUserId },
-                      orderBy: [{ createdAt: "desc" }],
-                      take: 9
-                    }
-                  : false
-              }
+          materials: {
+            orderBy: [{ position: "asc" }, { createdAt: "asc" }]
+          },
+          content: true,
+          subskills: {
+            orderBy: [{ position: "asc" }]
+          },
+          quizQuestions: {
+            orderBy: [{ position: "asc" }]
+          },
+          practiceExercises: {
+            orderBy: [{ position: "asc" }],
+            include: {
+              submissions: currentUserId
+                ? {
+                    where: { userId: currentUserId },
+                    orderBy: [{ createdAt: "desc" }],
+                    take: 9
+                  }
+                : false
             }
           }
         }
       }
-    });
-
-    if (!course) {
-      return null;
     }
+  });
 
-    const lessonIndex = course.lessons.findIndex((lesson) => lesson.slug === lessonSlug);
-    const lesson = lessonIndex >= 0 ? course.lessons[lessonIndex] : null;
-
-    if (!lesson) {
-      return null;
-    }
-
-    return {
-      course: {
-        ...course,
-        lessons: course.lessons.map((item) => ({
-          id: item.id,
-          slug: item.slug,
-          title: item.title,
-          position: item.position,
-          moduleId: item.moduleId,
-          module: item.module ? { id: item.module.id, title: item.module.title } : null
-        }))
-      },
-      lesson: {
-        ...lesson,
-        practiceExercises: mapLessonPracticeExercises(lesson.practiceExercises)
-      },
-      previousLesson: lessonIndex > 0 ? course.lessons[lessonIndex - 1] : null,
-      nextLesson: lessonIndex < course.lessons.length - 1 ? course.lessons[lessonIndex + 1] : null
-    } satisfies LessonPageData;
-  } catch (error) {
-    if (!isDatabaseOfflineError(error)) {
-      throw error;
-    }
-
-    const course = demoCourses.find(
-      (item) => item.slug === courseSlug && item.status === PublicationStatus.PUBLISHED
-    );
-
-    if (!course) {
-      return null;
-    }
-
-    const lessons = demoLessons
-      .filter((item) => item.courseId === course.id && item.status === PublicationStatus.PUBLISHED)
-      .sort((a, b) => a.position - b.position)
-      .map((lesson) => ({
-        ...lesson,
-        moduleId: null,
-        module: null,
-        materials: [],
-        subskills: [
-          {
-            id: `${lesson.id}-subskill-1`,
-            title: `${lesson.title} core idea`,
-            description: "Understand the central concept clearly.",
-            position: 1
-          }
-        ],
-        quizQuestions: [
-          {
-            id: `${lesson.id}-quiz-1`,
-            prompt: `What should you understand first in ${lesson.title}?`,
-            options: ["The main lesson idea", "Only the title", "Only the final answer"],
-            correctOption: 0,
-            explanation: "ERA lessons start from clear understanding first.",
-            position: 1
-          }
-        ],
-        practiceExercises: [
-          {
-            id: `${lesson.id}-exercise-1`,
-            type: PracticeExerciseType.CODING,
-            title: `Practice ${lesson.title}`,
-            slug: `practice-${lesson.slug}`,
-            instructions:
-              "Write a function named solve that returns the input text with ` reviewed` added at the end.",
-            language: "javascript",
-            starterCode: [
-              "function solve(text) {",
-              "  // Return the updated string.",
-              "}",
-              "",
-              "module.exports = solve;"
-            ].join("\n"),
-            solutionCode: [
-              "function solve(text) {",
-              "  return `${text} reviewed`;",
-              "}",
-              "",
-              "module.exports = solve;"
-            ].join("\n"),
-            hints: [
-              "Use a function named solve.",
-              "Return the new string instead of logging it."
-            ],
-            solutionNotes: "Append the text ` reviewed` to the provided input string.",
-            submissions: []
-          }
-        ],
-        content: createDemoLessonContent(lesson.title, lesson.description)
-      }));
-
-    const lessonIndex = lessons.findIndex((item) => item.slug === lessonSlug);
-    const lesson = lessonIndex >= 0 ? lessons[lessonIndex] : null;
-
-    if (!lesson) {
-      return null;
-    }
-
-    return {
-      course: {
-        ...course,
-        instructor: { name: "ERA Instructor" },
-        category: {
-          name: "Course",
-          subject: {
-            name: "ERA"
-          }
-        },
-        lessons: lessons.map((item) => ({
-          id: item.id,
-          slug: item.slug,
-          title: item.title,
-          position: item.position,
-          moduleId: item.moduleId,
-          module: item.module
-        }))
-      },
-      lesson: {
-        ...lesson,
-        practiceExercises: mapLessonPracticeExercises(lesson.practiceExercises)
-      },
-      previousLesson: lessonIndex > 0 ? lessons[lessonIndex - 1] : null,
-      nextLesson: lessonIndex < lessons.length - 1 ? lessons[lessonIndex + 1] : null
-    } satisfies LessonPageData;
+  if (!course) {
+    return null;
   }
+
+  const lessonIndex = course.lessons.findIndex((lesson) => lesson.slug === lessonSlug);
+  const lesson = lessonIndex >= 0 ? course.lessons[lessonIndex] : null;
+
+  if (!lesson) {
+    return null;
+  }
+
+  return {
+    course: {
+      ...course,
+      lessons: course.lessons.map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        title: item.title,
+        position: item.position,
+        moduleId: item.moduleId,
+        module: item.module ? { id: item.module.id, title: item.module.title } : null
+      }))
+    },
+    lesson: {
+      ...lesson,
+      practiceExercises: mapLessonPracticeExercises(lesson.practiceExercises)
+    },
+    previousLesson: lessonIndex > 0 ? course.lessons[lessonIndex - 1] : null,
+    nextLesson: lessonIndex < course.lessons.length - 1 ? course.lessons[lessonIndex + 1] : null
+  } satisfies LessonPageData;
 }
 
 export async function getLessonContextById(lessonId: string): Promise<LessonContextRecord | null> {

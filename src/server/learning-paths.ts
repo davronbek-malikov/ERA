@@ -1,17 +1,9 @@
 import { CourseDifficulty, PublicationStatus, UserRole } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
-import {
-  demoCategories,
-  demoCourses,
-  demoEnrollments,
-  demoInstructors,
-  demoLessons,
-  demoSubjects
-} from "@/lib/demo-data";
 import { parseDurationToMinutes } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import { isDatabaseOfflineError, retryOnDatabaseFailure, withDatabaseFallback } from "@/lib/server-data";
+import { retryOnDatabaseFailure } from "@/lib/server-data";
 
 type LearningPathCourseStep = {
   id: string;
@@ -111,37 +103,6 @@ type PathShape = {
     };
   }>;
 };
-
-const demoLearningPaths = [
-  {
-    id: "path-ai-momentum",
-    slug: "ai-momentum-path",
-    title: "AI Momentum Path",
-    description:
-      "A structured AI roadmap that takes learners from foundations into stronger applied thinking and workflow habits.",
-    subjectSlug: "ai",
-    difficulty: CourseDifficulty.INTERMEDIATE,
-    steps: [
-      { courseId: "course-deep-learning", position: 1, stageLabel: "Begin" },
-      { courseId: "course-ai-productivity", position: 2, stageLabel: "Practice" },
-      { courseId: "course-prompt-engineering", position: 3, stageLabel: "Apply" }
-    ]
-  },
-  {
-    id: "path-academic-confidence",
-    slug: "academic-confidence-path",
-    title: "Academic Confidence Path",
-    description:
-      "A cross-skill path for stronger writing, cleaner reasoning, and more reliable exam execution.",
-    subjectSlug: null,
-    difficulty: CourseDifficulty.INTERMEDIATE,
-    steps: [
-      { courseId: "course-writing", position: 1, stageLabel: "Write" },
-      { courseId: "course-problem-solving", position: 2, stageLabel: "Reason" },
-      { courseId: "course-exam-strategy", position: 3, stageLabel: "Perform" }
-    ]
-  }
-] as const;
 
 function buildEnrollmentLookup(
   entries: Array<{
@@ -340,170 +301,95 @@ export async function syncLearningPathProgressForUser(userId: string, paths?: Le
 export async function getLearningPathsData() {
   const currentUser = await getCurrentUser();
 
-  return withDatabaseFallback(
-    async () => {
-      const paths = await retryOnDatabaseFailure(() =>
-        prisma.learningPath.findMany({
-          where: {
-            status: PublicationStatus.PUBLISHED
-          },
-          orderBy: [{ position: "asc" }, { title: "asc" }],
+  const paths = await retryOnDatabaseFailure(() =>
+    prisma.learningPath.findMany({
+      where: {
+        status: PublicationStatus.PUBLISHED
+      },
+      orderBy: [{ position: "asc" }, { title: "asc" }],
+      include: {
+        courses: {
+          orderBy: [{ position: "asc" }],
           include: {
-            courses: {
-              orderBy: [{ position: "asc" }],
-              include: {
-                course: {
+            course: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+                subtitle: true,
+                shortDescription: true,
+                thumbnailUrl: true,
+                difficulty: true,
+                instructor: {
                   select: {
-                    id: true,
-                    slug: true,
-                    title: true,
-                    subtitle: true,
-                    shortDescription: true,
-                    thumbnailUrl: true,
-                    difficulty: true,
-                    instructor: {
+                    name: true
+                  }
+                },
+                category: {
+                  select: {
+                    name: true,
+                    subject: {
                       select: {
                         name: true
                       }
-                    },
-                    category: {
-                      select: {
-                        name: true,
-                        subject: {
-                          select: {
-                            name: true
-                          }
-                        }
-                      }
-                    },
-                    lessons: {
-                      where: { status: PublicationStatus.PUBLISHED },
-                      select: {
-                        duration: true
-                      }
-                    },
-                    _count: {
-                      select: {
-                        lessons: true,
-                        enrollments: true
-                      }
                     }
-                  }
-                }
-              }
-            }
-          }
-        })
-      );
-
-      const courseIds = Array.from(new Set(paths.flatMap((path) => path.courses.map((step) => step.courseId))));
-      const enrollments =
-        currentUser?.role === UserRole.STUDENT && courseIds.length > 0
-          ? await retryOnDatabaseFailure(() =>
-              prisma.enrollment.findMany({
-                where: {
-                  userId: currentUser.id,
-                  courseId: {
-                    in: courseIds
                   }
                 },
-                include: {
-                  currentLesson: {
-                    select: {
-                      slug: true
-                    }
+                lessons: {
+                  where: { status: PublicationStatus.PUBLISHED },
+                  select: {
+                    duration: true
+                  }
+                },
+                _count: {
+                  select: {
+                    lessons: true,
+                    enrollments: true
                   }
                 }
-              })
-            )
-          : [];
-
-      const builtPaths = buildLearningPathCards({
-        paths,
-        enrollmentLookup: buildEnrollmentLookup(enrollments),
-        isSignedInStudent: currentUser?.role === UserRole.STUDENT
-      });
-
-      if (currentUser?.role === UserRole.STUDENT && builtPaths.length > 0) {
-        await syncLearningPathProgressForUser(currentUser.id, builtPaths);
-      }
-
-      return {
-        currentUser,
-        paths: builtPaths,
-        databaseUnavailable: false
-      };
-    },
-    async () => {
-      const paths: PathShape[] = demoLearningPaths.map((path) => ({
-        id: path.id,
-        slug: path.slug,
-        title: path.title,
-        description: path.description,
-        subjectSlug: path.subjectSlug,
-        difficulty: path.difficulty,
-        courses: path.steps.map((step) => {
-          const course = demoCourses.find((entry) => entry.id === step.courseId);
-          if (!course) {
-            throw new Error(`Missing demo course for learning path step: ${step.courseId}`);
-          }
-
-          const instructor = demoInstructors.find((entry) => entry.id === course.instructorId);
-          const category = demoCategories.find((entry) => entry.id === course.categoryId);
-          const subject = demoSubjects.find((entry) => entry.id === category?.subjectId);
-
-          if (!instructor || !category || !subject) {
-            throw new Error(`Incomplete demo learning path metadata for course: ${course.id}`);
-          }
-
-          return {
-            id: `${path.id}-${course.id}`,
-            position: step.position,
-            stageLabel: step.stageLabel,
-            course: {
-              id: course.id,
-              slug: course.slug,
-              title: course.title,
-              subtitle: course.subtitle,
-              shortDescription: course.shortDescription,
-              thumbnailUrl: course.thumbnailUrl,
-              difficulty: course.difficulty,
-              instructor: {
-                name: instructor.name
-              },
-              category: {
-                name: category.name,
-                subject: {
-                  name: subject.name
-                }
-              },
-              lessons: demoLessons
-                .filter(
-                  (lesson) =>
-                    lesson.courseId === course.id && lesson.status === PublicationStatus.PUBLISHED
-                )
-                .map((lesson) => ({
-                  duration: lesson.duration
-                })),
-              _count: {
-                lessons: demoLessons.filter((lesson) => lesson.courseId === course.id).length,
-                enrollments: demoEnrollments.filter((entry) => entry.courseId === course.id).length
               }
             }
-          };
-        })
-      }));
-
-      return {
-        currentUser: null,
-        paths: buildLearningPathCards({
-          paths,
-          enrollmentLookup: buildEnrollmentLookup([]),
-          isSignedInStudent: false
-        }),
-        databaseUnavailable: true
-      };
-    },
-    { context: "learning-paths" }
+          }
+        }
+      }
+    })
   );
+
+  const courseIds = Array.from(new Set(paths.flatMap((path) => path.courses.map((step) => step.courseId))));
+  const enrollments =
+    currentUser?.role === UserRole.STUDENT && courseIds.length > 0
+      ? await retryOnDatabaseFailure(() =>
+          prisma.enrollment.findMany({
+            where: {
+              userId: currentUser.id,
+              courseId: {
+                in: courseIds
+              }
+            },
+            include: {
+              currentLesson: {
+                select: {
+                  slug: true
+                }
+              }
+            }
+          })
+        )
+      : [];
+
+  const builtPaths = buildLearningPathCards({
+    paths,
+    enrollmentLookup: buildEnrollmentLookup(enrollments),
+    isSignedInStudent: currentUser?.role === UserRole.STUDENT
+  });
+
+  if (currentUser?.role === UserRole.STUDENT && builtPaths.length > 0) {
+    await syncLearningPathProgressForUser(currentUser.id, builtPaths);
+  }
+
+  return {
+    currentUser,
+    paths: builtPaths,
+    databaseUnavailable: false
+  };
 }
