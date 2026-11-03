@@ -109,14 +109,20 @@ export function CourseEnrollmentButton({
   }
 
   if (state.enrolled) {
-    return <Link
-      href="/my-learning"
-      prefetch
-      className={cn(buttonVariants({ size, variant: "outline" }), fullWidth ? "w-full" : "", className)}
-    >
-      <CheckCircle2 className="h-4 w-4" />
-      {enrolledLabel}
-    </Link>;
+    return (
+      <Link
+        href="/my-learning"
+        prefetch
+        className={cn(
+          buttonVariants({ size, variant: "outline" }),
+          fullWidth ? "w-full justify-center text-center" : "",
+          className
+        )}
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        {enrolledLabel}
+      </Link>
+    );
   }
 
   return (

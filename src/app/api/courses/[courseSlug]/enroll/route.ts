@@ -1,10 +1,12 @@
 import { UserRole } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { createApiErrorResponse, createApiSuccessResponse } from "@/lib/app-errors";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { syncLearningPathProgressForUser } from "@/server/learning-paths";
 
 type RouteProps = {
   params: Promise<{
@@ -119,6 +121,10 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
         }
       })
     );
+
+    await syncLearningPathProgressForUser(currentUser.id);
+    revalidatePath("/");
+    revalidatePath("/learning-paths");
 
     return createApiSuccessResponse({
       authenticated: true,

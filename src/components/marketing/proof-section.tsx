@@ -40,7 +40,7 @@ export function ProofSection({
     <Section>
       <Container className="space-y-10">
         <SectionHeading
-          eyebrow={locale === "uz" ? "Ishonch va dalillar" : "Trust And Proof"}
+          eyebrow={locale === "uz" ? "Ishonch va dalillar" : "Trust and proof"}
           title={
             locale === "uz"
               ? "Dars berayotgan insonlar, progress qilayotgan o'quvchilar va oilalar kutishi mumkin bo'lgan yordamni ko'rsating."
@@ -136,7 +136,7 @@ export function ProofSection({
             <Card className="bg-[linear-gradient(180deg,rgba(248,245,239,0.95),rgba(255,255,255,0.92))]">
               <CardContent className="space-y-3 p-6">
                 <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
-                  {locale === "uz" ? "Ota-onalar uchun ochiqlik" : "Parent Transparency"}
+                  {locale === "uz" ? "Ota-onalar uchun ochiqlik" : "Parent transparency"}
                 </p>
                 <p className="font-display text-3xl leading-tight">
                   {locale === "uz"

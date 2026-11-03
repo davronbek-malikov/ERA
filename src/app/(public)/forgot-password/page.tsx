@@ -124,16 +124,12 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
         };
 
   return (
-    <Section className="py-16 sm:py-20">
+    <Section className="py-10 sm:py-14 lg:py-16">
       <Container className="grid gap-8 lg:grid-cols-[0.95fr,1.05fr]">
         <div className="space-y-6">
           <Badge>{copy.badge}</Badge>
-          <h1 className="font-display text-5xl leading-tight sm:text-6xl">
-            {copy.title}
-          </h1>
-          <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-            {copy.description}
-          </p>
+          <h1 className="page-title">{copy.title}</h1>
+          <p className="page-lead">{copy.description}</p>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Card className="bg-white/70">
@@ -160,7 +156,7 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
         <div className="space-y-6">
           <Card className="border-white/70 bg-white/85">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-3xl">{copy.sendTitle}</CardTitle>
+              <CardTitle>{copy.sendTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
                 {copy.sendDescription}
               </p>
@@ -200,7 +196,7 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
 
           <Card className="border-white/70 bg-white/85">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-3xl">{copy.resetTitle}</CardTitle>
+              <CardTitle>{copy.resetTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
                 {copy.resetDescription}
               </p>

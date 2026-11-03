@@ -251,6 +251,7 @@ export async function getAdminLessons() {
 
         return {
           ...lesson,
+          moduleId: null,
           course: {
             ...course,
             category: {
@@ -445,6 +446,8 @@ export async function getAdminProgressData() {
       demoEnrollments
         .map((enrollment) => ({
           ...enrollment,
+          currentLessonId: null,
+          currentLesson: null,
           user: demoUsers.find((user) => user.id === enrollment.userId)!,
           course: {
             ...demoCourses.find((course) => course.id === enrollment.courseId)!,
@@ -457,6 +460,7 @@ export async function getAdminProgressData() {
               .filter((lesson) => lesson.courseId === enrollment.courseId)
               .map((lesson) => ({
                 ...lesson,
+                moduleId: null,
                 completions: []
               }))
           }
@@ -478,5 +482,16 @@ export async function getSiteSettings() {
       }),
     () => null,
     { allowFallback: false, context: "site-settings" }
+  );
+}
+
+export async function getPublicSiteSettings() {
+  return withDatabaseFallback(
+    () =>
+      prisma.siteSetting.findUnique({
+        where: { id: "default" }
+      }),
+    () => null,
+    { context: "public-site-settings" }
   );
 }

@@ -15,7 +15,10 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-primary/20 backdrop-blur-sm", className)}
+    className={cn(
+      "fixed inset-0 z-50 bg-slate-950/42 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      className
+    )}
     {...props}
   />
 ));
@@ -30,7 +33,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-[min(92vw,32rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[1.75rem] border border-white/60 bg-white p-6 shadow-soft duration-200",
+        "fixed left-[50%] top-[50%] z-50 grid w-[min(92vw,34rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border border-border/80 bg-white p-6 shadow-panel duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:p-7",
         className
       )}
       {...props}
@@ -68,7 +71,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("font-display text-2xl text-foreground", className)}
+    className={cn("card-title text-foreground", className)}
     {...props}
   />
 ));
@@ -80,7 +83,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm leading-6 text-muted-foreground", className)}
+    className={cn("text-sm leading-7 text-muted-foreground", className)}
     {...props}
   />
 ));

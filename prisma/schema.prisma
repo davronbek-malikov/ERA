@@ -25,6 +25,28 @@ enum UserRole {
   ADMIN
 }
 
+enum LearningGoal {
+  AI
+  MATHEMATICS
+  ENGLISH
+  EXAM_PREPARATION
+}
+
+enum TimeAvailability {
+  LIGHT
+  MODERATE
+  FOCUSED
+  INTENSIVE
+}
+
+enum OnboardingStage {
+  WELCOME
+  PROFILE
+  ASSESSMENT
+  PLAN
+  COMPLETED
+}
+
 enum ActivityType {
   SUBJECT_CREATED
   CATEGORY_CREATED
@@ -33,6 +55,24 @@ enum ActivityType {
   USER_CREATED
   ENROLLMENT_CREATED
   SETTINGS_UPDATED
+  STUDY_SESSION
+  LESSON_COMPLETED
+  PRACTICE_SUBMITTED
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+}
+
+enum PracticeExerciseType {
+  CODING
+  MINI_PROJECT
+}
+
+enum SubmissionStatus {
+  PASSED
+  FAILED
 }
 
 model User {
@@ -50,9 +90,44 @@ model User {
   enrollments        Enrollment[]
   instructorProfile  Instructor?
   lessonCompletions  LessonCompletion[]
+  chatMessages       ChatMessage[]
   uploadedMaterials  CourseMaterial[]
   activities         ActivityLog[]
   passwordResetCodes PasswordResetCode[]
+  onboarding         UserOnboarding?
+  pathProgress       UserPathProgress[]
+  xpProfile          UserXp?
+  streakProfile      Streak?
+  badges             Badge[]
+  practiceSubmissions PracticeSubmission[]
+  courseReviews      CourseReview[]
+}
+
+model UserOnboarding {
+  id                           String            @id @default(cuid())
+  userId                       String            @unique
+  goal                         LearningGoal?
+  level                        CourseDifficulty?
+  recommendedLevel             CourseDifficulty?
+  timeAvailability             TimeAvailability?
+  stage                        OnboardingStage   @default(WELCOME)
+  assessmentScore              Int?
+  assessmentAnswers            Json?
+  recommendedSubjectSlug       String?
+  recommendedCourseId          String?
+  personalizedPlan             String[]
+  checklistProfileCompleted    Boolean           @default(false)
+  checklistFirstLessonCompleted Boolean          @default(false)
+  checklistFirstPracticeCompleted Boolean        @default(false)
+  completedAt                  DateTime?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+
+  user                         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendedCourse            Course?           @relation("OnboardingRecommendedCourse", fields: [recommendedCourseId], references: [id], onDelete: SetNull)
+
+  @@index([stage, updatedAt])
+  @@index([goal, recommendedLevel])
 }
 
 model PasswordResetCode {
@@ -135,27 +210,150 @@ model Course {
   outcomes         String[]
   isFeatured       Boolean            @default(false)
   isPopular        Boolean            @default(false)
+  homepagePriority Int                @default(0)
+  viewCount        Int                @default(0)
   status           PublicationStatus  @default(PUBLISHED)
   position         Int                @default(0)
+  publishedAt      DateTime           @default(now())
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   category         Category           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   instructor       Instructor         @relation(fields: [instructorId], references: [id], onDelete: Restrict)
+  modules          CourseModule[]
   lessons          Lesson[]
   materials        CourseMaterial[]
   enrollments      Enrollment[]
+  chatMessages     ChatMessage[]
+  viewEvents       CourseViewEvent[]
+  reviews          CourseReview[]
+  recommendedForOnboarding UserOnboarding[] @relation("OnboardingRecommendedCourse")
+  learningPathEntries PathCourse[]
+  currentForPathProgress UserPathProgress[] @relation("CurrentPathCourse")
+  nextForPathProgress UserPathProgress[] @relation("NextPathCourse")
 
   @@index([categoryId, status, position])
   @@index([instructorId])
   @@index([difficulty])
   @@index([isFeatured])
   @@index([isPopular])
+  @@index([status, publishedAt])
+  @@index([status, viewCount])
+  @@index([homepagePriority])
+}
+
+model CourseReview {
+  id         String   @id @default(cuid())
+  userId     String
+  courseId   String
+  rating     Int
+  comment    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId, createdAt])
+  @@index([userId, createdAt])
+  @@map("course_reviews")
+}
+
+model LearningPath {
+  id           String            @id @default(cuid())
+  title        String
+  slug         String            @unique
+  description  String?
+  subjectSlug  String?
+  difficulty   CourseDifficulty?
+  status       PublicationStatus @default(PUBLISHED)
+  position     Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  courses      PathCourse[]
+  userProgress UserPathProgress[]
+
+  @@index([status, position])
+  @@map("learning_paths")
+}
+
+model PathCourse {
+  id         String       @id @default(cuid())
+  pathId      String
+  courseId    String
+  position    Int
+  stageLabel  String?
+  createdAt   DateTime    @default(now())
+
+  path        LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([pathId, courseId])
+  @@unique([pathId, position])
+  @@index([courseId])
+  @@map("path_courses")
+}
+
+model UserPathProgress {
+  id                 String    @id @default(cuid())
+  userId             String
+  pathId             String
+  progressPercent    Int       @default(0)
+  completedCourseCount Int     @default(0)
+  currentCourseId    String?
+  nextCourseId       String?
+  lastSyncedAt       DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path               LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  currentCourse      Course?   @relation("CurrentPathCourse", fields: [currentCourseId], references: [id], onDelete: SetNull)
+  nextCourse         Course?   @relation("NextPathCourse", fields: [nextCourseId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, pathId])
+  @@index([pathId, progressPercent])
+  @@index([currentCourseId])
+  @@index([nextCourseId])
+  @@map("user_path_progress")
+}
+
+model CourseViewEvent {
+  id        String   @id @default(cuid())
+  courseId  String
+  createdAt DateTime @default(now())
+
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, createdAt])
+  @@index([createdAt])
+}
+
+model CourseModule {
+  id          String            @id @default(cuid())
+  courseId    String
+  title       String
+  slug        String
+  description String?
+  position    Int
+  status      PublicationStatus @default(PUBLISHED)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+
+  @@unique([courseId, slug])
+  @@unique([courseId, position])
+  @@index([courseId, status, position])
 }
 
 model Lesson {
   id          String            @id @default(cuid())
   courseId    String
+  moduleId    String?
   title       String
   slug        String
   description String?
@@ -167,12 +365,86 @@ model Lesson {
   updatedAt   DateTime          @updatedAt
 
   course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module      CourseModule?     @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   materials   CourseMaterial[]
   completions LessonCompletion[]
+  content     LessonContent?
+  chatMessages ChatMessage[]
+  subskills   LessonSubskill[]
+  quizQuestions LessonQuizQuestion[]
+  practiceExercises PracticeExercise[]
+  currentEnrollments Enrollment[] @relation("EnrollmentCurrentLesson")
 
   @@unique([courseId, slug])
   @@unique([courseId, position])
+  @@index([moduleId, status, position])
   @@index([courseId, status, position])
+}
+
+model LessonContent {
+  id                 String   @id @default(cuid())
+  lessonId           String   @unique @map("lesson_id")
+  overview           String?
+  content            String
+  practicePrompt     String?  @map("practice_prompt")
+  practiceChecklist  String[] @map("practice_checklist")
+  learningObjectives String[] @map("learning_objectives")
+  keyPoints          String[] @map("key_points")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  lesson             Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+  @@map("lesson_content")
+}
+
+model LessonSubskill {
+  id          String   @id @default(cuid())
+  lessonId    String
+  title       String
+  description String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, position])
+}
+
+model LessonQuizQuestion {
+  id               String   @id @default(cuid())
+  lessonId         String
+  prompt           String
+  options          String[]
+  correctOption    Int
+  explanation      String?
+  position         Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  lesson           Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, position])
+}
+
+model ChatMessage {
+  id        String          @id @default(cuid())
+  userId    String          @map("user_id")
+  courseId  String          @map("course_id")
+  lessonId  String          @map("lesson_id")
+  role      ChatMessageRole
+  content   String
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson    Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId, createdAt])
+  @@index([courseId, lessonId, createdAt])
+  @@map("chat_messages")
 }
 
 model CourseMaterial {
@@ -216,15 +488,18 @@ model Enrollment {
   userId      String
   courseId    String
   progress    Int       @default(0)
+  currentLessonId String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentLesson Lesson? @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
 
   @@unique([userId, courseId])
   @@index([userId])
   @@index([courseId])
+  @@index([currentLessonId])
 }
 
 model ActivityLog {
@@ -232,6 +507,7 @@ model ActivityLog {
   type        ActivityType
   message     String
   userId      String?
+  context     Json?
   createdAt   DateTime     @default(now())
 
   user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -248,4 +524,97 @@ model SiteSetting {
   description          String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+model UserXp {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  totalXp       Int      @default(0)
+  level         Int      @default(1)
+  currentLevelXp Int     @default(0)
+  nextLevelXp   Int      @default(100)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([level, totalXp])
+  @@map("user_xp")
+}
+
+model Streak {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastActiveDate DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([currentStreak, longestStreak])
+  @@map("streak")
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  userId      String
+  code        String
+  title       String
+  description String?
+  icon        String?
+  earnedAt    DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, code])
+  @@index([userId, earnedAt])
+  @@map("badges")
+}
+
+model PracticeExercise {
+  id            String               @id @default(cuid())
+  lessonId       String
+  type          PracticeExerciseType @default(CODING)
+  title         String
+  slug          String
+  instructions  String
+  language      String               @default("javascript")
+  starterCode   String
+  solutionCode  String
+  hints         String[]
+  solutionNotes String?
+  testCases     Json
+  position      Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  lesson        Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  submissions   PracticeSubmission[]
+
+  @@unique([lessonId, slug])
+  @@index([lessonId, position])
+  @@map("practice_exercises")
+}
+
+model PracticeSubmission {
+  id             String           @id @default(cuid())
+  exerciseId     String
+  userId         String
+  language       String           @default("javascript")
+  code           String
+  status         SubmissionStatus
+  passedCount    Int              @default(0)
+  totalTests     Int              @default(0)
+  feedback       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  exercise       PracticeExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([exerciseId, createdAt])
+  @@index([userId, createdAt])
+  @@map("practice_submissions")
 }

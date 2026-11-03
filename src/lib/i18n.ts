@@ -13,15 +13,15 @@ export const messages = {
       brandTagline: "Modern learning",
       subjects: "Subjects",
       courses: "Courses",
-      learningPaths: "Paths",
+      learningPaths: "Learning paths",
       faq: "FAQ",
       signedInAs: "Account",
-      myLearning: "My Learning",
+      myLearning: "My learning",
       dashboard: "Dashboard",
-      signOut: "Sign Out",
-      signIn: "Sign In",
-      signUp: "Sign Up",
-      startLearning: "Start Learning"
+      signOut: "Sign out",
+      signIn: "Sign in",
+      signUp: "Sign up",
+      startLearning: "Start learning"
     },
     footer: {
       description:
@@ -32,20 +32,20 @@ export const messages = {
       contact: "Contact"
     },
     home: {
-      heroBadge: "Now Enrolling",
+      heroBadge: "Now enrolling",
       heroTitle:
         "Learn AI with real projects, clear mentorship, and a study path built for momentum.",
       heroDescription:
         "ERA Academy gives students one calm place to learn AI, math, English, and exam prep through guided tracks, project-based lessons, and progress they can actually see.",
-      exploreCourses: "Start Learning",
-      browseSubjects: "See Learning Paths",
+      exploreCourses: "Start learning",
+      browseSubjects: "See learning paths",
       publishedCourses: "Published courses",
       lessonModules: "Lesson modules",
       subjectTracks: "Subject tracks",
       viewCourse: "View course"
     },
     signIn: {
-      badge: "Secure Access",
+      badge: "Secure access",
       title: "Sign in with your email or phone number.",
       description:
         "Use one account to manage the admin workspace and review your learning platform. Admin users will be sent to the CMS automatically after login.",
@@ -63,7 +63,7 @@ export const messages = {
       createAccount: "Create an account",
       needCatalog: "Need the catalog instead?",
       browseCourses: "Browse courses",
-      submit: "Sign In",
+      submit: "Sign in",
       submitting: "Signing in...",
       errors: {
         "missing-fields": "Enter your email or phone number and your password.",
@@ -75,7 +75,7 @@ export const messages = {
       }
     },
     signUp: {
-      badge: "New Account",
+      badge: "New account",
       title: "Create your account with Gmail and phone number.",
       description:
         "Students can create an ERA Academy account with their name, email, and password, then add a phone number if they want phone-based sign-in later.",
@@ -92,7 +92,7 @@ export const messages = {
       passwordPlaceholder: "At least 8 characters",
       confirmPassword: "Confirm password",
       confirmPasswordPlaceholder: "Repeat password",
-      submit: "Create Account",
+      submit: "Create account",
       already: "Already registered?",
       signInHere: "Sign in here",
       errors: {
@@ -118,17 +118,17 @@ export const messages = {
       signedIn:
         "Signed in successfully. Your course progress will stay synced to your account.",
       myLearningHint: "Looking for your selected courses only?",
-      openMyLearning: "Open My Learning",
+      openMyLearning: "Open my learning",
       noMatchTitle: "No courses matched your filters",
       noMatchDescription: "Try widening your search or clearing one of the selected filters.",
-      resetCatalog: "Reset Catalog",
+      resetCatalog: "Reset catalog",
       searchPlaceholder: "Search courses, instructors, or topics",
       allSubjects: "All subjects",
       allCategories: "All categories",
       allLevels: "All levels",
       applyFilters: "Apply filters",
       add: "Add",
-      myLearningShort: "My Learning",
+      myLearningShort: "My learning",
       structuredOverview: "Structured course overview",
       curriculumSoon: "Curriculum details coming soon",
       selectedCourseFallback: "A structured course selected for your personal learning list.",
@@ -140,18 +140,18 @@ export const messages = {
       successSignedUp:
         "Account created successfully. Choose a course to start building your learning list.",
       successSignedIn: "Signed in successfully. Your selected courses will appear here.",
-      badge: "My Learning",
+      badge: "My learning",
       title: "Keep your selected courses in one focused place.",
       description:
         "This area is only for courses you have chosen. New students start with an empty learning list, then build it course by course.",
       emptyTitle: "Your learning list is empty",
       emptyDescription:
-        "You have not added any courses yet. Browse the catalog, open a course, and use Add to My Learning to build your study space.",
-      browseCourses: "Browse Courses",
+        "You have not added any courses yet. Browse the catalog, open a course, and use Add to my learning to build your study space.",
+      browseCourses: "Browse courses",
       complete: "complete",
       lastUpdated: "Last updated",
-      continueCourse: "Continue Course",
-      browseMoreCourses: "Browse More Courses"
+      continueCourse: "Continue course",
+      browseMoreCourses: "Browse more courses"
     },
     subjects: {
       title: "Four core domains, each ready to scale into a full catalog.",
@@ -160,7 +160,7 @@ export const messages = {
       noSubjectsTitle: "No subjects yet",
       noSubjectsDescription:
         "Add subjects from the admin CMS to start structuring the learning catalog.",
-      openAdmin: "Open Admin",
+      openAdmin: "Open admin",
       courses: "courses",
       fallback:
         "A well-structured subject space designed to expand into categories, courses, and lesson sequences.",
@@ -173,8 +173,8 @@ export const messages = {
       popular: "Popular",
       instructor: "Instructor",
       difficulty: "Difficulty",
-      lessonCount: "Lesson Count",
-      studyTime: "Study Time",
+      lessonCount: "Lesson count",
+      studyTime: "Study time",
       category: "Category",
       viewCurriculum: "View curriculum",
       curriculumPreparing:
@@ -182,17 +182,17 @@ export const messages = {
       watchPromo: "Watch promo video",
       addDescription:
         "Add this course to your learning list so you can come back to it quickly from one focused place.",
-      addCta: "Add to My Learning",
-      goToMyLearning: "Go to My Learning",
+      addCta: "Add to my learning",
+      goToMyLearning: "Go to my learning",
       selectedSeparate: "Your selected courses stay separate from the full public catalog.",
-      learningOutcomes: "Learning Outcomes",
+      learningOutcomes: "Learning outcomes",
       achieve: "What students will achieve",
-      relatedCourses: "Related Courses",
+      relatedCourses: "Related courses",
       momentum: "Keep the learning momentum going.",
       noRelatedTitle: "No related courses yet",
       noRelatedDescription:
         "As the catalog grows, related courses from the same category or subject will appear here.",
-      browseAllCourses: "Browse All Courses",
+      browseAllCourses: "Browse all courses",
       curriculum: "Curriculum",
       curriculumDescription:
         "Follow the lessons in order, mark completed lessons, and download supporting study materials.",
@@ -213,12 +213,12 @@ export const messages = {
       pageNotFound: "This page does not exist.",
       pageNotFoundDescription:
         "The page you requested could not be found. It may have moved, or the slug may no longer be valid.",
-      returnHome: "Return Home",
+      returnHome: "Return home",
       somethingWentWrong: "Something went wrong",
       pageCouldNotLoad: "The page could not be loaded.",
       pageCouldNotLoadDescription:
         "An unexpected error occurred while rendering this route. Try again, and if the issue persists, check your environment variables and database connection.",
-      tryAgain: "Try Again"
+      tryAgain: "Try again"
     }
   },
   uz: {

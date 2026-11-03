@@ -7,6 +7,7 @@ import { createUserSession, hashPassword, normalizePhone } from "@/lib/auth";
 import { getActionErrorRedirectPath } from "@/lib/app-errors";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { ensureOnboardingRecord } from "@/server/onboarding";
 
 function asString(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -98,8 +99,10 @@ export async function signUpAction(formData: FormData) {
   }
 
   await createUserSession(user.id, user.role, name);
+  await ensureOnboardingRecord(user.id);
   revalidatePath("/", "layout");
   revalidatePath("/courses");
   revalidatePath("/my-learning");
-  redirect("/courses?signedUp=1");
+  revalidatePath("/onboarding");
+  redirect("/onboarding?welcome=1");
 }
