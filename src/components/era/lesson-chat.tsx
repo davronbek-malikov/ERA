@@ -106,7 +106,7 @@ function MessageBody({ content }: { content: string }) {
     <div className="space-y-4 text-sm text-foreground">
       {parts.map((part, index) =>
         part.type === "code" ? (
-          <div key={`${part.language}-${index}`} className="overflow-hidden rounded-[1rem] border border-slate-200">
+          <div key={`${part.language}-${index}`} className="overflow-hidden rounded-lg border border-slate-200">
             <div className="eyebrow-label border-b border-slate-200 bg-slate-100 px-4 py-2 text-slate-500">
               {part.language}
             </div>
@@ -240,7 +240,7 @@ export function LessonChat({ id, lessonId, lessonPath, locale, isAuthenticated }
   }
 
   return (
-    <Card id={id} className="border-primary/10 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(246,248,255,1))]">
+    <Card id={id} className="border-primary/10 bg-card">
       <CardHeader className="space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -267,19 +267,19 @@ export function LessonChat({ id, lessonId, lessonPath, locale, isAuthenticated }
         ) : null}
 
         {error ? (
-          <div className="status-error rounded-[1.5rem] border px-4 py-3 text-sm">
+          <div className="status-error rounded-xl border px-4 py-3 text-sm">
             {error}
           </div>
         ) : null}
 
-        <div className="max-h-[520px] space-y-4 overflow-y-auto rounded-[1.5rem] border border-border/70 bg-white/80 p-4">
+        <div className="max-h-[520px] space-y-4 overflow-y-auto rounded-xl border border-border/70 bg-card/80 p-4">
           {isLoadingHistory ? (
-            <div className="flex items-center gap-3 rounded-[1.3rem] bg-secondary/45 px-4 py-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 rounded-lg bg-secondary/45 px-4 py-4 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               {copy.thinking}
             </div>
           ) : messages.length === 0 ? (
-            <div className="rounded-[1.4rem] border border-dashed border-border bg-secondary/35 px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border bg-secondary/35 px-4 py-8 text-center text-sm text-muted-foreground">
               {copy.empty}
             </div>
           ) : (
@@ -298,10 +298,10 @@ export function LessonChat({ id, lessonId, lessonPath, locale, isAuthenticated }
                   ) : null}
                   <div
                     className={cn(
-                      "max-w-[88%] rounded-[1.5rem] px-4 py-4 shadow-sm",
+                      "max-w-[88%] rounded-xl px-4 py-4 shadow-sm",
                       isUser
                         ? "bg-primary text-primary-foreground"
-                        : "border border-border/70 bg-white text-foreground"
+                        : "border border-border/70 bg-card text-foreground"
                     )}
                   >
                     <div className="eyebrow-label mb-2 flex items-center gap-2 opacity-80">
@@ -324,7 +324,7 @@ export function LessonChat({ id, lessonId, lessonPath, locale, isAuthenticated }
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <Bot className="h-4 w-4" />
               </div>
-              <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-4 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-3">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {copy.thinking}
@@ -341,7 +341,7 @@ export function LessonChat({ id, lessonId, lessonPath, locale, isAuthenticated }
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={copy.placeholder}
             disabled={!isAuthenticated || isSubmitting}
-            className="min-h-28 bg-white"
+            className="min-h-28 bg-card"
           />
           <div className="flex justify-end">
             <Button type="submit" disabled={!isAuthenticated || isSubmitting || !question.trim()}>

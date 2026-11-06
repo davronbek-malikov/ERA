@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { serializeJsonLd } from "@/lib/json-ld";
 import Link from "next/link";
 import Script from "next/script";
 
@@ -43,9 +44,9 @@ export default async function FaqPage() {
       <Script
         id="era-faq-structured-data"
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
       />
-      <Section className="overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,214,153,0.28),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(174,221,255,0.22),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(255,249,240,0.78))]">
+      <Section className="overflow-hidden bg-card">
         <Container className="space-y-10">
           <div className="space-y-6">
             <Badge variant="outline">{content.badge}</Badge>
@@ -54,7 +55,7 @@ export default async function FaqPage() {
                 <h1 className="page-title">{content.title}</h1>
                 <p className="page-lead">{content.description}</p>
               </div>
-              <div className="rounded-[1.8rem] border border-white/70 bg-white/88 p-5 shadow-soft sm:p-6">
+              <div className="rounded-xl border border-white/70 bg-card/88 p-5 shadow-soft sm:p-6">
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   Quick links
                 </p>

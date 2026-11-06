@@ -43,7 +43,7 @@ export function LanguageSwitcher({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/80 bg-white/90 px-2 py-1 text-xs shadow-soft">
+    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/80 bg-card/90 px-2 py-1 text-xs shadow-soft">
       {!compact ? (
         <span className="px-2 whitespace-nowrap uppercase tracking-[0.14em] text-muted-foreground">
           {label}

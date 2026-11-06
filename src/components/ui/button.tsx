@@ -1,34 +1,39 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
+const primary = "bg-primary text-primary-foreground hover:bg-primary/90";
+const destructive = "bg-error text-error-foreground hover:bg-error/90";
+
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-transparent text-center font-medium leading-tight tracking-[-0.01em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:translate-y-px ring-offset-background",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent font-medium leading-none transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-busy:cursor-progress [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-soft hover:bg-primary/94 hover:shadow-panel",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/84 hover:shadow-soft",
-        outline:
-          "border-border bg-white/90 text-foreground hover:border-primary/22 hover:bg-white hover:text-foreground hover:shadow-soft",
-        ghost:
-          "text-foreground hover:bg-accent/70 hover:text-foreground",
-        danger:
-          "bg-error text-error-foreground shadow-soft hover:bg-error/92 hover:shadow-panel"
+        primary,
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        outline: "border-input bg-surface text-foreground hover:bg-muted",
+        ghost: "text-foreground hover:bg-muted",
+        destructive,
+        // Aliases kept for existing call sites.
+        default: primary,
+        danger: destructive
       },
       size: {
-        default: "h-11 px-4 text-[0.95rem]",
-        md: "h-11 px-4 text-[0.95rem]",
-        sm: "h-10 px-3.5 text-sm",
-        lg: "h-12 px-5 text-[0.98rem]",
-        icon: "h-10 w-10 px-0 py-0"
+        sm: "h-8 px-3 text-xs",
+        md: "h-10 px-4 text-sm",
+        lg: "h-12 px-5 text-sm",
+        "icon-sm": "size-8 px-0",
+        icon: "size-10 px-0",
+        "icon-lg": "size-12 px-0",
+        // Alias kept for existing call sites.
+        default: "h-10 px-4 text-sm"
       }
     },
     defaultVariants: {
-      variant: "default",
+      variant: "primary",
       size: "md"
     }
   }
@@ -36,16 +41,24 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    VariantProps<typeof buttonVariants> {
+  /** Shows a spinner, disables the button and marks it busy for assistive technology. */
+  loading?: boolean;
+}
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => {
+  ({ className, variant, size, loading = false, disabled, children, ...props }, ref) => {
     return (
       <button
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
         {...props}
-      />
+      >
+        {loading ? <Spinner className="size-4" /> : null}
+        {children}
+      </button>
     );
   }
 );

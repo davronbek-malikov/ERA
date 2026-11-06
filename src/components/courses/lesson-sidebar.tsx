@@ -107,7 +107,7 @@ function LessonSidebarComponent({
   }, [lessons, locale]);
 
   return (
-    <Card className="overflow-hidden border-border/70 bg-white">
+    <Card className="overflow-hidden border-border/70 bg-card">
       <CardContent className="space-y-5 p-5">
         {groupedLessons.map((group) => (
           <div key={group.title} className="space-y-3">
@@ -143,9 +143,9 @@ function LessonSidebarComponent({
                     key={lesson.id}
                     href={isLocked ? "#" : `/courses/${courseSlug}/lessons/${lesson.slug}`}
                     className={cn(
-                      "block rounded-[1rem] border px-4 py-3 transition-colors",
+                      "block rounded-lg border px-4 py-3 transition-colors",
                       isCompleted
-                        ? "border-emerald-200 bg-emerald-50"
+                        ? "border-success/20 bg-success/5"
                         : isActive
                           ? "border-primary/25 bg-accent/60"
                           : "border-border/70 bg-secondary/25 hover:border-primary/20 hover:bg-accent/40",
@@ -161,7 +161,7 @@ function LessonSidebarComponent({
                       </div>
                       <div className="mt-0.5 shrink-0">
                         {isCompleted ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          <CheckCircle2 className="h-4 w-4 text-success" />
                         ) : isLocked ? (
                           <Lock className="h-4 w-4 text-muted-foreground" />
                         ) : (
@@ -169,7 +169,7 @@ function LessonSidebarComponent({
                         )}
                       </div>
                     </div>
-                    <div className="mt-3 inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <div className="mt-3 inline-flex rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       {badgeLabel}
                     </div>
                   </Link>

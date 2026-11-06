@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import { createApiErrorResponse, createApiSuccessResponse } from "@/lib/app-errors";
 import { getCurrentUser } from "@/lib/auth";
+import { optionalBoolean, optionalId, readJsonObject } from "@/lib/validation";
+import { assertSameOrigin, requireStudentEnrollment, requireStudentUser, toApiErrorResponse } from "@/server/authz";
 import { parseDurationToMinutes } from "@/lib/format";
 import { getEnrollmentProgressSummary, syncEnrollmentProgressForUser } from "@/lib/progress";
 import { prisma } from "@/lib/prisma";
@@ -57,6 +59,26 @@ export async function GET(_request: NextRequest, { params }: RouteProps) {
     }
 
     if (currentUser.role !== UserRole.STUDENT) {
+      return createApiSuccessResponse({
+        authenticated: true,
+        canTrack: false,
+        completedLessonIds: [],
+        lessonProgressById: Object.fromEntries(course.lessons.map((lesson) => [lesson.id, 0])),
+        currentLessonId: null,
+        progressPercent: 0,
+        completedLessons: 0,
+        totalLessons: course.lessons.length
+      });
+    }
+
+    const isEnrolled = await retryOnDatabaseFailure(() =>
+      prisma.enrollment.findUnique({
+        where: { userId_courseId: { userId: currentUser.id, courseId: course.id } },
+        select: { id: true }
+      })
+    );
+
+    if (!isEnrolled) {
       return createApiSuccessResponse({
         authenticated: true,
         canTrack: false,
@@ -123,29 +145,24 @@ export async function GET(_request: NextRequest, { params }: RouteProps) {
   }
 }
 
+/**
+ * Saves the signed-in student's own progress. Requires an existing enrollment (enrollment is created
+ * only by the enroll API), and every lesson id must be a published lesson of this course.
+ * Completion and resume position are written in one transaction.
+ */
 export async function POST(request: NextRequest, { params }: RouteProps) {
-  const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    return createApiErrorResponse(401, "auth-required", "Sign in to save progress.");
-  }
-
-  if (currentUser.role !== UserRole.STUDENT) {
-    return createApiErrorResponse(
-      403,
-      "student-only",
-      "Only student accounts can track lesson progress."
-    );
-  }
-
   try {
-    const { lessonId, completed, currentLessonId } = (await request.json()) as {
-      lessonId?: string;
-      completed?: boolean;
-      currentLessonId?: string;
-    };
+    assertSameOrigin(request);
+    const currentUser = await requireStudentUser();
+    const body = await readJsonObject(request, 4 * 1024);
+    const lessonId = optionalId(body.lessonId, "lessonId");
+    const currentLessonId = optionalId(body.currentLessonId, "currentLessonId");
+    const completed = optionalBoolean(body.completed, "completed");
 
     if (!lessonId && !currentLessonId) {
+      return createApiErrorResponse(400, "invalid-payload", "Invalid progress payload.");
+    }
+    if (completed !== undefined && !lessonId) {
       return createApiErrorResponse(400, "invalid-payload", "Invalid progress payload.");
     }
 
@@ -160,7 +177,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           id: true,
           lessons: {
             where: { status: PublicationStatus.PUBLISHED },
-            select: { id: true }
+            select: { id: true, title: true, duration: true }
           }
         }
       })
@@ -170,112 +187,61 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       return createApiErrorResponse(404, "course-not-found", "Course not found.");
     }
 
-    if (lessonId && !course.lessons.some((lesson) => lesson.id === lessonId)) {
+    await requireStudentEnrollment(currentUser, course.id);
+
+    const lessonsById = new Map(course.lessons.map((lesson) => [lesson.id, lesson]));
+    const targetLesson = lessonId ? lessonsById.get(lessonId) : undefined;
+    const lessonToResumeId = currentLessonId ?? lessonId ?? null;
+    const resumeLesson = lessonToResumeId ? lessonsById.get(lessonToResumeId) : undefined;
+
+    if ((lessonId && !targetLesson) || (lessonToResumeId && !resumeLesson)) {
       return createApiErrorResponse(400, "lesson-not-found", "Lesson not found in this course.");
     }
 
-    if (lessonId && typeof completed === "boolean") {
-      if (completed) {
-        const completedLesson = await retryOnDatabaseFailure(() =>
-          prisma.lesson.findUnique({
-            where: {
-              id: lessonId
-            },
-            select: {
-              id: true,
-              title: true,
-              duration: true
-            }
-          })
-        );
+    await retryOnDatabaseFailure(() =>
+      prisma.$transaction(async (tx) => {
+        if (targetLesson && completed === true) {
+          await tx.lessonCompletion.upsert({
+            where: { userId_lessonId: { userId: currentUser.id, lessonId: targetLesson.id } },
+            update: { completedAt: new Date() },
+            create: { userId: currentUser.id, lessonId: targetLesson.id }
+          });
+        } else if (targetLesson && completed === false) {
+          await tx.lessonCompletion.deleteMany({ where: { userId: currentUser.id, lessonId: targetLesson.id } });
+        }
 
-        await retryOnDatabaseFailure(() =>
-          prisma.lessonCompletion.upsert({
-            where: {
-              userId_lessonId: {
-                userId: currentUser.id,
-                lessonId
-              }
-            },
-            update: {
-              completedAt: new Date()
-            },
-            create: {
-              userId: currentUser.id,
-              lessonId
-            }
-          })
-        );
-
-        if (completedLesson) {
-          await trackUserActivity({
-            userId: currentUser.id,
-            type: ActivityType.LESSON_COMPLETED,
-            message: `Completed lesson: ${completedLesson.title}`,
-            context: {
-              courseId: course.id,
-              lessonId: completedLesson.id,
-              estimatedMinutes: parseDurationToMinutes(completedLesson.duration)
-            }
+        if (resumeLesson) {
+          await tx.enrollment.update({
+            where: { userId_courseId: { userId: currentUser.id, courseId: course.id } },
+            data: { currentLessonId: resumeLesson.id }
           });
         }
-      } else {
-        await retryOnDatabaseFailure(() =>
-          prisma.lessonCompletion.deleteMany({
-            where: {
-              userId: currentUser.id,
-              lessonId
-            }
-          })
-        );
-      }
+      })
+    );
+
+    if (targetLesson && completed === true) {
+      await trackUserActivity({
+        userId: currentUser.id,
+        type: ActivityType.LESSON_COMPLETED,
+        message: `Completed lesson: ${targetLesson.title}`,
+        context: {
+          courseId: course.id,
+          lessonId: targetLesson.id,
+          estimatedMinutes: parseDurationToMinutes(targetLesson.duration)
+        }
+      });
     }
 
-    const lessonToResume = currentLessonId ?? lessonId ?? null;
-
-    if (lessonToResume) {
-      const activeLesson = await retryOnDatabaseFailure(() =>
-        prisma.lesson.findUnique({
-          where: {
-            id: lessonToResume
-          },
-          select: {
-            id: true,
-            title: true
-          }
-        })
-      );
-
-      await retryOnDatabaseFailure(() =>
-        prisma.enrollment.upsert({
-          where: {
-            userId_courseId: {
-              userId: currentUser.id,
-              courseId: course.id
-            }
-          },
-          update: {
-            currentLessonId: lessonToResume
-          },
-          create: {
-            userId: currentUser.id,
-            courseId: course.id,
-            currentLessonId: lessonToResume
-          }
-        })
-      );
-
-      if (activeLesson) {
-        await trackUserActivity({
-          userId: currentUser.id,
-          type: ActivityType.STUDY_SESSION,
-          message: `Opened lesson: ${activeLesson.title}`,
-          context: {
-            courseId: course.id,
-            lessonId: activeLesson.id
-          }
-        });
-      }
+    if (resumeLesson) {
+      await trackUserActivity({
+        userId: currentUser.id,
+        type: ActivityType.STUDY_SESSION,
+        message: `Opened lesson: ${resumeLesson.title}`,
+        context: {
+          courseId: course.id,
+          lessonId: resumeLesson.id
+        }
+      });
     }
 
     const summary = await syncEnrollmentProgressForUser(currentUser.id, course.id);
@@ -326,12 +292,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       completedLessons: summary.completedLessons,
       totalLessons: summary.totalLessons
     });
-  } catch {
-    return createApiErrorResponse(
-      503,
-      "service-unavailable",
-      "Course progress could not be updated.",
-      { retryable: true }
-    );
+  } catch (error) {
+    return toApiErrorResponse(error, {
+      code: "service-unavailable",
+      message: "Course progress could not be updated.",
+      log: "course-progress"
+    });
   }
 }

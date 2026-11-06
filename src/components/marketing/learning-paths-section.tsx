@@ -77,7 +77,7 @@ export function LearningPathsSection({ locale }: { locale: Locale }) {
                 <div className="space-y-4">
                   {path.steps.map((step) => (
                     <div key={step} className="flex items-center gap-3 rounded-2xl bg-secondary/70 px-4 py-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-card">
                         <Check className="h-4 w-4 text-primary" />
                       </div>
                       <span className="text-sm">{step}</span>

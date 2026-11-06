@@ -69,3 +69,43 @@ export function formatDurationSummary(totalMinutes: number, locale: Locale = "en
 
   return `${hours}h ${minutes}m`;
 }
+
+const relativeUnits: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+  ["year", 365 * 24 * 3600],
+  ["month", 30 * 24 * 3600],
+  ["week", 7 * 24 * 3600],
+  ["day", 24 * 3600],
+  ["hour", 3600],
+  ["minute", 60]
+];
+
+/** "3 days ago" / "3 kun oldin". Falls back to "just now" under a minute. */
+export function formatRelativeDate(value: Date | string | null | undefined, locale: Locale = "en") {
+  if (!value) {
+    return locale === "uz" ? "Hali yo'q" : "Never";
+  }
+  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000);
+  const formatter = new Intl.RelativeTimeFormat(locale === "uz" ? "uz" : "en", { numeric: "auto" });
+  for (const [unit, size] of relativeUnits) {
+    if (Math.abs(seconds) >= size) {
+      return formatter.format(Math.round(seconds / size), unit);
+    }
+  }
+  return locale === "uz" ? "Hozirgina" : "Just now";
+}
+
+/** "5 Nov 2026" */
+export function formatShortDate(value: Date | string, locale: Locale = "en") {
+  return new Intl.DateTimeFormat(locale === "uz" ? "uz" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(
+    new Date(value)
+  );
+}
+
+/** m:ss or h:mm:ss for a position in a video. */
+export function formatClock(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = String(seconds % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}

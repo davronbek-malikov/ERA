@@ -39,7 +39,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   return (
     <Section className="py-6 sm:py-12 lg:py-14">
       <Container className="grid items-start gap-5 sm:gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
-        <Card className="order-1 border-white/70 bg-white/92 shadow-panel lg:order-2">
+        <Card className="order-1 border-white/70 bg-card/92 shadow-panel lg:order-2">
           <CardHeader className="space-y-3 px-4 pb-4 pt-4 sm:px-7 sm:pt-7">
             <div className="inline-flex w-fit rounded-full bg-primary/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
               {t.signUp.join}
@@ -51,7 +51,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           </CardHeader>
           <CardContent className="space-y-5 px-4 pb-4 sm:px-8 sm:pb-8">
             {message ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="rounded-2xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
                 {message}
               </div>
             ) : null}
@@ -155,19 +155,19 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           <p className="page-lead">{t.signUp.description}</p>
 
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-4 sm:p-5">
                 <Mail className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[0]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-4 sm:p-5">
                 <Phone className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[1]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-4 sm:p-5">
                 <KeyRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[2]}</p>

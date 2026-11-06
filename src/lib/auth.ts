@@ -186,7 +186,13 @@ export async function getCurrentUser() {
   );
 
   if (!user || user.status !== "ACTIVE") {
-    await clearUserSession();
+    // Cookies can only be changed in Server Actions and Route Handlers. In Server Components the stale
+    // cookie stays until the next action/route clears it; the user is treated as signed out either way.
+    try {
+      await clearUserSession();
+    } catch {
+      // ignore
+    }
     return null;
   }
 

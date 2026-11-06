@@ -1,18 +1,17 @@
-import vm from "node:vm";
-
 import { ActivityType, Prisma, SubmissionStatus } from "@prisma/client";
 import ts from "typescript";
 
-import { getCurrentUser } from "@/lib/auth";
-import {
-  getPracticeLanguageVariant,
-  type PracticeLanguage
-} from "@/lib/practice-languages";
+import type { PracticeLanguage } from "@/lib/practice-languages";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { invalid } from "@/lib/validation";
+import { authErrors, requireLessonAccess, type AuthUser } from "@/server/authz";
 import { trackUserActivity } from "@/server/activity";
+import { getPracticeLanguageVariant } from "@/server/practice-variants";
 
-type PracticeTestCase = {
+export const MAX_PRACTICE_CODE_LENGTH = 20_000;
+
+export type PracticeTestCase = {
   input: unknown[];
   expected: unknown;
   description: string;
@@ -24,44 +23,6 @@ type PracticeExecutionResult = {
   expected: unknown;
   actual: unknown;
 };
-
-function normalizeValue(value: unknown) {
-  return JSON.stringify(value);
-}
-
-function executeCommonJsModule(code: string, testCases: PracticeTestCase[]) {
-  const sandbox = {
-    module: { exports: {} as unknown },
-    exports: {}
-  };
-  const context = vm.createContext(sandbox);
-  const script = new vm.Script(code);
-  script.runInContext(context, { timeout: 1000 });
-
-  const exported = (sandbox.module.exports || sandbox.exports) as unknown;
-  const solve =
-    typeof exported === "function"
-      ? exported
-      : typeof (exported as { solve?: unknown })?.solve === "function"
-        ? (exported as { solve: (...args: unknown[]) => unknown }).solve
-        : null;
-
-  if (!solve) {
-    throw new Error("Export a function directly or as module.exports = solve.");
-  }
-
-  return testCases.map((testCase) => {
-    const actual = solve(...testCase.input);
-    const passed = normalizeValue(actual) === normalizeValue(testCase.expected);
-
-    return {
-      description: testCase.description,
-      passed,
-      expected: testCase.expected,
-      actual
-    };
-  });
-}
 
 function transpileTypeScriptToCommonJs(code: string) {
   return ts.transpileModule(code, {
@@ -181,37 +142,34 @@ function transpilePythonToCommonJs(code: string) {
   ].join("\n");
 }
 
-function runExerciseByLanguage(
-  language: PracticeLanguage,
-  code: string,
-  testCases: PracticeTestCase[]
-): PracticeExecutionResult[] {
+// Converts student code to a CommonJS script for the browser runner. This only
+// rewrites text: student code is never executed on the server.
+export function compilePracticeCode(language: PracticeLanguage, code: string) {
   if (language === "javascript") {
-    return executeCommonJsModule(code, testCases);
+    return code;
   }
 
   if (language === "typescript") {
-    return executeCommonJsModule(transpileTypeScriptToCommonJs(code), testCases);
+    return transpileTypeScriptToCommonJs(code);
   }
 
   if (language === "python") {
-    return executeCommonJsModule(transpilePythonToCommonJs(code), testCases);
+    return transpilePythonToCommonJs(code);
   }
 
   throw new Error("Unsupported language.");
 }
 
-export async function submitPracticeExercise(input: {
+/**
+ * Records a practice submission for the signed-in user. The exercise's lesson must be accessible to the
+ * user (enrolled student, owning teacher or admin) — solutions are returned only after this check.
+ */
+export async function submitPracticeExercise(currentUser: AuthUser, input: {
   exerciseId: string;
   language: PracticeLanguage;
   code: string;
+  results: Array<{ passed: boolean; actual: unknown }>;
 }) {
-  const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    throw new Error("Sign in to submit practice.");
-  }
-
   const exercise = await retryOnDatabaseFailure(() =>
     prisma.practiceExercise.findUnique({
       where: {
@@ -232,14 +190,25 @@ export async function submitPracticeExercise(input: {
   );
 
   if (!exercise) {
-    throw new Error("Practice exercise not found.");
+    throw authErrors.notFound("Practice exercise not found.");
   }
 
-  const results = runExerciseByLanguage(
-    input.language,
-    input.code,
-    exercise.testCases as PracticeTestCase[]
-  );
+  await requireLessonAccess(currentUser, exercise.lessonId);
+
+  // Results come from the browser runner, so they are self-reported. Test
+  // descriptions and expected values always come from the database.
+  const testCases = exercise.testCases as PracticeTestCase[];
+
+  if (input.results.length !== testCases.length) {
+    throw invalid("invalid-results", "Practice results do not match this exercise.");
+  }
+
+  const results: PracticeExecutionResult[] = testCases.map((testCase, index) => ({
+    description: testCase.description,
+    passed: input.results[index].passed === true,
+    expected: testCase.expected,
+    actual: input.results[index].actual ?? null
+  }));
   const passedCount = results.filter((result) => result.passed).length;
   const status = passedCount === results.length ? SubmissionStatus.PASSED : SubmissionStatus.FAILED;
   const languageVariant = getPracticeLanguageVariant(exercise, input.language);

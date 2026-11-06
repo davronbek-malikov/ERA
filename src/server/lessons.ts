@@ -1,7 +1,10 @@
 import { PracticeExerciseType, PublicationStatus, type ChatMessageRole } from "@prisma/client";
 
+import { PRACTICE_LANGUAGES, type PracticeLanguage } from "@/lib/practice-languages";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import type { PracticeTestCase } from "@/server/practice";
+import { getPracticeLanguageVariant } from "@/server/practice-variants";
 
 export type LessonContextRecord = {
   lessonId: string;
@@ -73,8 +76,6 @@ export type LessonPageData = {
       id: string;
       prompt: string;
       options: string[];
-      correctOption: number;
-      explanation: string | null;
       position: number;
     }>;
     practiceExercises: Array<{
@@ -83,11 +84,9 @@ export type LessonPageData = {
       title: string;
       slug: string;
       instructions: string;
-      language: string;
-      starterCode: string;
-      solutionCode: string;
+      starterCodeByLanguage: Record<PracticeLanguage, string>;
+      testCases: PracticeTestCase[];
       hints: string[];
-      solutionNotes: string | null;
       submissions: Array<{
         id: string;
         language: string;
@@ -117,7 +116,7 @@ export type LessonPageData = {
   } | null;
 };
 
-function mapLessonPracticeExercises(
+export function mapLessonPracticeExercises(
   exercises: Array<{
     id: string;
     type: PracticeExerciseType;
@@ -128,7 +127,7 @@ function mapLessonPracticeExercises(
     starterCode: string;
     solutionCode: string;
     hints: string[];
-    solutionNotes: string | null;
+    testCases: unknown;
     submissions?: Array<{
       id: string;
       language: string;
@@ -146,114 +145,34 @@ function mapLessonPracticeExercises(
     title: exercise.title,
     slug: exercise.slug,
     instructions: exercise.instructions,
-    language: exercise.language,
-    starterCode: exercise.starterCode,
-    solutionCode: exercise.solutionCode,
+    starterCodeByLanguage: Object.fromEntries(
+      PRACTICE_LANGUAGES.map(({ value }) => [value, getPracticeLanguageVariant(exercise, value).starterCode])
+    ) as Record<PracticeLanguage, string>,
+    testCases: exercise.testCases as PracticeTestCase[],
     hints: exercise.hints,
-    solutionNotes: exercise.solutionNotes,
     submissions: exercise.submissions ?? []
   }));
 }
 
-export async function getLessonBySlugs(
-  courseSlug: string,
-  lessonSlug: string,
-  currentUserId?: string | null
-): Promise<LessonPageData | null> {
-  const course = await prisma.course.findFirst({
-    where: {
-      slug: courseSlug,
-      status: PublicationStatus.PUBLISHED
-    },
-    include: {
-      instructor: true,
-      category: {
-        include: {
-          subject: true
-        }
-      },
-      lessons: {
-        where: {
-          status: PublicationStatus.PUBLISHED
-        },
-        orderBy: [{ position: "asc" }],
-        include: {
-          module: {
-            select: {
-              id: true,
-              title: true,
-              description: true
-            }
-          },
-          materials: {
-            orderBy: [{ position: "asc" }, { createdAt: "asc" }]
-          },
-          content: true,
-          subskills: {
-            orderBy: [{ position: "asc" }]
-          },
-          quizQuestions: {
-            orderBy: [{ position: "asc" }]
-          },
-          practiceExercises: {
-            orderBy: [{ position: "asc" }],
-            include: {
-              submissions: currentUserId
-                ? {
-                    where: { userId: currentUserId },
-                    orderBy: [{ createdAt: "desc" }],
-                    take: 9
-                  }
-                : false
-            }
-          }
-        }
-      }
-    }
-  });
-
-  if (!course) {
-    return null;
-  }
-
-  const lessonIndex = course.lessons.findIndex((lesson) => lesson.slug === lessonSlug);
-  const lesson = lessonIndex >= 0 ? course.lessons[lessonIndex] : null;
-
-  if (!lesson) {
-    return null;
-  }
-
-  return {
-    course: {
-      ...course,
-      lessons: course.lessons.map((item) => ({
-        id: item.id,
-        slug: item.slug,
-        title: item.title,
-        position: item.position,
-        moduleId: item.moduleId,
-        module: item.module ? { id: item.module.id, title: item.module.title } : null
-      }))
-    },
-    lesson: {
-      ...lesson,
-      practiceExercises: mapLessonPracticeExercises(lesson.practiceExercises)
-    },
-    previousLesson: lessonIndex > 0 ? course.lessons[lessonIndex - 1] : null,
-    nextLesson: lessonIndex < course.lessons.length - 1 ? course.lessons[lessonIndex + 1] : null
-  } satisfies LessonPageData;
-}
-
-export async function getLessonContextById(lessonId: string): Promise<LessonContextRecord | null> {
+/**
+ * Lesson context for the tutor and the context API. Callers must authorize first (src/server/authz.ts).
+ * Published-only by default; `includeDrafts` is for Teacher Preview / Admin Inspection after authorization.
+ */
+export async function getLessonContextById(
+  lessonId: string,
+  options: { includeDrafts?: boolean } = {}
+): Promise<LessonContextRecord | null> {
   return retryOnDatabaseFailure(async () => {
     const lesson = await prisma.lesson.findFirst({
-      where: {
-        id: lessonId,
-        status: PublicationStatus.PUBLISHED,
-        course: {
-          status: PublicationStatus.PUBLISHED
-        }
-      },
+      where: options.includeDrafts
+        ? { id: lessonId }
+        : {
+            id: lessonId,
+            status: PublicationStatus.PUBLISHED,
+            course: {
+              status: PublicationStatus.PUBLISHED
+            }
+          },
       include: {
         course: {
           select: {
@@ -286,47 +205,4 @@ export async function getLessonContextById(lessonId: string): Promise<LessonCont
       keyPoints: lesson.content?.keyPoints ?? []
     };
   });
-}
-
-export async function getLessonChatHistory(userId: string, lessonId: string, limit = 40) {
-  const messages = await retryOnDatabaseFailure(() =>
-    prisma.chatMessage.findMany({
-      where: {
-        userId,
-        lessonId
-      },
-      orderBy: [{ createdAt: "desc" }],
-      take: limit
-    })
-  );
-
-  return messages.reverse().map((message) => ({
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    createdAt: message.createdAt.toISOString()
-  }));
-}
-
-export async function getRecentLessonChatMessages(
-  userId: string,
-  lessonId: string,
-  limit = 6
-): Promise<Array<{ role: ChatMessageRole; content: string }>> {
-  const messages = await retryOnDatabaseFailure(() =>
-    prisma.chatMessage.findMany({
-      where: {
-        userId,
-        lessonId
-      },
-      orderBy: [{ createdAt: "desc" }],
-      take: limit,
-      select: {
-        role: true,
-        content: true
-      }
-    })
-  );
-
-  return messages.reverse();
 }

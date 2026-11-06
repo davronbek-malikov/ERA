@@ -168,13 +168,13 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
         ) : null}
 
         <div className="grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
-          <Card className="overflow-hidden border-primary/10 bg-[linear-gradient(135deg,#312e81,#4f46e5_52%,#6366f1)] text-white shadow-panel">
+          <Card className="overflow-hidden border-primary/10 bg-primary text-white shadow-panel">
             <CardContent className="surface-grid space-y-8 p-8 sm:p-10">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge variant="secondary" className="bg-white/14 text-white">
+                <Badge variant="secondary" className="bg-card/14 text-white">
                   {dashboardCopy.overview}
                 </Badge>
-                <div className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/80">
+                <div className="rounded-full bg-card/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/80">
                   {dashboardCopy.curatedForYou}
                 </div>
               </div>
@@ -185,17 +185,17 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{dashboardCopy.activeCourses}</p>
                   <p className="metric-value mt-2">{enrollments.length}</p>
                 </div>
-                <div className="rounded-xl border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{dashboardCopy.studyTime}</p>
                   <p className="metric-value mt-2">
                     {formatDurationSummary(totalMinutes, locale)}
                   </p>
                 </div>
-                <div className="rounded-xl border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{dashboardCopy.averageProgress}</p>
                   <p className="metric-value mt-2">{averageProgress}%</p>
                 </div>
@@ -203,14 +203,14 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
 
               {gamificationSummary ? (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto,auto]">
-                  <div className="rounded-xl border border-white/12 bg-white/10 px-5 py-4">
+                  <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                     <div className="flex items-center justify-between text-sm text-white/72">
                       <span>{dashboardCopy.xp}</span>
                       <span>{gamificationSummary.totalXp}</span>
                     </div>
-                    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/15">
+                    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-card/15">
                       <div
-                        className="h-full rounded-full bg-white"
+                        className="h-full rounded-full bg-card"
                         style={{
                           width: `${Math.max(
                             0,
@@ -226,14 +226,14 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                       {dashboardCopy.level} {gamificationSummary.level} · {gamificationSummary.levelTitle}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/12 bg-white/10 px-5 py-4">
+                  <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                     <p className="text-sm text-white/72">{dashboardCopy.streak}</p>
                     <div className="mt-2 inline-flex items-center gap-2 font-display text-[2rem] font-semibold leading-none">
                       <Flame className="h-6 w-6" />
                       {gamificationSummary.streak}
                     </div>
                   </div>
-                  <div className="rounded-[1.5rem] border border-white/12 bg-white/10 px-5 py-4">
+                  <div className="rounded-xl border border-white/12 bg-card/10 px-5 py-4">
                     <p className="text-sm text-white/72">{dashboardCopy.badgeShowcase}</p>
                     <div className="mt-2 inline-flex items-center gap-2 font-display text-[2rem] font-semibold leading-none">
                       <Trophy className="h-6 w-6" />
@@ -245,7 +245,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 bg-white">
+          <Card className="border-border/70 bg-card">
             <CardContent className="space-y-6 p-8">
               <div className="flex items-center justify-between">
                 <div>
@@ -313,7 +313,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
 
         {onboardingSummary ? (
           <div className="grid gap-6 xl:grid-cols-[1.05fr,0.95fr]">
-            <Card className="border-primary/10 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(246,248,255,0.98))]">
+            <Card className="border-primary/10 bg-card">
               <CardContent className="space-y-5 p-7">
                 <div className="space-y-2">
                   <Badge variant="outline">
@@ -344,7 +344,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                 </div>
 
                 {onboardingSummary.recommendedCourse ? (
-                  <div className="rounded-xl border border-border/70 bg-white p-5">
+                  <div className="rounded-xl border border-border/70 bg-card p-5">
                     <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                       {locale === "uz" ? "Boshlash uchun kurs" : "Starting course"}
                     </p>
@@ -374,7 +374,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
 
                 <div className="space-y-3">
                   {onboardingSummary.personalizedPlan.map((item) => (
-                    <div key={item} className="rounded-xl border border-border/70 bg-white px-4 py-4 text-sm leading-7 text-muted-foreground">
+                    <div key={item} className="rounded-xl border border-border/70 bg-card px-4 py-4 text-sm leading-7 text-muted-foreground">
                       {item}
                     </div>
                   ))}
@@ -400,7 +400,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                       className={cn(
                         "flex items-center justify-between rounded-xl border px-4 py-4",
                         item.completed
-                          ? "border-emerald-200 bg-emerald-50"
+                          ? "border-success/20 bg-success/5"
                           : "border-border/70 bg-secondary/35"
                       )}
                     >
@@ -411,8 +411,8 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                         className={cn(
                           "rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]",
                           item.completed
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-white text-muted-foreground"
+                            ? "bg-success/10 text-success"
+                            : "bg-card text-muted-foreground"
                         )}
                       >
                         {item.completed
@@ -432,7 +432,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
         ) : null}
 
         {gamificationSummary ? (
-          <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(249,250,255,0.98))]">
+          <Card className="border-border/70 bg-card">
             <CardContent className="space-y-5 p-7">
               <div className="space-y-2">
                 <Badge variant="outline">{dashboardCopy.badgeShowcase}</Badge>
@@ -476,7 +476,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-secondary">
                   <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#f59e0b,#ef4444)]"
+                    className="h-full rounded-full bg-warning"
                     style={{
                       width: `${Math.max(
                         0,
@@ -493,8 +493,8 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {gamificationSummary.badges.length > 0 ? (
                   gamificationSummary.badges.map((badgeItem) => (
-                    <div key={badgeItem.id} className="rounded-xl border border-border/70 bg-white px-4 py-4">
-                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                    <div key={badgeItem.id} className="rounded-xl border border-border/70 bg-card px-4 py-4">
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-warning/15 text-warning-foreground">
                         <Trophy className="h-4 w-4" />
                       </div>
                       <p className="mt-3 text-sm font-semibold text-foreground">{badgeItem.title}</p>
@@ -537,9 +537,9 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
               {enrollments.map((enrollment) => (
                 <Card
                   key={enrollment.id}
-                  className="overflow-hidden border-border/70 bg-white transition-all duration-200 hover:-translate-y-1 hover:shadow-panel"
+                  className="overflow-hidden border-border/70 bg-card transition-all duration-200 hover:-translate-y-1 hover:shadow-panel"
                 >
-                  <CardHeader className="space-y-5 border-b border-border/70 bg-[linear-gradient(180deg,rgba(249,250,255,1),rgba(255,255,255,0.98))] p-7">
+                  <CardHeader className="space-y-5 border-b border-border/70 bg-card p-7">
                     <div className="flex flex-wrap gap-2">
                       <Badge>{enrollment.course.category.subject.name}</Badge>
                       <Badge variant="outline">{enrollment.course.category.name}</Badge>
@@ -579,7 +579,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
                         <span>{dashboardCopy.averageProgress}</span>
                         <span>{enrollment.progress}%</span>
                       </div>
-                      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white">
+                      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-card">
                         <div
                           className="h-full rounded-full bg-primary transition-[width] duration-300"
                           style={{ width: `${Math.max(0, Math.min(enrollment.progress, 100))}%` }}

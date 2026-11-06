@@ -27,7 +27,7 @@ export async function Footer() {
     }
   ];
   return (
-    <footer className="border-t border-border/70 bg-white/72 backdrop-blur">
+    <footer className="border-t border-border/70 bg-card/72 backdrop-blur">
       <Container className="grid gap-10 py-14 lg:grid-cols-[1.2fr,0.8fr]">
         <div className="space-y-4">
           <div className="flex items-center gap-3">

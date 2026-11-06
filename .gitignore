@@ -12,3 +12,5 @@ auth-cookies.txt
 *.report.html
 .lighthouse-*.json
 tsconfig.tsbuildinfo
+.next-test
+tests/security/.state

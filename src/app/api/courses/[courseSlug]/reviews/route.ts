@@ -2,9 +2,12 @@ import { revalidatePath } from "next/cache";
 import { NextRequest } from "next/server";
 
 import { createApiErrorResponse, createApiSuccessResponse } from "@/lib/app-errors";
-import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { readJsonObject } from "@/lib/validation";
+import { assertSameOrigin, requireStudentEnrollment, requireStudentUser, toApiErrorResponse } from "@/server/authz";
+
+const MAX_REVIEW_LENGTH = 2000;
 
 type RouteProps = {
   params: Promise<{
@@ -12,22 +15,16 @@ type RouteProps = {
   }>;
 };
 
+/** Reviews come only from students enrolled in the (published) course. One review per student, editable. */
 export async function POST(request: NextRequest, { params }: RouteProps) {
-  const currentUser = await getCurrentUser();
-
-  if (!currentUser) {
-    return createApiErrorResponse(401, "auth-required", "Sign in to leave a review.");
-  }
-
   try {
+    assertSameOrigin(request);
+    const currentUser = await requireStudentUser();
     const { courseSlug } = await params;
-    const body = (await request.json()) as {
-      rating?: number;
-      comment?: string;
-    };
+    const body = await readJsonObject(request, 16 * 1024);
 
     const rating = Number(body.rating);
-    const comment = body.comment?.trim() ?? "";
+    const comment = typeof body.comment === "string" ? body.comment.trim() : "";
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return createApiErrorResponse(400, "invalid-rating", "Choose a rating from 1 to 5.");
@@ -35,6 +32,10 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
 
     if (comment.length < 8) {
       return createApiErrorResponse(400, "invalid-comment", "Write a slightly longer review comment.");
+    }
+
+    if (comment.length > MAX_REVIEW_LENGTH) {
+      return createApiErrorResponse(400, "comment-too-long", `Reviews must be ${MAX_REVIEW_LENGTH} characters or less.`);
     }
 
     const course = await retryOnDatabaseFailure(() =>
@@ -51,6 +52,8 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
     if (!course) {
       return createApiErrorResponse(404, "course-not-found", "Course not found.");
     }
+
+    await requireStudentEnrollment(currentUser, course.id);
 
     const review = await retryOnDatabaseFailure(() =>
       prisma.courseReview.upsert({
@@ -111,7 +114,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       averageRating: aggregate._avg.rating ?? null,
       reviewCount: aggregate._count._all
     });
-  } catch {
-    return createApiErrorResponse(503, "review-save-failed", "The review could not be saved right now.");
+  } catch (error) {
+    return toApiErrorResponse(error, {
+      code: "review-save-failed",
+      message: "The review could not be saved right now.",
+      log: "course-review"
+    });
   }
 }

@@ -190,7 +190,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
 
   return (
     <div className="space-y-6">
-      <Card className="overflow-hidden border-primary/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,248,255,0.98))] shadow-panel">
+      <Card className="overflow-hidden border-primary/10 bg-card shadow-panel">
         <CardContent className="space-y-8 p-6 sm:p-8">
           <div className="space-y-4">
             <Badge variant="outline">{copy.badge}</Badge>
@@ -219,7 +219,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                 <h2 className="section-title">{copy.welcomeTitle}</h2>
                 <div className="space-y-3">
                   {copy.welcomeSteps.map((item, index) => (
-                    <div key={item} className="flex gap-3 rounded-[1.2rem] border border-border/70 bg-white/92 p-4">
+                    <div key={item} className="flex gap-3 rounded-lg border border-border/70 bg-card/92 p-4">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
                         {index + 1}
                       </div>
@@ -273,10 +273,10 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                         type="button"
                         onClick={() => setGoal(option.value)}
                         className={cn(
-                          "w-full rounded-[1.2rem] border px-4 py-4 text-left text-[15px] leading-6 transition-colors",
+                          "w-full rounded-lg border px-4 py-4 text-left text-[15px] leading-6 transition-colors",
                           goal === option.value
                             ? "border-primary bg-primary/6 text-foreground"
-                            : "border-border bg-white text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
                         )}
                       >
                         {option.label}
@@ -294,10 +294,10 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                         type="button"
                         onClick={() => setLevel(option.value)}
                         className={cn(
-                          "w-full rounded-[1.2rem] border px-4 py-4 text-left text-[15px] leading-6 transition-colors",
+                          "w-full rounded-lg border px-4 py-4 text-left text-[15px] leading-6 transition-colors",
                           level === option.value
                             ? "border-primary bg-primary/6 text-foreground"
-                            : "border-border bg-white text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
                         )}
                       >
                         {option.label}
@@ -315,10 +315,10 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                         type="button"
                         onClick={() => setTimeAvailability(option.value)}
                         className={cn(
-                          "w-full rounded-[1.2rem] border px-4 py-4 text-left transition-colors",
+                          "w-full rounded-lg border px-4 py-4 text-left transition-colors",
                           timeAvailability === option.value
                             ? "border-primary bg-primary/6 text-foreground"
-                            : "border-border bg-white text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
                         )}
                       >
                         <p className="font-medium leading-6 text-foreground">{option.label}</p>
@@ -339,7 +339,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
               </div>
               <div className="space-y-4">
                 {questions.map((question, index) => (
-                  <div key={question.id} className="rounded-[1.25rem] border border-border/70 bg-white p-5">
+                  <div key={question.id} className="rounded-lg border border-border/70 bg-card p-5">
                     <p className="eyebrow-label text-muted-foreground">
                       {copy.stepLabel} {index + 1}
                     </p>
@@ -356,7 +356,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                             }))
                           }
                           className={cn(
-                            "w-full rounded-[1rem] border px-4 py-3 text-left text-sm leading-6 transition-colors",
+                            "w-full rounded-lg border px-4 py-3 text-left text-sm leading-6 transition-colors",
                             answers[question.id] === option.id
                               ? "border-primary bg-primary/6 text-foreground"
                               : "border-border bg-secondary/20 text-muted-foreground hover:border-primary/20 hover:bg-accent/50"
@@ -405,7 +405,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
 
                 <div className="space-y-3">
                   {completion.result.personalizedPlan.map((item) => (
-                    <div key={item} className="flex gap-3 rounded-[1.2rem] border border-border/70 bg-white p-4">
+                    <div key={item} className="flex gap-3 rounded-lg border border-border/70 bg-card p-4">
                       <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-primary" />
                       <p className="text-sm leading-7 text-muted-foreground">{item}</p>
                     </div>
@@ -413,7 +413,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                 </div>
               </div>
 
-              <div className="rounded-[1.4rem] border border-primary/12 bg-[linear-gradient(180deg,rgba(79,70,229,0.06),rgba(255,255,255,0.96))] p-6">
+              <div className="rounded-lg border border-primary/12 bg-muted p-6">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <p className="mt-4 card-title text-foreground">
                   {locale === "uz" ? "Keyingi qadamlar siz uchun tayyor" : "Your next steps are ready"}
@@ -424,7 +424,7 @@ export function OnboardingFlow({ locale, userName, defaults }: OnboardingFlowPro
                   onClick={() => router.push(completion.redirectPath)}
                   className={cn(
                     buttonVariants({ size: "lg" }),
-                    "mt-6 w-full gap-2.5 rounded-[1rem] px-5 py-3.5 text-center leading-6"
+                    "mt-6 w-full gap-2.5 rounded-lg px-5 py-3.5 text-center leading-6"
                   )}
                 >
                   {copy.dashboard}

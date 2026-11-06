@@ -57,15 +57,15 @@ export function FeaturedCoursesSection({
           {featuredCourses.map((course, index) => (
             <Card
               key={course.title}
-              className="group overflow-hidden border-border/70 bg-white transition duration-300 hover:-translate-y-1 hover:border-primary/15 hover:shadow-panel"
+              className="group overflow-hidden border-border/70 bg-card transition duration-300 hover:-translate-y-1 hover:border-primary/15 hover:shadow-panel"
             >
-              <div className="h-2 bg-[linear-gradient(90deg,#4f46e5,#6366f1,#a5b4fc)]" />
+              <div className="h-2 bg-primary" />
               <CardHeader className="space-y-4 p-7">
                 <div className="flex items-center justify-between gap-4">
                   <Badge variant="secondary" className="bg-accent text-accent-foreground">
                     {course.category.subject.name} {locale === "uz" ? "yo'nalishi" : "Track"} {index + 1}
                   </Badge>
-                  <div className="rounded-full bg-amber-50 p-2 text-amber-500">
+                  <div className="rounded-full bg-warning/10 p-2 text-warning">
                     <Star className="h-4 w-4" />
                   </div>
                 </div>

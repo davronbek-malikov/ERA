@@ -11,7 +11,7 @@ export function FinalCtaSection({ locale }: { locale: Locale }) {
   return (
     <Section>
       <Container>
-        <Card className="overflow-hidden border-primary/10 bg-[linear-gradient(160deg,rgba(31,50,86,0.98),rgba(58,73,101,0.95))] text-white">
+        <Card className="overflow-hidden border-primary/10 bg-primary text-white">
           <CardContent className="surface-grid grid gap-10 p-8 sm:p-10 lg:grid-cols-[1.1fr,0.9fr] lg:p-12">
             <div className="space-y-6">
               <p className="text-sm uppercase tracking-[0.18em] text-white/65">
@@ -46,7 +46,7 @@ export function FinalCtaSection({ locale }: { locale: Locale }) {
                   className={buttonVariants({
                     size: "lg",
                     variant: "outline",
-                    className: "border-white/30 text-white hover:bg-white/10"
+                    className: "border-white/30 text-white hover:bg-card/10"
                   })}
                   eventName="cta_click"
                   eventData={{ location: "final_cta", cta: "create_account" }}
@@ -57,8 +57,8 @@ export function FinalCtaSection({ locale }: { locale: Locale }) {
             </div>
 
             <div className="grid gap-4">
-              <div className="rounded-2xl border border-white/10 bg-white/8 p-6">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12">
+              <div className="rounded-2xl border border-white/10 bg-card/8 p-6">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-card/12">
                   <GraduationCap className="h-6 w-6" />
                 </div>
                 <h3 className="card-title text-white">
@@ -70,8 +70,8 @@ export function FinalCtaSection({ locale }: { locale: Locale }) {
                     : "Choose clearer lessons, better progression cues, and a calmer way to keep momentum."}
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/8 p-6">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12">
+              <div className="rounded-2xl border border-white/10 bg-card/8 p-6">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-card/12">
                   <Users className="h-6 w-6" />
                 </div>
                 <h3 className="card-title text-white">

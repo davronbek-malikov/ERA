@@ -66,10 +66,10 @@ export function AuthSuccessDialog({ locale, userName }: AuthSuccessDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[min(92vw,28rem)] rounded-[1.75rem] border border-emerald-200/70 bg-white p-0 sm:w-[min(92vw,30rem)]">
-        <div className="overflow-hidden rounded-[1.75rem]">
-          <div className="bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(59,130,246,0.1))] px-6 py-5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+      <DialogContent className="w-[min(92vw,28rem)] rounded-xl border border-success/20 bg-card p-0 sm:w-[min(92vw,30rem)]">
+        <div className="overflow-hidden rounded-xl">
+          <div className="bg-success/10 px-6 py-5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/10 text-success">
               <CheckCircle2 className="h-6 w-6" />
             </div>
           </div>

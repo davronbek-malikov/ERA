@@ -56,6 +56,8 @@ export function PublicNavDrawer({
     "/about": Info,
     "/faq": Sparkles,
     "/my-learning": GraduationCap,
+    "/learn": GraduationCap,
+    "/teacher": GraduationCap,
     "/admin": GraduationCap
   };
 
@@ -68,7 +70,7 @@ export function PublicNavDrawer({
         </Button>
       </DialogTrigger>
       <DialogContent className="left-0 top-0 h-screen w-[min(88vw,22rem)] translate-x-0 translate-y-0 rounded-none rounded-r-[1.75rem] border-r border-border/80 p-0 shadow-[0_30px_80px_rgba(15,23,42,0.22)] data-[state=closed]:slide-out-to-left-full data-[state=open]:slide-in-from-left-full">
-        <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(245,247,251,0.98))]">
+        <div className="flex h-full flex-col bg-card">
           <DialogHeader className="border-b border-border/70 px-6 pb-5 pt-6">
             <div className="flex items-start gap-3">
               <div className="rounded-2xl bg-accent p-2 shadow-soft">
@@ -80,7 +82,7 @@ export function PublicNavDrawer({
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-primary/10 bg-[linear-gradient(135deg,rgba(37,99,235,0.08),rgba(251,191,36,0.08))] px-4 py-4 text-left shadow-soft">
+            <div className="mt-4 rounded-2xl border border-primary/10 bg-muted px-4 py-4 text-left shadow-soft">
               <p className="eyebrow-label text-muted-foreground">
                 {locale === "uz" ? "Tartibli navigatsiya" : "Organized navigation"}
               </p>
@@ -114,10 +116,10 @@ export function PublicNavDrawer({
                   <Link
                     href={item.href}
                     prefetch
-                    className="group block rounded-2xl border border-border/70 bg-white px-4 py-3 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-accent/35"
+                    className="group block rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-accent/35"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-xl bg-secondary/70 p-2 text-primary transition-colors group-hover:bg-white">
+                      <div className="mt-0.5 rounded-xl bg-secondary/70 p-2 text-primary transition-colors group-hover:bg-card">
                         {(() => {
                           const Icon = iconByHref[item.href] ?? BookOpen;
                           return <Icon className="h-4 w-4" />;

@@ -145,7 +145,7 @@ export function CourseReviewsSection({
   }
 
   return (
-    <Card className="border-border/70 bg-white">
+    <Card className="border-border/70 bg-card">
       <CardContent className="space-y-6 p-6">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{copy.eyebrow}</p>
@@ -154,7 +154,7 @@ export function CourseReviewsSection({
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[0.9fr,1.1fr]">
-          <div className="space-y-4 rounded-[1.5rem] bg-secondary/35 p-5">
+          <div className="space-y-4 rounded-xl bg-secondary/35 p-5">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{copy.average}</p>
               <div className="mt-3 flex items-end gap-3">
@@ -166,7 +166,7 @@ export function CourseReviewsSection({
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1 text-amber-500">
+            <div className="flex items-center gap-1 text-warning">
               {Array.from({ length: 5 }).map((_, index) => (
                 <Star
                   key={index}
@@ -176,7 +176,7 @@ export function CourseReviewsSection({
             </div>
           </div>
 
-          <div className="space-y-4 rounded-[1.5rem] border border-border/70 p-5">
+          <div className="space-y-4 rounded-xl border border-border/70 p-5">
             <p className="text-sm font-semibold text-foreground">{copy.writeReview}</p>
             {isAuthenticated ? (
               <>
@@ -191,8 +191,8 @@ export function CourseReviewsSection({
                         className={cn(
                           "inline-flex items-center gap-1 rounded-full border px-3 py-2 text-sm transition-colors",
                           value <= rating
-                            ? "border-amber-300 bg-amber-50 text-amber-700"
-                            : "border-border/70 bg-white text-muted-foreground"
+                            ? "border-warning/30 bg-warning/10 text-warning-foreground"
+                            : "border-border/70 bg-card text-muted-foreground"
                         )}
                       >
                         <Star className={cn("h-4 w-4", value <= rating ? "fill-current" : "")} />
@@ -211,10 +211,10 @@ export function CourseReviewsSection({
                   {status === "saving" ? "Saving..." : copy.submit}
                 </Button>
                 {status === "saved" ? (
-                  <p className="text-sm text-emerald-700">{copy.saved}</p>
+                  <p className="text-sm text-success">{copy.saved}</p>
                 ) : null}
                 {status === "error" ? (
-                  <p className="text-sm text-rose-700">{errorMessage}</p>
+                  <p className="text-sm text-error">{errorMessage}</p>
                 ) : null}
               </>
             ) : (
@@ -231,7 +231,7 @@ export function CourseReviewsSection({
         <div className="space-y-3">
           {orderedReviews.length > 0 ? (
             orderedReviews.map((review) => (
-              <div key={review.id} className="rounded-[1.4rem] border border-border/70 bg-secondary/20 px-4 py-4">
+              <div key={review.id} className="rounded-lg border border-border/70 bg-secondary/20 px-4 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-foreground">{review.user.name}</p>
@@ -239,7 +239,7 @@ export function CourseReviewsSection({
                       {new Date(review.createdAt).toLocaleDateString(locale === "uz" ? "uz-UZ" : "en-US")}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 text-amber-500">
+                  <div className="flex items-center gap-1 text-warning">
                     {Array.from({ length: 5 }).map((_, index) => (
                       <Star
                         key={index}
@@ -252,7 +252,7 @@ export function CourseReviewsSection({
               </div>
             ))
           ) : (
-            <div className="rounded-[1.4rem] border border-dashed border-border/70 bg-secondary/10 px-4 py-4 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/70 bg-secondary/10 px-4 py-4 text-sm text-muted-foreground">
               {copy.noReviews}
             </div>
           )}

@@ -177,7 +177,7 @@ export function LessonStudyShell({
 
   return (
     <div className="space-y-6">
-      <Card className="border-border/70 bg-white">
+      <Card className="border-border/70 bg-card">
         <CardContent className="space-y-5 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -191,7 +191,7 @@ export function LessonStudyShell({
 
           <div className="h-3 overflow-hidden rounded-full bg-secondary">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#2563eb,#38bdf8)] transition-[width] duration-300"
+              className="h-full rounded-full bg-primary transition-[width] duration-300"
               style={{ width: `${Math.max(0, Math.min(progress.progressPercent, 100))}%` }}
             />
           </div>
@@ -231,7 +231,7 @@ export function LessonStudyShell({
         progress={progress}
       />
 
-      <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(249,250,255,0.95),rgba(255,255,255,1))]">
+      <Card className="border-border/70 bg-card">
         <CardContent className="space-y-3 p-5">
           <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
