@@ -72,13 +72,13 @@ export default async function LearningPathsPage() {
     <Section className="pt-8 sm:pt-10">
       <Container className="space-y-10">
         <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
-          <Card className="overflow-hidden border-primary/10 bg-[linear-gradient(135deg,#0f172a,#1d4ed8_55%,#38bdf8)] text-white shadow-panel">
+          <Card className="overflow-hidden border-primary/10 bg-primary text-white shadow-panel">
             <CardContent className="space-y-6 p-8 sm:p-10">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge variant="secondary" className="bg-white/14 text-white">
+                <Badge variant="secondary" className="bg-card/14 text-white">
                   {copy.eyebrow}
                 </Badge>
-                <div className="rounded-full bg-white/12 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/85">
+                <div className="rounded-full bg-card/12 px-3 py-1 text-xs uppercase tracking-[0.16em] text-white/85">
                   ERA Roadmap
                 </div>
               </div>
@@ -87,17 +87,17 @@ export default async function LearningPathsPage() {
                 <p className="page-lead text-white/82">{copy.description}</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-[1.4rem] border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-lg border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{copy.openPath}</p>
                   <p className="mt-2 font-display text-[2rem] font-semibold leading-none">{paths.length}</p>
                 </div>
-                <div className="rounded-[1.4rem] border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-lg border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{copy.completed}</p>
                   <p className="mt-2 font-display text-[2rem] font-semibold leading-none">
                     {paths.reduce((sum, path) => sum + path.completedCourseCount, 0)}
                   </p>
                 </div>
-                <div className="rounded-[1.4rem] border border-white/12 bg-white/10 px-5 py-4">
+                <div className="rounded-lg border border-white/12 bg-card/10 px-5 py-4">
                   <p className="text-sm text-white/72">{copy.progress}</p>
                   <p className="mt-2 font-display text-[2rem] font-semibold leading-none">
                     {paths.length > 0
@@ -109,7 +109,7 @@ export default async function LearningPathsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/70 bg-white">
+          <Card className="border-border/70 bg-card">
             <CardContent className="space-y-5 p-8">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -127,7 +127,7 @@ export default async function LearningPathsPage() {
               <p className="text-sm leading-7 text-muted-foreground">
                 {isStudent ? paths[0]?.summary ?? copy.noPaths : copy.signInHint}
               </p>
-              <div className="rounded-[1.4rem] bg-secondary/45 px-4 py-4 text-sm leading-7 text-muted-foreground">
+              <div className="rounded-lg bg-secondary/45 px-4 py-4 text-sm leading-7 text-muted-foreground">
                 {databaseUnavailable ? copy.unavailable : paths[0]?.description ?? copy.signInHint}
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -156,7 +156,7 @@ export default async function LearningPathsPage() {
         ) : (
           <div className="space-y-8">
             {paths.map((path) => (
-              <Card key={path.id} className="overflow-hidden border-border/70 bg-white shadow-soft">
+              <Card key={path.id} className="overflow-hidden border-border/70 bg-card shadow-soft">
                 <CardContent className="space-y-8 p-7 sm:p-8">
                   <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-3">
@@ -174,14 +174,14 @@ export default async function LearningPathsPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="min-w-[260px] space-y-4 rounded-[1.5rem] border border-border/70 bg-secondary/30 p-5">
+                    <div className="min-w-[260px] space-y-4 rounded-xl border border-border/70 bg-secondary/30 p-5">
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>{copy.progress}</span>
                         <span>{path.progressPercent}%</span>
                       </div>
-                      <div className="h-3 overflow-hidden rounded-full bg-white">
+                      <div className="h-3 overflow-hidden rounded-full bg-card">
                         <div
-                          className="h-full rounded-full bg-[linear-gradient(90deg,#2563eb,#38bdf8)]"
+                          className="h-full rounded-full bg-primary"
                           style={{ width: `${path.progressPercent}%` }}
                         />
                       </div>
@@ -216,8 +216,8 @@ export default async function LearningPathsPage() {
                             className={cn(
                               "h-full border transition-all",
                               step.isCurrent && "border-primary/40 shadow-soft",
-                              step.isCompleted && "border-emerald-200 bg-emerald-50/50",
-                              !step.isCompleted && !step.isCurrent && "border-border/70 bg-white"
+                              step.isCompleted && "border-success/20 bg-success/5",
+                              !step.isCompleted && !step.isCurrent && "border-border/70 bg-card"
                             )}
                           >
                             <CardContent className="space-y-4 p-5">
@@ -234,7 +234,7 @@ export default async function LearningPathsPage() {
                                   className={cn(
                                     "flex h-10 w-10 items-center justify-center rounded-full",
                                     step.isCompleted
-                                      ? "bg-emerald-100 text-emerald-700"
+                                      ? "bg-success/10 text-success"
                                       : step.isCurrent || step.isNext
                                         ? "bg-primary/10 text-primary"
                                         : "bg-secondary text-muted-foreground"
@@ -269,7 +269,7 @@ export default async function LearningPathsPage() {
                                   <div
                                     className={cn(
                                       "h-full rounded-full",
-                                      step.isCompleted ? "bg-emerald-500" : "bg-primary"
+                                      step.isCompleted ? "bg-success" : "bg-primary"
                                     )}
                                     style={{ width: `${step.progressPercent}%` }}
                                   />

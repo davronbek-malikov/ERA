@@ -80,8 +80,9 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
     course.categoryId,
     course.category.subject.id
   );
-  const featuredLesson = course.lessons.find((lesson) => lesson.videoUrl) ?? course.lessons[0] ?? null;
-  const featuredVideoUrl = featuredLesson?.videoUrl ?? course.promoVideoUrl ?? null;
+  const featuredLesson = course.lessons[0] ?? null;
+  // Only the course's public promo video plays here; lesson videos are for the authorized classroom.
+  const featuredVideoUrl = course.promoVideoUrl ?? null;
   const embedUrl = getVideoEmbedUrl(featuredVideoUrl);
   const lessonSidebarCopy =
     locale === "uz"
@@ -131,13 +132,13 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.instructor}
                 </p>
                 <p className="mt-2 text-sm font-semibold text-foreground">{course.instructor.name}</p>
               </div>
-              <div className="rounded-xl border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.difficulty}
                 </p>
@@ -145,7 +146,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   {formatDifficulty(course.difficulty, locale)}
                 </p>
               </div>
-              <div className="rounded-xl border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.lessonCount}
                 </p>
@@ -153,7 +154,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   {formatLessonSummary(course.lessons.length, locale)}
                 </p>
               </div>
-              <div className="rounded-xl border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.studyTime}
                 </p>
@@ -161,7 +162,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   {formatDurationSummary(course.durationMinutes, locale)}
                 </p>
               </div>
-              <div className="rounded-xl border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {locale === "uz" ? "Reyting" : "Rating"}
                 </p>
@@ -175,7 +176,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1.12fr),360px]">
           <div className="space-y-6">
-            <Card className="overflow-hidden border-primary/10 bg-white shadow-panel">
+            <Card className="overflow-hidden border-primary/10 bg-card shadow-panel">
               <CardContent className="space-y-5 p-5 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -212,7 +213,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                     </video>
                   ) : (
                     <div
-                      className="aspect-video w-full bg-[linear-gradient(135deg,#312e81,#4f46e5_55%,#818cf8)]"
+                      className="aspect-video w-full bg-primary"
                       style={
                         course.thumbnailUrl
                           ? {
@@ -224,7 +225,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                       }
                     >
                       <div className="flex h-full items-end p-6">
-                        <div className="rounded-xl bg-white/12 px-5 py-4 text-white backdrop-blur">
+                        <div className="rounded-xl bg-card/12 px-5 py-4 text-white backdrop-blur">
                           <p className="text-xs uppercase tracking-[0.16em] text-white/72">
                             {t.courseDetail.curriculum}
                           </p>
@@ -258,7 +259,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                         key={outcome}
                         className="flex items-start gap-3 rounded-xl border border-border/70 bg-secondary/35 px-4 py-4"
                       >
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white">
+                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-card">
                           <Target className="h-4 w-4 text-primary" />
                         </div>
                         <p className="text-sm leading-7 text-muted-foreground">{outcome}</p>
@@ -349,7 +350,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
           </div>
 
           <div className="space-y-6">
-            <Card className="overflow-hidden border-border/70 bg-white">
+            <Card className="overflow-hidden border-border/70 bg-card">
               <CardContent className="space-y-4 p-5">
                 <div className="flex items-center justify-between">
                   <div>
@@ -399,7 +400,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
               </CardContent>
             </Card>
 
-            <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(249,250,255,0.95),rgba(255,255,255,1))]">
+            <Card className="border-border/70 bg-card">
               <CardContent className="space-y-3 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {lessonSidebarCopy.support}

@@ -139,16 +139,16 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
       <div className="pointer-events-auto flex w-full max-w-[24rem] flex-col items-end gap-3 sm:w-auto">
         <div
           className={cn(
-            "w-full overflow-hidden rounded-[2rem] border border-primary/15 bg-white/95 shadow-[0_20px_60px_rgba(76,99,210,0.18)] backdrop-blur-xl transition-all duration-300 sm:w-[24rem]",
+            "w-full overflow-hidden rounded-xl border border-primary/15 bg-card/95 shadow-[0_20px_60px_rgba(76,99,210,0.18)] backdrop-blur-xl transition-all duration-300 sm:w-[24rem]",
             isOpen
               ? "translate-y-0 scale-100 opacity-100"
               : "pointer-events-none translate-y-4 scale-95 opacity-0"
           )}
         >
-          <div className="border-b border-border/70 bg-[linear-gradient(135deg,rgba(79,70,229,0.08),rgba(96,165,250,0.08))] px-5 py-4">
+          <div className="border-b border-border/70 bg-muted px-5 py-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary shadow-sm">
+                <p className="inline-flex items-center gap-2 rounded-full bg-card/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary shadow-sm">
                   <Sparkles className="h-3.5 w-3.5" />
                   ERA Guide
                 </p>
@@ -158,7 +158,7 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-white/80 text-muted-foreground transition-colors hover:text-foreground"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-border/70 bg-card/80 text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Close ERA Guide"
               >
                 <X className="h-4 w-4" />
@@ -173,14 +173,14 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
                   key={action.id}
                   type="button"
                   onClick={() => void askQuestion(action.prompt)}
-                  className="rounded-full border border-border/70 bg-secondary/55 px-3 py-2 text-xs font-medium text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-white hover:text-foreground"
+                  className="rounded-full border border-border/70 bg-secondary/55 px-3 py-2 text-xs font-medium text-muted-foreground transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:bg-card hover:text-foreground"
                 >
                   {action.label}
                 </button>
               ))}
             </div>
 
-            <div className="max-h-[24rem] space-y-3 overflow-y-auto rounded-[1.5rem] bg-[linear-gradient(180deg,rgba(246,248,255,1),rgba(255,255,255,1))] p-3">
+            <div className="max-h-[24rem] space-y-3 overflow-y-auto rounded-xl bg-card p-3">
               {messages.map((message) => {
                 const isAssistant = message.role === "assistant";
 
@@ -196,9 +196,9 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
                     ) : null}
                     <div
                       className={cn(
-                        "max-w-[85%] rounded-[1.5rem] px-4 py-3 shadow-sm",
+                        "max-w-[85%] rounded-xl px-4 py-3 shadow-sm",
                         isAssistant
-                          ? "border border-border/70 bg-white"
+                          ? "border border-border/70 bg-card"
                           : "bg-primary text-primary-foreground"
                       )}
                     >
@@ -224,7 +224,7 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
                   <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <Bot className="h-4 w-4" />
                   </div>
-                  <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-3 text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-border/70 bg-card px-4 py-3 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {copy.typing}
@@ -239,7 +239,7 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder={copy.placeholder}
-                className="h-12 rounded-[1.2rem] bg-white"
+                className="h-12 rounded-lg bg-card"
               />
               <Button type="submit" size="icon" disabled={!question.trim() || isTyping}>
                 <Send className="h-4 w-4" />
@@ -251,11 +251,11 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
         <button
           type="button"
           onClick={() => setIsOpen((current) => !current)}
-          className="group flex items-center gap-3 rounded-full border border-primary/20 bg-white px-4 py-3 text-left shadow-[0_18px_45px_rgba(59,130,246,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(79,70,229,0.24)]"
+          className="group flex items-center gap-3 rounded-full border border-primary/20 bg-card px-4 py-3 text-left shadow-[0_18px_45px_rgba(59,130,246,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(79,70,229,0.24)]"
           aria-expanded={isOpen}
           aria-label={copy.ask}
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[linear-gradient(135deg,rgba(79,70,229,1),rgba(59,130,246,1))] text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white">
             {isOpen ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
           </div>
           <div className="hidden pr-1 sm:block">

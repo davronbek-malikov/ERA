@@ -30,17 +30,15 @@ type CurriculumListProps = {
       id: string;
       title: string;
     } | null;
-    videoUrl?: string | null;
+    /** Titles only: files open inside the authorized classroom. */
     materials?: Array<{
       id: string;
       title: string;
-      fileUrl: string;
     }>;
   }>;
   courseMaterials?: Array<{
     id: string;
     title: string;
-    fileUrl: string;
   }>;
 };
 
@@ -188,7 +186,7 @@ export function CurriculumList({
             <p className="mt-2 text-2xl font-semibold">
               {progress.progressPercent}{t.courseDetail.completeSuffix}
             </p>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-card">
               <div
                 className="h-full rounded-full bg-primary transition-[width] duration-300"
                 style={{ width: `${Math.max(progress.progressPercent, 0)}%` }}
@@ -202,7 +200,7 @@ export function CurriculumList({
         </div>
 
         {!progress.authenticated ? (
-          <div className="rounded-xl border border-border/70 bg-white/80 px-4 py-4 text-sm leading-7 text-muted-foreground">
+          <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-4 text-sm leading-7 text-muted-foreground">
             {t.courseDetail.signInToSave}
             <Link
               href={`/sign-in?next=/courses/${courseSlug}`}
@@ -226,20 +224,18 @@ export function CurriculumList({
         ) : null}
 
         {courseMaterials.length > 0 ? (
-          <div className="rounded-xl border border-border/70 bg-white/85 p-4">
+          <div className="rounded-xl border border-border/70 bg-card/85 p-4">
             <p className="text-sm font-medium text-foreground">{t.courseDetail.courseMaterials}</p>
             <div className="mt-3 flex flex-wrap gap-3">
+              {/* Titles only: the files open inside the authorized classroom after enrolling. */}
               {courseMaterials.map((material) => (
-                <Link
+                <span
                   key={material.id}
-                  href={material.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-3")}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   {material.title}
-                </Link>
+                </span>
               ))}
             </div>
           </div>
@@ -248,7 +244,7 @@ export function CurriculumList({
       <CardContent className="space-y-4">
         {lessonGroups.map((group) => (
           <div key={group.id} className="space-y-4">
-            <div className="rounded-xl border border-border/70 bg-white/80 px-4 py-4">
+            <div className="rounded-xl border border-border/70 bg-card/80 px-4 py-4">
               <p className="eyebrow-label text-muted-foreground">{group.title}</p>
               {group.description ? (
                 <p className="mt-2 text-sm leading-7 text-muted-foreground">{group.description}</p>
@@ -284,7 +280,7 @@ export function CurriculumList({
                   className={cn(
                     "rounded-xl border p-4",
                     isCompleted
-                      ? "border-emerald-200 bg-emerald-50"
+                      ? "border-success/20 bg-success/5"
                       : isCurrent
                         ? "border-primary/20 bg-accent/55"
                         : "border-border/70 bg-secondary/35"
@@ -292,9 +288,9 @@ export function CurriculumList({
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex gap-4">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-card">
                         {isCompleted ? (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                          <CheckCircle2 className="h-5 w-5 text-success" />
                         ) : (
                           <PlayCircle className="h-5 w-5 text-primary" />
                         )}
@@ -304,7 +300,7 @@ export function CurriculumList({
                           <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
                             {t.courseDetail.lessonLabel} {lesson.position}
                           </p>
-                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          <span className="rounded-full bg-card px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                             {badgeLabel}
                           </span>
                         </div>
@@ -313,7 +309,7 @@ export function CurriculumList({
                           <p className="text-sm leading-7 text-muted-foreground">{lesson.description}</p>
                         ) : null}
                         <div className="max-w-xs">
-                          <div className="h-2 overflow-hidden rounded-full bg-white">
+                          <div className="h-2 overflow-hidden rounded-full bg-card">
                             <div
                               className="h-full rounded-full bg-primary transition-[width] duration-300"
                               style={{ width: `${progress.lessonProgressById[lesson.id] ?? 0}%` }}
@@ -326,19 +322,13 @@ export function CurriculumList({
                         {lesson.materials && lesson.materials.length > 0 ? (
                           <div className="flex flex-wrap gap-2 pt-1">
                             {lesson.materials.map((material) => (
-                              <Link
+                              <span
                                 key={material.id}
-                                href={material.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={cn(
-                                  buttonVariants({ variant: "outline", size: "sm" }),
-                                  "h-8 px-3 text-xs"
-                                )}
+                                className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-surface px-3 text-xs text-foreground"
                               >
-                                <Download className="h-3.5 w-3.5" />
+                                <Download className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                                 {material.title}
-                              </Link>
+                              </span>
                             ))}
                           </div>
                         ) : null}
@@ -359,16 +349,6 @@ export function CurriculumList({
                         >
                           {locale === "uz" ? "Darsni ochish" : "Open lesson"}
                         </Link>
-                        {lesson.videoUrl ? (
-                          <Link
-                            href={lesson.videoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={cn(buttonVariants({ variant: "outline" }), "h-9 px-3 text-xs")}
-                          >
-                            {t.courseDetail.watchLesson}
-                          </Link>
-                        ) : null}
                         {progress.authenticated && progress.canTrack ? (
                           <Button
                             type="button"

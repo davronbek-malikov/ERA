@@ -182,7 +182,7 @@ export function HomepageContentSection({ locale }: { locale: Locale }) {
               </p>
               <div className="space-y-3">
                 {localizedLearningMethod.map((point) => (
-                  <div key={point} className="flex gap-3 rounded-2xl bg-white/80 p-4">
+                  <div key={point} className="flex gap-3 rounded-2xl bg-card/80 p-4">
                     <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-primary" />
                     <p className="text-sm leading-7 text-muted-foreground">{point}</p>
                   </div>
@@ -192,7 +192,7 @@ export function HomepageContentSection({ locale }: { locale: Locale }) {
           </Card>
         </div>
 
-        <Card className="border-primary/10 bg-[linear-gradient(135deg,rgba(31,50,86,0.05),rgba(207,176,126,0.08))]">
+        <Card className="border-primary/10 bg-muted">
           <CardContent className="space-y-5 p-8 sm:p-10">
             <h2 className="font-display text-3xl leading-tight sm:text-4xl">
               {locale === "uz"

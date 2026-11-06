@@ -1,61 +1,30 @@
-import { PublicationStatus, UserRole } from "@prisma/client";
+import { Prisma, PublicationStatus, UserRole } from "@prisma/client";
 
 import { getCurrentUser } from "@/lib/auth";
-import { getInstructorRecordForUser, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { getStudioScope, studioCourseWhere, type StudioScope } from "@/server/authz";
 
+/*
+ * Authoring-studio loaders (/admin editors). Every loader is scoped by `getStudioScope` and FAILS CLOSED:
+ * admins see everything, instructors only their own courses, and anyone else — including an instructor
+ * whose account is not linked to a teacher profile — sees nothing.
+ */
 
-async function getStudioContext() {
+async function getStudioContext(): Promise<{ scope: StudioScope; courseWhere: Prisma.CourseWhereInput | null }> {
   const currentUser = await getCurrentUser();
-  const instructor =
-    currentUser && currentUser.role === UserRole.INSTRUCTOR
-      ? await getInstructorRecordForUser(currentUser)
-      : null;
-
-  return { currentUser, instructor };
+  const scope = await getStudioScope(currentUser);
+  return { scope, courseWhere: studioCourseWhere(scope) };
 }
 
+async function requireAdminScope() {
+  const { scope } = await getStudioContext();
+  return scope.kind === "admin";
+}
+
+/** Legacy overview numbers. Admin only (the instructor variant leaked platform-wide activity). */
 export async function getAdminDashboardData() {
-  const { currentUser, instructor } = await getStudioContext();
-
-  if (currentUser?.role === UserRole.INSTRUCTOR && instructor) {
-    const [totalStudents, totalCourses, totalEnrollments, recentActivity] = await Promise.all([
-      prisma.user.count({
-        where: {
-          enrollments: {
-            some: {
-              course: {
-                instructorId: instructor.id
-              }
-            }
-          }
-        }
-      }),
-      prisma.course.count({
-        where: { instructorId: instructor.id }
-      }),
-      prisma.enrollment.count({
-        where: {
-          course: {
-            instructorId: instructor.id
-          }
-        }
-      }),
-      prisma.activityLog.findMany({
-        take: 6,
-        orderBy: { createdAt: "desc" },
-        include: {
-          user: true
-        }
-      })
-    ]);
-
-    return {
-      totalUsers: totalStudents,
-      totalCourses,
-      totalEnrollments,
-      recentActivity
-    };
+  if (!(await requireAdminScope())) {
+    return { totalUsers: 0, totalCourses: 0, totalEnrollments: 0, recentActivity: [] };
   }
 
   const [totalUsers, totalCourses, totalEnrollments, recentActivity] = await Promise.all([
@@ -66,7 +35,7 @@ export async function getAdminDashboardData() {
       take: 6,
       orderBy: { createdAt: "desc" },
       include: {
-        user: true
+        user: { select: { id: true, name: true, email: true, role: true } }
       }
     })
   ]);
@@ -102,13 +71,11 @@ export async function getAdminCategories() {
 }
 
 export async function getAdminCourses() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
   return prisma.course.findMany({
-    where:
-      currentUser?.role === UserRole.INSTRUCTOR && instructor
-        ? { instructorId: instructor.id }
-        : undefined,
+    where: courseWhere,
     orderBy: [{ updatedAt: "desc" }],
     include: {
       instructor: true,
@@ -128,17 +95,11 @@ export async function getAdminCourses() {
 }
 
 export async function getAdminLessons() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
   return prisma.lesson.findMany({
-    where:
-      currentUser?.role === UserRole.INSTRUCTOR && instructor
-        ? {
-            course: {
-              instructorId: instructor.id
-            }
-          }
-        : undefined,
+    where: { course: courseWhere },
     orderBy: [{ updatedAt: "desc" }],
     include: {
       course: {
@@ -167,10 +128,20 @@ export async function getAdminInstructors() {
   });
 }
 
+/** Legacy user list. Admin only, and never selects password hashes. */
 export async function getAdminUsers() {
+  if (!(await requireAdminScope())) return [];
+
   return prisma.user.findMany({
     orderBy: [{ createdAt: "desc" }],
-    include: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      status: true,
+      createdAt: true,
       _count: {
         select: {
           enrollments: true,
@@ -182,7 +153,7 @@ export async function getAdminUsers() {
 }
 
 export async function getAdminFormOptions() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { scope } = await getStudioContext();
 
   const [subjects, categories, instructors] = await Promise.all([
     prisma.subject.findMany({
@@ -202,23 +173,24 @@ export async function getAdminFormOptions() {
   return {
     subjects,
     categories,
+    // Instructors may only assign courses to themselves; without a profile, to nobody.
     instructors:
-      currentUser?.role === UserRole.INSTRUCTOR && instructor
-        ? instructors.filter((item) => item.id === instructor.id)
-        : instructors,
-    roles: isAdmin(currentUser?.role) ? Object.values(UserRole) : [UserRole.INSTRUCTOR, UserRole.STUDENT],
+      scope.kind === "admin"
+        ? instructors
+        : scope.kind === "instructor"
+          ? instructors.filter((item) => item.id === scope.instructorId)
+          : [],
+    roles: scope.kind === "admin" ? Object.values(UserRole) : [UserRole.INSTRUCTOR, UserRole.STUDENT],
     statuses: Object.values(PublicationStatus)
   };
 }
 
 export async function getAdminMaterials() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
   return prisma.courseMaterial.findMany({
-    where:
-      currentUser?.role === UserRole.INSTRUCTOR && instructor
-        ? { course: { instructorId: instructor.id } }
-        : undefined,
+    where: { course: courseWhere },
     orderBy: [{ updatedAt: "desc" }],
     include: {
       course: true,
@@ -233,17 +205,11 @@ export async function getAdminMaterials() {
 }
 
 export async function getAdminProgressData() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
   return prisma.enrollment.findMany({
-    where:
-      currentUser?.role === UserRole.INSTRUCTOR && instructor
-        ? {
-            course: {
-              instructorId: instructor.id
-            }
-          }
-        : undefined,
+    where: { course: courseWhere },
     orderBy: [{ updatedAt: "desc" }],
     include: {
       user: {

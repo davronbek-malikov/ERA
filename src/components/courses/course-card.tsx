@@ -84,7 +84,7 @@ export function CourseCard({ course, locale }: CourseCardProps) {
   return (
     <Card className="overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-panel">
       <div
-        className="relative h-56 border-b border-white/60 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.32),transparent_35%),linear-gradient(135deg,rgba(31,50,86,0.96),rgba(102,111,131,0.9))]"
+        className="relative h-56 border-b border-white/60 bg-primary"
         style={
           course.thumbnailUrl
             ? {
@@ -98,10 +98,10 @@ export function CourseCard({ course, locale }: CourseCardProps) {
         <div className="absolute inset-0 bg-black/10" />
         <div className="relative flex h-full flex-col justify-between p-6 text-white">
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary" className="bg-white/15 text-white">
+            <Badge variant="secondary" className="bg-card/15 text-white">
               {course.category.subject.name}
             </Badge>
-            <Badge variant="secondary" className="bg-white/15 text-white">
+            <Badge variant="secondary" className="bg-card/15 text-white">
               {course.category.name}
             </Badge>
           </div>
@@ -111,11 +111,11 @@ export function CourseCard({ course, locale }: CourseCardProps) {
                 key={badge}
                 variant="secondary"
                 className={cn(
-                  "bg-white/15 text-white",
-                  (badge === "Best Seller" || badge === "Popular") && "bg-amber-100 text-amber-900",
-                  badge === "New" && "bg-emerald-100 text-emerald-900",
-                  badge === "Trending" && "bg-rose-100 text-rose-900",
-                  (badge === "Featured" || badge === "Editor Pick") && "bg-white text-primary"
+                  "bg-card/15 text-white",
+                  (badge === "Best Seller" || badge === "Popular") && "bg-warning/15 text-warning-foreground",
+                  badge === "New" && "bg-success/10 text-success",
+                  badge === "Trending" && "bg-error/10 text-error",
+                  (badge === "Featured" || badge === "Editor Pick") && "bg-card text-primary"
                 )}
               >
                 {localizedBadgeMap[badge] ?? badge}
@@ -138,7 +138,7 @@ export function CourseCard({ course, locale }: CourseCardProps) {
           </div>
           {course.averageRating ? (
             <div className="inline-flex items-center gap-2">
-              <Star className="h-4 w-4 fill-current text-amber-500" />
+              <Star className="h-4 w-4 fill-current text-warning" />
               {course.averageRating.toFixed(1)} ({course.reviewCount ?? 0})
             </div>
           ) : null}

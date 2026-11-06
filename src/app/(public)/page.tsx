@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { serializeJsonLd } from "@/lib/json-ld";
 import Script from "next/script";
 
 import { FaqPreviewSection } from "@/components/marketing/faq-preview-section";
@@ -40,7 +41,7 @@ export default async function HomePage() {
       <Script
         id="era-academy-structured-data"
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
       />
       <HeroSection locale={locale} stats={homepageData.stats} />
       <HomepageCourseSections locale={locale} collections={homepageData.collections} />

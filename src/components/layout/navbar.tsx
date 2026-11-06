@@ -23,8 +23,8 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
   const user = initialUser ?? null;
   const locale = await getLocale();
   const t = getMessages(locale);
-  const dashboardHref =
-    user?.role === "ADMIN" || user?.role === "INSTRUCTOR" ? "/admin" : "/my-learning";
+  // Each role's workspace. Display only: every workspace page checks access on the server.
+  const dashboardHref = user?.role === "ADMIN" ? "/admin" : user?.role === "INSTRUCTOR" ? "/teacher" : "/learn";
 
   const drawerPrimaryItems = [
     {
@@ -69,7 +69,7 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
       <Container className="py-3.5">
-        <div className="rounded-2xl border border-border/70 bg-white/88 px-4 py-3 shadow-soft sm:px-5 2xl:px-6">
+        <div className="rounded-2xl border border-border/70 bg-card/88 px-4 py-3 shadow-soft sm:px-5 2xl:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <PublicNavDrawer

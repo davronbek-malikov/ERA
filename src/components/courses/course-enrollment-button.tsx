@@ -139,7 +139,7 @@ export function CourseEnrollmentButton({
         {enrollLabel}
       </Button>
       {errorMessage ? (
-        <p className="text-sm text-rose-600">{errorMessage}</p>
+        <p className="text-sm text-error">{errorMessage}</p>
       ) : null}
     </div>
   );

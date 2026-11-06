@@ -642,23 +642,28 @@ export async function getCourseBySlug(slug: string) {
           }
         }
       },
+      // Public catalogue page (anyone, signed out included): outline only. Lesson notes, quizzes, video URLs and
+      // material files are served only inside the authorized classroom (Prompt 09 acceptance audit).
       materials: {
-        orderBy: [{ position: "asc" }, { createdAt: "asc" }]
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+        where: { lessonId: null },
+        select: { id: true, title: true }
       },
       lessons: {
         where: { status: PublicationStatus.PUBLISHED },
         orderBy: [{ position: "asc" }],
-        include: {
-          module: true,
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          description: true,
+          duration: true,
+          position: true,
+          moduleId: true,
+          module: { select: { id: true, title: true } },
           materials: {
-            orderBy: [{ position: "asc" }, { createdAt: "asc" }]
-          },
-          content: true,
-          subskills: {
-            orderBy: [{ position: "asc" }]
-          },
-          quizQuestions: {
-            orderBy: [{ position: "asc" }]
+            orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+            select: { id: true, title: true }
           }
         }
       },

@@ -48,7 +48,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
   const resultCount = filteredCategories.reduce((sum, category) => sum + category.items.length, 0);
   return (
     <div className="space-y-10">
-      <div className="rounded-[2rem] border border-border/70 bg-white/90 p-6 shadow-soft sm:p-8">
+      <div className="rounded-xl border border-border/70 bg-card/90 p-6 shadow-soft sm:p-8">
         <div className="relative">
           <Search
             className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground"
@@ -59,7 +59,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={content.searchPlaceholder}
-            className="h-14 rounded-[1.6rem] border-border/80 pl-12 text-base"
+            className="h-14 rounded-xl border-border/80 pl-12 text-base"
             aria-label={content.searchPlaceholder}
           />
         </div>
@@ -85,7 +85,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
           <a
             key={category.id}
             href={`#${category.id}`}
-            className="rounded-full border border-border/80 bg-white px-4 py-2 text-sm font-medium text-muted-foreground transition hover:-translate-y-0.5 hover:border-primary/25 hover:text-foreground"
+            className="rounded-full border border-border/80 bg-card px-4 py-2 text-sm font-medium text-muted-foreground transition hover:-translate-y-0.5 hover:border-primary/25 hover:text-foreground"
           >
             {category.title}
           </a>
@@ -114,7 +114,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
                 {category.items.map((item) => (
                   <details
                     key={item.id}
-                    className="group rounded-[1.6rem] border border-border/70 bg-white/92 shadow-soft transition hover:border-primary/20"
+                    className="group rounded-xl border border-border/70 bg-card/92 shadow-soft transition hover:border-primary/20"
                   >
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-left marker:hidden sm:px-6 sm:py-5">
                       <span className="text-sm font-semibold leading-6 text-foreground sm:text-base">
@@ -147,7 +147,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
       )}
 
       <section aria-labelledby="support-heading">
-        <Card className="overflow-hidden border-primary/10 bg-gradient-to-br from-[#fff7eb] via-white to-[#eef7ff]">
+        <Card className="overflow-hidden border-primary/10 bg-card">
           <CardContent className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1.2fr,0.8fr] lg:items-center">
             <div className="space-y-3">
               <h2 id="support-heading" className="font-display text-2xl font-semibold sm:text-3xl">
@@ -157,7 +157,7 @@ export function FaqBrowser({ content, supportEmail }: FaqBrowserProps) {
                 {content.supportDescription}
               </p>
             </div>
-            <div className="space-y-4 rounded-[1.6rem] border border-white/70 bg-white/85 p-5 shadow-soft">
+            <div className="space-y-4 rounded-xl border border-white/70 bg-card/85 p-5 shadow-soft">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   {content.supportEmailLabel}

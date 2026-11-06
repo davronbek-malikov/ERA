@@ -6,10 +6,12 @@ import { CheckCircle2, Code2, Lightbulb, Loader2, Rocket, TerminalSquare } from 
 
 import {
   getPracticeLanguageLabel,
-  getPracticeLanguageVariant,
   PRACTICE_LANGUAGES,
   type PracticeLanguage
 } from "@/lib/practice-languages";
+import { runPracticeInBrowser, type PracticeRunnerTestCase } from "@/lib/practice-runner";
+import { AskEraZone } from "@/components/ai/ask-era-zone";
+import { useTutorApi } from "@/components/classroom/classroom-tutor";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,11 +25,9 @@ type PracticeLabProps = {
     title: string;
     slug: string;
     instructions: string;
-    language: string;
-    starterCode: string;
-    solutionCode: string;
+    starterCodeByLanguage: Record<PracticeLanguage, string>;
+    testCases: PracticeRunnerTestCase[];
     hints: string[];
-    solutionNotes: string | null;
     submissions: Array<{
       id: string;
       language: string;
@@ -62,8 +62,7 @@ function createPracticeCodeState(exercises: PracticeLabProps["exercises"]) {
     PRACTICE_LANGUAGES.map((language) => {
       const key = `${exercise.id}:${language.value}`;
       const submission = exercise.submissions.find((item) => item.language === language.value);
-      const variant = getPracticeLanguageVariant(exercise, language.value);
-      return [key, submission?.code ?? variant.starterCode] as const;
+      return [key, submission?.code ?? exercise.starterCodeByLanguage[language.value]] as const;
     })
   );
 
@@ -80,6 +79,8 @@ export function PracticeLab({
   lessonPath,
   isAuthenticated
 }: PracticeLabProps) {
+  // Present inside the classroom tutor; null on pages without a tutor (Ask ERA AI is then not offered).
+  const tutor = useTutorApi();
   const [selectedExerciseId, setSelectedExerciseId] = useState(exercises[0]?.id ?? null);
   const [languageByExerciseId, setLanguageByExerciseId] = useState<Record<string, PracticeLanguage>>(
     Object.fromEntries(exercises.map((exercise) => [exercise.id, "python" as const]))
@@ -100,7 +101,7 @@ export function PracticeLab({
 
   const selectedLanguage = exercise ? languageByExerciseId[exercise.id] ?? "python" : "python";
   const selectedKey = exercise ? getLanguageKey(exercise.id, selectedLanguage) : null;
-  const variant = exercise ? getPracticeLanguageVariant(exercise, selectedLanguage) : null;
+  const starterCode = exercise ? exercise.starterCodeByLanguage[selectedLanguage] : "";
   const matchingSubmission =
     exercise?.submissions.find((submission) => submission.language === selectedLanguage) ?? null;
   const result = selectedKey ? resultByExerciseLanguage[selectedKey] : null;
@@ -122,7 +123,8 @@ export function PracticeLab({
           failed: "Qayta urinib ko'ring",
           passed: "O'tdi",
           unsupported: "Bu til hali qo'llab-quvvatlanmaydi.",
-          saveError: "Tekshiruvni yakunlab bo'lmadi. Yana urinib ko'ring."
+          saveError: "Tekshiruvni yakunlab bo'lmadi. Yana urinib ko'ring.",
+          solutionLocked: "Yechimni ochish uchun avval kodni bir marta tekshiring."
         }
       : {
           title: "Interactive practice",
@@ -139,11 +141,30 @@ export function PracticeLab({
           failed: "Try again",
           passed: "Passed",
           unsupported: "This language is not supported yet.",
-          saveError: "The checker could not finish this run. Please try again."
+          saveError: "The checker could not finish this run. Please try again.",
+          solutionLocked: "Run the checks once to unlock the solution."
         };
 
+  async function postJson<T>(url: string, body: unknown) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+    // API responses are flat: { ok: true, ...data } or { ok: false, error: "message" }.
+    const payload = (await response.json().catch(() => null)) as ({ ok?: boolean; error?: string } & T) | null;
+
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error(payload?.error ?? copy.saveError);
+    }
+
+    return payload;
+  }
+
   async function runChecks() {
-    if (!exercise || !variant || !selectedKey || !isAuthenticated) {
+    if (!exercise || !selectedKey || !isAuthenticated) {
       return;
     }
 
@@ -153,44 +174,36 @@ export function PracticeLab({
       [selectedKey]: ""
     }));
 
+    const code = codeByExerciseLanguage[selectedKey] ?? starterCode;
+
     try {
-      const response = await fetch(`/api/practice/${exercise.id}/submit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          code: codeByExerciseLanguage[selectedKey] ?? variant.starterCode,
-          language: selectedLanguage
-        })
+      // The server only converts the code; it runs in a sandboxed browser worker.
+      const { script } = await postJson<{ script: string }>("/api/practice/compile", {
+        code,
+        language: selectedLanguage
       });
-      const payload = (await response.json()) as {
-        error?: {
-          message?: string;
-        };
-        data?: PracticeResult;
-      };
-
-      if (!response.ok || !payload.data) {
-        setErrorByExerciseLanguage((current) => ({
-          ...current,
-          [selectedKey]: payload.error?.message ?? copy.saveError
-        }));
-        return;
-      }
-
-      const practiceResult = payload.data;
+      const results = await runPracticeInBrowser(script, exercise.testCases);
+      const practiceResult = await postJson<PracticeResult>(`/api/practice/${exercise.id}/submit`, {
+        code,
+        language: selectedLanguage,
+        results: results.map(({ passed, actual }) => ({ passed, actual }))
+      });
 
       setResultByExerciseLanguage((current) => ({
         ...current,
         [selectedKey]: practiceResult
+      }));
+    } catch (error) {
+      setErrorByExerciseLanguage((current) => ({
+        ...current,
+        [selectedKey]: error instanceof Error ? error.message : copy.saveError
       }));
     } finally {
       setLoadingKey(null);
     }
   }
 
-  if (!exercise || !variant || !selectedKey) {
+  if (!exercise || !selectedKey) {
     return (
       <Card>
         <CardContent className="p-5 text-sm text-muted-foreground">{copy.noExercises}</CardContent>
@@ -198,11 +211,11 @@ export function PracticeLab({
     );
   }
 
-  const currentCode = codeByExerciseLanguage[selectedKey] ?? variant.starterCode;
+  const currentCode = codeByExerciseLanguage[selectedKey] ?? starterCode;
   const currentError = errorByExerciseLanguage[selectedKey];
 
   return (
-    <Card className="border-primary/10 bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(246,248,255,0.98))]">
+    <Card className="border-primary/10 bg-card">
       <CardContent className="space-y-6 p-5">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{copy.title}</p>
@@ -220,7 +233,7 @@ export function PracticeLab({
                 "rounded-full border px-3 py-2 text-sm transition-colors",
                 item.id === exercise.id
                   ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-border/70 bg-white text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                  : "border-border/70 bg-card text-muted-foreground hover:border-primary/20 hover:text-foreground"
               )}
             >
               {item.type === "MINI_PROJECT" ? copy.miniProject : copy.coding}
@@ -228,9 +241,18 @@ export function PracticeLab({
           ))}
         </div>
 
-        <div className="rounded-[1.3rem] border border-border/70 bg-white px-4 py-4 text-sm leading-7 text-muted-foreground">
-          {exercise.instructions}
-        </div>
+        {tutor ? (
+          // Ask ERA AI on the assignment text (classroom only). The code editor stays outside the zone.
+          <AskEraZone workspace="student" source={{ type: "assignment", id: exercise.id }} locale={locale === "uz" ? "uz" : "en"} onAsk={tutor.askSelection}>
+            <div className="rounded-lg border border-border/70 bg-card px-4 py-4 text-sm leading-7 text-muted-foreground">
+              {exercise.instructions}
+            </div>
+          </AskEraZone>
+        ) : (
+          <div className="rounded-lg border border-border/70 bg-card px-4 py-4 text-sm leading-7 text-muted-foreground">
+            {exercise.instructions}
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -255,7 +277,7 @@ export function PracticeLab({
                     [exercise.id]: event.target.value as PracticeLanguage
                   }))
                 }
-                className="rounded-full border border-border/70 bg-white px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40"
+                className="rounded-full border border-border/70 bg-card px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary/40"
               >
                 {PRACTICE_LANGUAGES.map((language) => (
                   <option key={language.value} value={language.value}>
@@ -327,7 +349,7 @@ export function PracticeLab({
         </div>
 
         {currentError ? (
-          <div className="rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
             {currentError}
           </div>
         ) : null}
@@ -337,7 +359,7 @@ export function PracticeLab({
             {exercise.hints.map((hint) => (
               <div
                 key={`${selectedKey}-${hint}`}
-                className="rounded-[1rem] border border-border/70 bg-secondary/30 px-4 py-3 text-sm text-muted-foreground"
+                className="rounded-lg border border-border/70 bg-secondary/30 px-4 py-3 text-sm text-muted-foreground"
               >
                 {hint}
               </div>
@@ -346,18 +368,24 @@ export function PracticeLab({
         ) : null}
 
         {showSolution[selectedKey] ? (
-          <div className="space-y-3 rounded-[1.2rem] border border-border/70 bg-white px-4 py-4">
-            <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-foreground">
-              <code>{result?.solutionCode ?? variant.solutionCode}</code>
-            </pre>
-            <p className="text-sm leading-7 text-muted-foreground">
-              {result?.solutionNotes ?? exercise.solutionNotes}
-            </p>
+          <div className="space-y-3 rounded-lg border border-border/70 bg-card px-4 py-4">
+            {result ? (
+              <>
+                <pre className="overflow-x-auto whitespace-pre-wrap text-sm text-foreground">
+                  <code>{result.solutionCode}</code>
+                </pre>
+                {result.solutionNotes ? (
+                  <p className="text-sm leading-7 text-muted-foreground">{result.solutionNotes}</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm leading-7 text-muted-foreground">{copy.solutionLocked}</p>
+            )}
           </div>
         ) : null}
 
         {result ? (
-          <div className="space-y-3 rounded-[1.2rem] border border-border/70 bg-white px-4 py-4">
+          <div className="space-y-3 rounded-lg border border-border/70 bg-card px-4 py-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">
                 {result.status === "PASSED" ? copy.passed : copy.failed}
@@ -370,10 +398,10 @@ export function PracticeLab({
               {result.feedback.map((item) => (
                 <div
                   key={`${selectedKey}-${item.description}`}
-                  className="rounded-[1rem] bg-secondary/30 px-4 py-3 text-sm text-muted-foreground"
+                  className="rounded-lg bg-secondary/30 px-4 py-3 text-sm text-muted-foreground"
                 >
                   <p className="font-medium text-foreground">{item.description}</p>
-                  <p className={cn("mt-1", item.passed ? "text-emerald-700" : "text-rose-700")}>
+                  <p className={cn("mt-1", item.passed ? "text-success" : "text-error")}>
                     {item.passed
                       ? copy.passed
                       : `Expected ${JSON.stringify(item.expected)}, got ${JSON.stringify(item.actual)}`}

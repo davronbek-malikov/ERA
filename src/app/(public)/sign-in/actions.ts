@@ -109,8 +109,16 @@ export async function signInAction(formData: FormData) {
   revalidatePath("/my-learning");
   revalidatePath("/courses");
 
-  if (user.role === "ADMIN" || user.role === "INSTRUCTOR") {
+  if (user.role === "ADMIN") {
     const target = nextPath.startsWith("/admin") ? nextPath : "/admin";
+    redirect(`${target}${target.includes("?") ? "&" : "?"}signedIn=1`);
+  }
+
+  if (user.role === "INSTRUCTOR") {
+    // Teachers land in the Teacher Workspace, or on a studio editor they may use. Admin-only pages would only
+    // bounce them, so they are never a sign-in destination (Prompt 09 acceptance audit).
+    const studio = /^\/admin\/(courses|lessons|materials|progress|settings)(\/|\?|$)/;
+    const target = nextPath.startsWith("/teacher") || studio.test(nextPath) ? nextPath : "/teacher";
     redirect(`${target}${target.includes("?") ? "&" : "?"}signedIn=1`);
   }
 

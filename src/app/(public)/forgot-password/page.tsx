@@ -132,19 +132,19 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
           <p className="page-lead">{copy.description}</p>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <MailCheck className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardOne}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <ShieldCheck className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardTwo}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <KeyRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardThree}</p>
@@ -154,7 +154,7 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
         </div>
 
         <div className="space-y-6">
-          <Card className="border-white/70 bg-white/85">
+          <Card className="border-white/70 bg-card/85">
             <CardHeader className="space-y-3">
               <CardTitle>{copy.sendTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
@@ -163,12 +163,12 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
             </CardHeader>
             <CardContent className="space-y-5">
               {message ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div className="rounded-2xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
                   {message}
                 </div>
               ) : null}
               {params.sent === "1" ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <div className="rounded-2xl border border-success/20 bg-success/5 px-4 py-3 text-sm text-success">
                   {copy.sent}
                 </div>
               ) : null}
@@ -194,7 +194,7 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/85">
+          <Card className="border-white/70 bg-card/85">
             <CardHeader className="space-y-3">
               <CardTitle>{copy.resetTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
