@@ -14,3 +14,6 @@ auth-cookies.txt
 tsconfig.tsbuildinfo
 .next-test
 tests/security/.state
+
+# Vercel project link (local only: it points this folder at a Vercel project)
+.vercel
