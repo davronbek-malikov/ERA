@@ -91,3 +91,14 @@ for (user, course) **and** the course is `PUBLISHED`.
 | `requireStudentEnrollment(user, courseId)` | student writes (progress, reviews) |
 | `assertSameOrigin(request)` | every state-changing JSON route handler |
 | `toApiErrorResponse(error, fallback)` | every route handler `catch` |
+
+
+## Student Management & Payments (added)
+
+Full matrix: `docs/ERA_STUDENT_MANAGEMENT.md` §7. Summary:
+
+- **Admins:** all students, enrollments, payments, exams and teacher permissions.
+- **Teachers:** only the enrollments assigned to them (`Enrollment.instructorId`). By default they can add notes and schedule exams. Seeing, recording or approving payments, creating enrollments, changing dates and changing access each need a permission granted by an admin (`instructor_permissions`).
+- **Students:** their own enrollments, payment status and transactions, read-only. They never see notes, approvers or other students.
+- **Course access** now also requires an enrollment whose access is active (status, access status, expiry, optional overdue rule), checked in `authz.ts`.
+- **Row Level Security** is enabled, with no policies, on every table (migration `3_row_level_security`), which blocks Supabase's public Data API.

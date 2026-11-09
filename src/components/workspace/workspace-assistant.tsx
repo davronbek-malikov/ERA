@@ -3,6 +3,7 @@
 import * as React from "react";
 import { MessageSquare, Paperclip, Plus, Sparkles } from "lucide-react";
 
+import { ActionCard, type ActionCardView } from "@/components/assistant/action-card";
 import { AssistantComposer } from "@/components/assistant/assistant-composer";
 import { AssistantMessage } from "@/components/assistant/assistant-message";
 import { privacyNote } from "@/components/assistant/assistant-panel";
@@ -12,6 +13,7 @@ import type { AssistantKind } from "@/components/assistant/types";
 import { TutorMarkdown } from "@/components/classroom/tutor-markdown";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/feedback";
+import { Spinner } from "@/components/ui/spinner";
 import { Select } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { AgentStreamFailure, streamAgent, type AgentStreamMessage } from "@/lib/ai/agent-stream";
@@ -50,6 +52,9 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
   const [streaming, setStreaming] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<AssistantState | null>(null);
   const [draft, setDraft] = React.useState<string | null>(null);
+  // Student Management: the tool the assistant is using right now, and proposals of the answer being written.
+  const [activity, setActivity] = React.useState<string | null>(null);
+  const [liveActions, setLiveActions] = React.useState<ActionCardView[]>([]);
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
   const abort = React.useRef<AbortController | null>(null);
   const listEnd = React.useRef<HTMLDivElement>(null);
@@ -119,6 +124,8 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
     setMessages((current) => [...current, optimistic]);
     setStatus({ state: "thinking" });
     setStreaming(null);
+    setActivity(null);
+    setLiveActions([]);
 
     try {
       const result = await streamAgent(
@@ -135,18 +142,24 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
             setStatus(null);
             setStreaming((current) => (current ?? "") + delta);
           },
-          onReset: () => setStreaming("")
+          onReset: () => setStreaming(""),
+          onTool: (label) => setActivity(label),
+          onAction: (action) => setLiveActions((current) => [...current, action])
         }
       );
       setMessages((current) => [...current.filter((message) => message.id !== optimistic.id), ...result.messages]);
       setStreaming(null);
       setStatus(null);
+      setActivity(null);
+      setLiveActions([]);
       if (result.conversationId && result.conversationId !== activeId) {
         setActiveId(result.conversationId);
       }
       void loadConversations();
     } catch (error) {
       setStreaming(null);
+      setActivity(null);
+      setLiveActions([]);
       // Nothing was saved for a failed or stopped answer, so the request leaves the thread too.
       setMessages((current) => current.filter((message) => message.id !== optimistic.id));
       const detail = error instanceof AgentStreamFailure ? error.detail : { kind: "error" as const, message: "" };
@@ -164,6 +177,18 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
       else setStatus({ state: "error", onRetry: () => void send(text) });
     } finally {
       if (abort.current === controller) abort.current = null;
+    }
+  }
+
+  function updateAction(messageId: string, next: ActionCardView) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, actions: message.actions?.map((action) => (action.id === next.id ? next : action)) } : message
+      )
+    );
+    // The server adds a short "done / not done" message to the conversation; reload it after a decision.
+    if (next.status === "EXECUTED" || next.status === "FAILED") {
+      if (activeId !== NEW) void openConversation({ id: activeId, title: "", courseId: courseId || null });
     }
   }
 
@@ -190,7 +215,7 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
   const answerNote =
     agent === "teacher"
       ? "Draft — not published. Review it, then add it to your course in the course editor."
-      : "Based on aggregate platform data only. Make any change in the admin pages.";
+      : "Answers use platform data you're allowed to see. Changes happen only when you confirm them.";
   const empty = messages.length === 0 && !loadingMessages && streaming === null && !status;
 
   return (
@@ -280,16 +305,31 @@ export function WorkspaceAssistant({ kind, name, intro, suggestions, courses = [
                 <div className="flex flex-col gap-3">
                   <TutorMarkdown text={message.content} locale="en" />
                   <SourceList sources={message.sources} />
+                  {message.actions?.map((action) => (
+                    <ActionCard key={action.id} action={action} onChange={(next) => updateAction(message.id, next)} />
+                  ))}
                   <p className="text-xs text-muted-foreground">{answerNote}</p>
                 </div>
               </AssistantMessage>
             )
           )}
 
-          {streaming !== null ? (
+          {streaming !== null || activity || liveActions.length ? (
             <AssistantMessage role="assistant" assistantName={name}>
-              <div aria-busy="true">
-                <TutorMarkdown text={streaming || "…"} locale="en" />
+              <div aria-busy="true" className="flex flex-col gap-3">
+                {streaming ? <TutorMarkdown text={streaming} locale="en" /> : null}
+                {activity ? (
+                  <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+                    <Spinner className="size-3.5" />
+                    {activity}…
+                  </p>
+                ) : null}
+                {liveActions.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    {liveActions.length === 1 ? "A change is ready for your review" : `${liveActions.length} changes are ready for your review`} — the
+                    confirmation card appears when the answer finishes.
+                  </p>
+                ) : null}
               </div>
             </AssistantMessage>
           ) : null}

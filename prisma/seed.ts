@@ -61,6 +61,17 @@ function daysAgo(days: number) {
 async function main() {
   const adminPasswordHash = await hash("EraAdmin2026!", 12);
   const studentPasswordHash = await hash("EraStudent2026!", 12);
+  const teacherPasswordHash = await hash("EraTeacher2026!", 12);
+
+  // Student Management & Payments records first: payments protect their enrollments from deletion.
+  await prisma.aiPendingAction.deleteMany();
+  await prisma.managementAuditLog.deleteMany();
+  await prisma.examParticipant.deleteMany();
+  await prisma.examSchedule.deleteMany();
+  await prisma.studentNote.deleteMany();
+  await prisma.enrollmentAccessLog.deleteMany();
+  await prisma.paymentTransaction.deleteMany();
+  await prisma.instructorPermission.deleteMany();
 
   await prisma.activityLog.deleteMany();
   await prisma.courseReview.deleteMany();
@@ -120,11 +131,21 @@ async function main() {
     })
   ]);
 
+  const [davidUser, saraUser] = await Promise.all([
+    prisma.user.create({
+      data: { name: "David R.", email: "david@eraacademy.com", passwordHash: teacherPasswordHash, role: UserRole.INSTRUCTOR, status: "ACTIVE" }
+    }),
+    prisma.user.create({
+      data: { name: "Sara Lee", email: "sara@eraacademy.com", passwordHash: teacherPasswordHash, role: UserRole.INSTRUCTOR, status: "ACTIVE" }
+    })
+  ]);
+
   const [david, sara] = await Promise.all([
     prisma.instructor.create({
       data: {
         name: "David R.",
         slug: "david-r",
+        userId: davidUser.id,
         title: "Lead AI Instructor",
         bio: "Builds structured, high-clarity courses across AI, mathematics, and academic performance.",
         email: "david@eraacademy.com",
@@ -136,6 +157,7 @@ async function main() {
       data: {
         name: "Sara Lee",
         slug: "sara-lee",
+        userId: saraUser.id,
         title: "Learning Strategy Instructor",
         bio: "Focuses on exam systems, writing clarity, and student momentum.",
         email: "sara@eraacademy.com",
@@ -561,6 +583,7 @@ async function main() {
       data: {
         userId: studentUser.id,
         courseId: courses[0].id,
+        instructorId: courses[0].instructorId,
         progress: 62
       }
     }),
@@ -568,6 +591,7 @@ async function main() {
       data: {
         userId: studentUser.id,
         courseId: courses[2].id,
+        instructorId: courses[2].instructorId,
         progress: 28
       }
     }),
@@ -575,6 +599,7 @@ async function main() {
       data: {
         userId: secondStudent.id,
         courseId: courses[5].id,
+        instructorId: courses[5].instructorId,
         progress: 80
       }
     })
@@ -1087,7 +1112,89 @@ async function main() {
   }
 }
 
+/**
+ * Student Management demo data (docs/ERA_STUDENT_MANAGEMENT.md): dates, prices, payments in every verification
+ * state, a Pay Later enrollment, an exam on the coming Saturday and teacher permissions. Demo only.
+ */
+async function seedStudentManagement() {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const day = (offset: number) => {
+    const value = new Date(`${today}T00:00:00.000Z`);
+    value.setUTCDate(value.getUTCDate() + offset);
+    return value;
+  };
+  const admin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@eraacademy.com" } });
+  const david = await prisma.instructor.findUniqueOrThrow({ where: { slug: "david-r" } });
+  const enrollments = await prisma.enrollment.findMany({ include: { user: true, course: true } });
+  const find = (email: string, courseSlug: string) => enrollments.find((e) => e.user.email === email && e.course.slug === courseSlug);
+
+  const minaDeep = find("mina@eraacademy.com", "deep-learning-fundamentals");
+  const minaTools = find("mina@eraacademy.com", "ai-tools-for-productivity");
+  const daniel = enrollments.find((e) => e.user.email === "daniel@eraacademy.com");
+
+  if (minaDeep) {
+    await prisma.enrollment.update({
+      where: { id: minaDeep.id },
+      data: { startDate: day(-20), endDate: day(25), priceAmount: 500000, currency: "KRW", paymentArrangement: "PARTIAL", paymentDueDate: day(10), createdById: admin.id }
+    });
+    await prisma.paymentTransaction.createMany({
+      data: [
+        { enrollmentId: minaDeep.id, amount: 200000, method: "BANK_TRANSFER", transactionDate: day(-19), status: "APPROVED", recordedById: admin.id, reviewedById: admin.id, reviewedAt: new Date(), description: "First instalment" },
+        { enrollmentId: minaDeep.id, amount: 100000, method: "CASH", transactionDate: day(-1), status: "PENDING", recordedById: admin.id, description: "Paid in class" }
+      ]
+    });
+  }
+  if (minaTools) {
+    await prisma.enrollment.update({
+      where: { id: minaTools.id },
+      data: {
+        startDate: day(-5),
+        endDate: day(40),
+        priceAmount: 300000,
+        paymentArrangement: "PAY_LATER",
+        paymentDueDate: day(30),
+        accessGrantedById: admin.id,
+        accessNote: "Scholarship decision pending; may study meanwhile",
+        createdById: admin.id
+      }
+    });
+    await prisma.enrollmentAccessLog.create({
+      data: { enrollmentId: minaTools.id, previousStatus: "ACTIVE", newStatus: "ACTIVE", arrangement: "PAY_LATER", reason: "grant pay later: scholarship decision pending", changedById: admin.id }
+    });
+  }
+  if (daniel) {
+    await prisma.enrollment.update({
+      where: { id: daniel.id },
+      data: { startDate: day(-40), endDate: day(5), priceAmount: 400000, paymentArrangement: "PAY_IN_FULL", createdById: admin.id }
+    });
+    await prisma.paymentTransaction.create({
+      data: { enrollmentId: daniel.id, amount: 400000, method: "BANK_TRANSFER", transactionDate: day(-40), status: "APPROVED", recordedById: admin.id, reviewedById: admin.id, reviewedAt: new Date(), reference: "TRX-1042" }
+    });
+  }
+
+  // The coming Saturday (today if it is Saturday).
+  const saturdayOffset = (6 - day(0).getUTCDay() + 7) % 7;
+  if (minaDeep) {
+    await prisma.examSchedule.create({
+      data: {
+        courseId: minaDeep.courseId,
+        instructorId: david.id,
+        title: "Deep Learning midterm",
+        description: "Chapters 1–3. Bring a calculator.",
+        examDate: day(saturdayOffset),
+        startTime: "10:00",
+        endTime: "12:00",
+        createdById: admin.id
+      }
+    });
+  }
+
+  // David may see and record payments, but not approve them; Sara has the defaults only.
+  await prisma.instructorPermission.create({ data: { instructorId: david.id, canViewPayments: true, canRecordPayments: true, updatedById: admin.id } });
+}
+
 main()
+  .then(seedStudentManagement)
   .then(async () => {
     await prisma.$disconnect();
   })

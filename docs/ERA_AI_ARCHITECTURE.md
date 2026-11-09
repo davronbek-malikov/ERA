@@ -193,3 +193,14 @@ SSE events:
 - `error {code, message, retryable}`
 
 The removed `src/lib/era/provider.ts` (non-streaming Ollama/OpenAI calls) is fully replaced by the adapters.
+
+
+## Structured tools and confirmed actions (Student Management)
+
+The engine supports tool calls for Anthropic, OpenAI and Ollama (`ToolDefinition`, `ProviderMessage`, `done.toolCalls`).
+
+- **Tool loop:** a run takes up to 6 tool steps. Read tools run immediately with the user's own scope.
+- **Proposals:** `propose_*` tools only create an `ai_pending_actions` row with a preview. The user confirms it with a button (`POST /api/ai/actions/:id`). It then runs once, with the user's current permissions, and is audited with source AI.
+- **Prompt:** when tools are present, the system prompt swaps the "no lookups" rule for strict tool rules and adds today's date in the platform timezone.
+
+Details: `docs/ERA_STUDENT_MANAGEMENT.md` §8.

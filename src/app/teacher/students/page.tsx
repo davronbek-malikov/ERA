@@ -14,7 +14,7 @@ import { formatRelativeDate } from "@/lib/format";
 import { getTeacherStudents } from "@/server/teacher";
 import { getTeacherInstructorId, requireTeacher } from "@/server/workspace";
 
-export const metadata: Metadata = { title: "Students", robots: { index: false } };
+export const metadata: Metadata = { title: "Student progress", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 type PageProps = { searchParams: Promise<{ q?: string; course?: string }> };
@@ -29,8 +29,8 @@ export default async function TeacherStudentsPage({ searchParams }: PageProps) {
     <WorkspaceShell workspace="teacher">
       <WorkspacePage className="flex flex-col gap-6">
         <PageHeader
-          breadcrumbs={[{ label: "Teacher", href: "/teacher" }, { label: "Students" }]}
-          title="Students"
+          breadcrumbs={[{ label: "Teacher", href: "/teacher" }, { label: "Progress" }]}
+          title="Student progress"
           description="Students enrolled in your courses, with their progress in those courses only."
         />
 

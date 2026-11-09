@@ -157,7 +157,9 @@ try {
     ["AI provider adapters (direct)", ["--import", "tsx", "--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/ai-adapters.test.ts"]],
     ["AI agent engine security (HTTP)", ["--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/ai.test.mjs"]],
     ["Knowledge Base core (direct)", ["--import", "tsx", "--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/knowledge-core.test.ts"]],
-    ["Knowledge Base & RAG (HTTP)", ["--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/knowledge.test.mjs"]]
+    ["Knowledge Base & RAG (HTTP)", ["--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/knowledge.test.mjs"]],
+    ["Student Management core (direct)", ["--import", "tsx", "--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/management-core.test.ts"]],
+    ["Student Management & AI tools (HTTP)", ["--test", "--test-reporter=spec", "--test-concurrency=1", "tests/security/management.test.mjs"]]
   ]) {
     const status = await runAsync(process.execPath, commandArgs, label);
     results.push({ label, status });

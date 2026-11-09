@@ -1,7 +1,20 @@
 import { providerEnv } from "@/server/ai/config";
 import { AiError } from "@/server/ai/errors";
 import { mapHttpStatus, providerFetch, readLines } from "@/server/ai/providers/http-stream";
-import type { AiProvider, ProviderEvent, ProviderRequest } from "@/server/ai/types";
+import type { AiProvider, ProviderEvent, ProviderMessage, ProviderRequest, ToolCall } from "@/server/ai/types";
+
+/** Provider-neutral transcript → Ollama /api/chat messages (tool results are role "tool"). */
+function toOllamaMessages(messages: ProviderMessage[]) {
+  return messages.flatMap((message): Array<Record<string, unknown>> => {
+    if (message.role === "tool") {
+      return message.results.map((result) => ({ role: "tool", content: result.content, tool_name: result.name }));
+    }
+    if (message.role === "assistant" && "toolCalls" in message) {
+      return [{ role: "assistant", content: message.content, tool_calls: message.toolCalls.map((call) => ({ function: { name: call.name, arguments: call.input } })) }];
+    }
+    return [{ role: message.role, content: message.content }];
+  });
+}
 
 /** Ollama adapter for local development (streaming NDJSON from /api/chat). No key; no cost. */
 export function createOllamaProvider(model: string): AiProvider {
@@ -19,7 +32,10 @@ export function createOllamaProvider(model: string): AiProvider {
             model,
             stream: true,
             options: { temperature: 0.3, num_predict: request.maxOutputTokens },
-            messages: [{ role: "system", content: request.system }, ...request.messages]
+            messages: [{ role: "system", content: request.system }, ...toOllamaMessages(request.messages)],
+            ...(request.tools?.length
+              ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })) }
+              : {})
           }),
           signal: request.signal
         },
@@ -27,9 +43,10 @@ export function createOllamaProvider(model: string): AiProvider {
       );
       if (!response.ok || !response.body) throw mapHttpStatus(response.status, "ollama");
 
+      const toolCalls: ToolCall[] = [];
       for await (const line of readLines(response.body, request.signal)) {
         let chunk: {
-          message?: { content?: string };
+          message?: { content?: string; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: unknown } }> };
           done?: boolean;
           done_reason?: string;
           prompt_eval_count?: number;
@@ -43,12 +60,22 @@ export function createOllamaProvider(model: string): AiProvider {
         }
         if (chunk.error) throw new AiError("ai-provider-unavailable", "ollama reported an error");
         if (chunk.message?.content) yield { type: "text", text: chunk.message.content };
+        for (const call of chunk.message?.tool_calls ?? []) {
+          if (!call.function?.name) continue;
+          const args = typeof call.function.arguments === "string" ? safeParse(call.function.arguments) : call.function.arguments;
+          toolCalls.push({
+            id: call.id ?? `call_${toolCalls.length + 1}`,
+            name: call.function.name,
+            input: args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
+          });
+        }
         if (chunk.done) {
           const reported = chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined;
           yield {
             type: "done",
             model,
-            stopReason: chunk.done_reason ?? "stop",
+            stopReason: toolCalls.length ? "tool_use" : (chunk.done_reason ?? "stop"),
+            ...(toolCalls.length ? { toolCalls } : {}),
             usage: {
               inputTokens: chunk.prompt_eval_count ?? null,
               outputTokens: chunk.eval_count ?? null,
@@ -62,4 +89,12 @@ export function createOllamaProvider(model: string): AiProvider {
       throw new AiError("ai-stream-interrupted", "ollama stream ended early");
     }
   };
+}
+
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

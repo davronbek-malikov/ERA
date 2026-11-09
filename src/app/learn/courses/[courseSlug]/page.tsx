@@ -38,7 +38,9 @@ const copy = {
     completed: "Completed",
     notEnrolledTitle: (course: string) => `You're not enrolled in ${course}`,
     notEnrolledBody: "Enroll on the course page to open its lessons and ERA Tutor.",
-    goToCourse: "Go to the course page"
+    goToCourse: "Go to the course page",
+    blockedTitle: (course: string) => `Access to ${course} is paused`,
+    myCourses: "See my enrollments"
   },
   uz: {
     enrolled: "Yozilgansiz",
@@ -54,7 +56,9 @@ const copy = {
     completed: "Tugatilgan",
     notEnrolledTitle: (course: string) => `Siz ${course} kursiga yozilmagansiz`,
     notEnrolledBody: "Darslar va ERA Tutorni ochish uchun kurs sahifasida yoziling.",
-    goToCourse: "Kurs sahifasiga o'tish"
+    goToCourse: "Kurs sahifasiga o'tish",
+    blockedTitle: (course: string) => `${course} kursiga kirish to'xtatilgan`,
+    myCourses: "Yozilishlarimni ko'rish"
   }
 };
 
@@ -69,6 +73,24 @@ export default async function LearnCoursePage({ params }: PageProps) {
   }
 
   const workspace = user.role === "STUDENT" ? "student" : user.role === "ADMIN" ? "admin" : "teacher";
+
+  if (access.status === "access-blocked") {
+    return (
+      <WorkspaceShell workspace={workspace}>
+        <WorkspacePage width="narrow">
+          <AccessDenied
+            title={t.blockedTitle(access.courseTitle)}
+            description={access.message}
+            action={
+              <Link href="/learn/courses" className={cn(buttonVariants({ variant: "outline" }))}>
+                {t.myCourses}
+              </Link>
+            }
+          />
+        </WorkspacePage>
+      </WorkspaceShell>
+    );
+  }
 
   if (access.status === "not-enrolled" || !course) {
     return (

@@ -40,6 +40,24 @@ export default async function ClassroomPage({ params }: PageProps) {
     notFound();
   }
 
+  if (access.status === "access-blocked") {
+    return (
+      <WorkspaceShell workspace="student">
+        <WorkspacePage width="narrow">
+          <AccessDenied
+            title={locale === "uz" ? `${access.courseTitle} kursiga kirish to'xtatilgan` : `Access to ${access.courseTitle} is paused`}
+            description={access.message}
+            action={
+              <Link href="/learn/courses" className={cn(buttonVariants({ variant: "outline" }))}>
+                {locale === "uz" ? "Yozilishlarimni ko'rish" : "See my enrollments"}
+              </Link>
+            }
+          />
+        </WorkspacePage>
+      </WorkspaceShell>
+    );
+  }
+
   if (access.status === "not-enrolled" || !classroom) {
     const t = copy[locale];
     return (

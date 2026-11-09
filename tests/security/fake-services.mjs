@@ -103,7 +103,27 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
     const body = safeJson(await readBody(req)) ?? {};
     const messages = Array.isArray(body.messages) ? body.messages : [];
     const userMessages = messages.filter((message) => message.role === "user");
-    const last = String(userMessages.at(-1)?.content ?? "");
+    // The last user message with TEXT (Anthropic sends tool results as user turns of tool_result blocks).
+    const textOf = (message) =>
+      typeof message?.content === "string"
+        ? message.content
+        : Array.isArray(message?.content)
+          ? message.content.filter((block) => block?.type === "text").map((block) => block.text).join("")
+          : "";
+    const lastTextIndex = messages.map((message) => message.role === "user" && textOf(message) !== "").lastIndexOf(true);
+    const last = lastTextIndex >= 0 ? textOf(messages[lastTextIndex]) : String(userMessages.at(-1)?.content ?? "");
+    // Scripted tool use (Student Management tests): lines "TOOLCALL <name> <json>" in the user's message make the
+    // fake model call those tools; once their results are in the transcript it answers with the results.
+    const toolResults = messages.slice(lastTextIndex + 1).flatMap((message) => {
+      if (message.role === "tool") return [String(message.content ?? "")];
+      if (message.role === "user" && Array.isArray(message.content)) {
+        return message.content.filter((block) => block?.type === "tool_result").map((block) => (typeof block.content === "string" ? block.content : JSON.stringify(block.content)));
+      }
+      return [];
+    });
+    const offeredTools = Array.isArray(body.tools) ? body.tools.map((tool) => tool.name ?? tool.function?.name) : [];
+    const directives = [...last.matchAll(/^TOOLCALL (\w+) (\{.*\})\s*$/gm)].map((match, index) => ({ id: `toolu_fake_${index + 1}`, name: match[1], input: safeJson(match[2]) }));
+    const wantsTools = directives.length > 0 && toolResults.length === 0;
     const system =
       typeof body.system === "string" ? body.system : String(messages.find((message) => message.role === "system")?.content ?? "");
     // Fake embedding endpoints (Prompt 09): Voyage/OpenAI-style /v1/embeddings and Ollama /api/embed.
@@ -122,7 +142,11 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
     const kind = url.pathname === "/api/chat" ? "ollama" : url.pathname === "/v1/messages" ? "anthropic" : url.pathname === "/v1/chat/completions" ? "openai" : "unknown";
     log.push({ method: req.method, path: `${kind === "ollama" ? "ollama" : kind}:${url.pathname}`, question: last, system, messages, model: body.model, auth: req.headers.authorization ?? req.headers["x-api-key"] ?? null, body });
 
-    const answer = `Fake tutor answer to: ${last.slice(0, 80)}`;
+    const answer = toolResults.length
+      ? `Tool results: ${toolResults.join(" | ").slice(0, 6000)}`
+      : directives.length && !offeredTools.length
+        ? "No tools were offered to me."
+        : `Fake tutor answer to: ${last.slice(0, 80)}`;
     const pieces = [answer.slice(0, 12), answer.slice(12)];
 
     if (kind === "anthropic" && (req.headers["x-api-key"] === "bad-key" || req.headers.authorization === "Bearer bad-key")) {
@@ -139,6 +163,29 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
     let closed = false;
     req.on("close", () => (closed = true));
     res.on("close", () => (closed = true));
+
+    if (kind === "ollama" && wantsTools) {
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.write(JSON.stringify({ model: body.model, message: { role: "assistant", content: "", tool_calls: directives.map((call) => ({ function: { name: call.name, arguments: call.input } })) }, done: false }) + "\n");
+      res.end(JSON.stringify({ model: body.model, message: { role: "assistant", content: "" }, done: true, done_reason: "stop", prompt_eval_count: 40, eval_count: 5 }) + "\n");
+      return;
+    }
+
+    if (kind === "anthropic" && wantsTools) {
+      const event = (name, data) => res.write(`event: ${name}\ndata: ${JSON.stringify({ type: name, ...data })}\n\n`);
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      event("message_start", {
+        message: { id: "msg_fake_tools", type: "message", role: "assistant", content: [], model: body.model, stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } }
+      });
+      directives.forEach((call, index) => {
+        event("content_block_start", { index, content_block: { type: "tool_use", id: call.id, name: call.name, input: {} } });
+        event("content_block_delta", { index, delta: { type: "input_json_delta", partial_json: JSON.stringify(call.input) } });
+        event("content_block_stop", { index });
+      });
+      event("message_delta", { delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 12 } });
+      event("message_stop", {});
+      return res.end();
+    }
 
     if (kind === "ollama") {
       res.writeHead(200, { "content-type": "application/x-ndjson" });

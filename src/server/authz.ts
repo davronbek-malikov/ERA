@@ -7,6 +7,12 @@ import { prisma } from "@/lib/prisma";
 import { RateLimitError } from "@/lib/rate-limit";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
 import { RequestError } from "@/lib/validation";
+import {
+  ENROLLMENT_ACCESS_SELECT,
+  evaluateEnrollmentAccess,
+  type AccessBlockReason,
+  type EnrollmentAccessFields
+} from "@/server/management/access";
 
 /**
  * ERA authorization core (Prompt 07, docs/ERA_AUTHORIZATION_MATRIX.md).
@@ -141,31 +147,41 @@ export type CourseAccessMode = "student" | "teacher-preview" | "admin-inspection
 export type CourseAccess =
   | { status: "ok"; mode: CourseAccessMode }
   | { status: "not-enrolled"; courseTitle: string }
+  /** Enrolled, but access is restricted, revoked, expired or paused for an overdue payment (Student Management). */
+  | { status: "access-blocked"; courseTitle: string; reason: AccessBlockReason; message: string }
   | { status: "not-found" };
 
 type CourseForAccess = { id: string; status: PublicationStatus; instructorId: string; title: string };
 
 /**
  * Who may open a course as a learner:
- *  - STUDENT: course published AND an enrollment exists (enrollment is created only by the enroll API);
+ *  - STUDENT: course published AND an enrollment exists AND that enrollment currently grants access
+ *    (src/server/management/access.ts: status, access status, expiry, overdue rule);
  *  - teacher who owns the course: preview (drafts included);
  *  - ADMIN: inspection.
- * Everyone else: not-found. Pass `enrolled` when the caller already loaded the enrollment (avoids a query).
+ * Everyone else: not-found. Pass `enrollment` (or null) when the caller already loaded it (avoids a query).
  */
-export async function resolveCourseAccess(user: AuthUser, course: CourseForAccess, enrolled?: boolean): Promise<CourseAccess> {
+export async function resolveCourseAccess(
+  user: AuthUser,
+  course: CourseForAccess,
+  enrollment?: EnrollmentAccessFields | null
+): Promise<CourseAccess> {
   if (user.role === UserRole.STUDENT) {
     if (course.status !== published) return { status: "not-found" };
-    const isEnrolled =
-      enrolled ??
-      Boolean(
-        await retryOnDatabaseFailure(() =>
-          prisma.enrollment.findUnique({
-            where: { userId_courseId: { userId: user.id, courseId: course.id } },
-            select: { id: true }
-          })
-        )
-      );
-    return isEnrolled ? { status: "ok", mode: "student" } : { status: "not-enrolled", courseTitle: course.title };
+    const found =
+      enrollment !== undefined
+        ? enrollment
+        : await retryOnDatabaseFailure(() =>
+            prisma.enrollment.findUnique({
+              where: { userId_courseId: { userId: user.id, courseId: course.id } },
+              select: ENROLLMENT_ACCESS_SELECT
+            })
+          );
+    if (!found) return { status: "not-enrolled", courseTitle: course.title };
+    const decision = await evaluateEnrollmentAccess(found);
+    return decision.allowed
+      ? { status: "ok", mode: "student" }
+      : { status: "access-blocked", courseTitle: course.title, reason: decision.reason, message: decision.message };
   }
 
   const instructorId = await getInstructorIdForUser(user);
@@ -176,6 +192,7 @@ export async function resolveCourseAccess(user: AuthUser, course: CourseForAcces
 
 function throwForAccess(access: CourseAccess): never {
   if (access.status === "not-enrolled") throw authErrors.notEnrolled();
+  if (access.status === "access-blocked") throw new AuthzError(403, "course-access-blocked", access.message);
   throw authErrors.notFound("Course not found.");
 }
 
@@ -189,28 +206,30 @@ export async function requireCourseAccess(user: AuthUser, courseId: string) {
         title: true,
         status: true,
         instructorId: true,
-        enrollments: { where: { userId: user.id }, select: { id: true }, take: 1 }
+        enrollments: { where: { userId: user.id }, select: ENROLLMENT_ACCESS_SELECT, take: 1 }
       }
     })
   );
   if (!course) throw authErrors.notFound("Course not found.");
 
-  const access = await resolveCourseAccess(user, course, course.enrollments.length > 0);
+  const access = await resolveCourseAccess(user, course, course.enrollments[0] ?? null);
   if (access.status !== "ok") throwForAccess(access);
   return { course, mode: access.mode };
 }
 
-/** A student enrolled in a published course. Returns the enrollment. Never creates one. */
+/** A student enrolled in a published course, with access right now. Returns the enrollment. Never creates one. */
 export async function requireStudentEnrollment(user: AuthUser, courseId: string) {
   assertRole(user, [UserRole.STUDENT], "Only student accounts can do this.");
   const enrollment = await retryOnDatabaseFailure(() =>
     prisma.enrollment.findFirst({
       where: { userId: user.id, courseId, course: { status: published } },
-      select: { id: true, courseId: true, currentLessonId: true }
+      select: { ...ENROLLMENT_ACCESS_SELECT, courseId: true, currentLessonId: true }
     })
   );
   if (!enrollment) throw authErrors.notEnrolled();
-  return enrollment;
+  const decision = await evaluateEnrollmentAccess(enrollment);
+  if (!decision.allowed) throw new AuthzError(403, "course-access-blocked", decision.message);
+  return { id: enrollment.id, courseId: enrollment.courseId, currentLessonId: enrollment.currentLessonId };
 }
 
 /**
@@ -241,7 +260,7 @@ export async function requireLessonAccess(
             title: true,
             status: true,
             instructorId: true,
-            enrollments: { where: { userId: user.id }, select: { id: true }, take: 1 }
+            enrollments: { where: { userId: user.id }, select: ENROLLMENT_ACCESS_SELECT, take: 1 }
           }
         }
       }
@@ -251,7 +270,7 @@ export async function requireLessonAccess(
   if (!lesson) throw authErrors.notFound("Lesson not found.");
   if (options.courseId && lesson.courseId !== options.courseId) throw authErrors.notFound("Lesson not found.");
 
-  const access = await resolveCourseAccess(user, lesson.course, lesson.course.enrollments.length > 0);
+  const access = await resolveCourseAccess(user, lesson.course, lesson.course.enrollments[0] ?? null);
   if (access.status !== "ok") throwForAccess(access);
   if (access.mode === "student" && lesson.status !== published) throw authErrors.notFound("Lesson not found.");
 

@@ -259,7 +259,8 @@ export async function completeOnboarding(input: {
           update: {},
           create: {
             userId: input.userId,
-            courseId: recommendedCourse.id
+            courseId: recommendedCourse.id,
+            instructorId: recommendedCourse.instructorId
           }
         });
       }
