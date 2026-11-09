@@ -4,7 +4,8 @@ import {
   parseStorageObjectUrl,
   storagePathFolder,
   STORAGE_FOLDERS,
-  bucketForFolder
+  bucketForFolder,
+  supabaseServiceHeaders
 } from "@/lib/storage";
 
 /*
@@ -27,11 +28,7 @@ function encodePath(path: string) {
 }
 
 function authHeaders(serviceRoleKey: string) {
-  return {
-    Authorization: `Bearer ${serviceRoleKey}`,
-    apikey: serviceRoleKey,
-    "Content-Type": "application/json"
-  };
+  return { ...supabaseServiceHeaders(serviceRoleKey), "Content-Type": "application/json" };
 }
 
 /** One-time upload URL. Never overwrites an existing object (`x-upsert: false`). */
