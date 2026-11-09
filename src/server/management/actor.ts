@@ -1,4 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
+import { cache } from "react";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
@@ -60,7 +61,8 @@ export function normalizePermissions(input: TeacherPermissions): TeacherPermissi
   return { ...input, viewPayments };
 }
 
-export async function getTeacherPermissions(instructorId: string): Promise<TeacherPermissions> {
+/** Cached per request (React `cache()`): the navigation and the page share one lookup. */
+export const getTeacherPermissions = cache(async function getTeacherPermissions(instructorId: string): Promise<TeacherPermissions> {
   const row = await retryOnDatabaseFailure(() => prisma.instructorPermission.findUnique({ where: { instructorId } }));
   if (!row) return { ...NO_PERMISSIONS };
   return normalizePermissions({
@@ -70,7 +72,7 @@ export async function getTeacherPermissions(instructorId: string): Promise<Teach
     manageEnrollments: row.canManageEnrollments,
     manageAccess: row.canManageAccess
   });
-}
+});
 
 /**
  * The actor for a signed-in user, or null when the user can't manage students.
