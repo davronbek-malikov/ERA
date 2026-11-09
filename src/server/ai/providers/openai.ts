@@ -26,19 +26,25 @@ function toOpenAiMessages(messages: ProviderMessage[]) {
  * OpenAI Chat Completions adapter (streaming SSE). Kept from the original provider layer; the key is read
  * from OPENAI_API_KEY (or the legacy ERA_API_KEY). OPENAI_BASE_URL allows compatible gateways and tests.
  */
-export function createOpenAiProvider(model: string): AiProvider {
+/**
+ * `flavor: "groq"` uses the same Chat Completions protocol against Groq (https://api.groq.com/openai/v1) with
+ * GROQ_API_KEY (GROQ_BASE_URL overrides the address).
+ */
+export function createOpenAiProvider(model: string, flavor: "openai" | "groq" = "openai"): AiProvider {
   return {
-    name: "openai",
+    name: flavor,
     model,
     async *stream(request: ProviderRequest): AsyncGenerator<ProviderEvent> {
-      const { openaiApiKey, openaiBaseUrl } = providerEnv();
-      if (!openaiApiKey) throw new AiError("ai-not-configured", "OPENAI_API_KEY is not set");
+      const env = providerEnv();
+      const apiKey = flavor === "groq" ? env.groqApiKey : env.openaiApiKey;
+      const baseUrl = flavor === "groq" ? env.groqBaseUrl : env.openaiBaseUrl;
+      if (!apiKey) throw new AiError("ai-not-configured", flavor === "groq" ? "GROQ_API_KEY is not set" : "OPENAI_API_KEY is not set");
 
       const response = await providerFetch(
-        `${openaiBaseUrl}/chat/completions`,
+        `${baseUrl}/chat/completions`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiApiKey}` },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
             model,
             stream: true,
@@ -51,9 +57,9 @@ export function createOpenAiProvider(model: string): AiProvider {
           }),
           signal: request.signal
         },
-        "openai"
+        flavor
       );
-      if (!response.ok || !response.body) throw mapHttpStatus(response.status, "openai");
+      if (!response.ok || !response.body) throw mapHttpStatus(response.status, flavor);
 
       let inputTokens: number | null = null;
       let outputTokens: number | null = null;

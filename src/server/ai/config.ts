@@ -18,7 +18,9 @@ function intEnv(name: string, fallback: number, min: number, max: number) {
 
 /** Default model per provider. Only Claude has a safe built-in default; others must be named explicitly. */
 const DEFAULT_MODELS: Partial<Record<ProviderName, string>> = {
-  anthropic: "claude-opus-5-5"
+  anthropic: "claude-opus-5-5",
+  // Groq (OpenAI-compatible API): an open-weight model with tool calling. Override with ERA_MODEL_NAME.
+  groq: "openai/gpt-oss-120b"
 };
 
 export type ProviderConfig =
@@ -30,7 +32,7 @@ export function getProviderConfig(): ProviderConfig {
   const raw = env("ERA_LLM_PROVIDER")?.toLowerCase();
   if (!raw) return { ok: false, reason: "ERA_LLM_PROVIDER is not set" };
   const provider = raw === "claude" ? "anthropic" : raw;
-  if (provider !== "anthropic" && provider !== "openai" && provider !== "ollama") {
+  if (provider !== "anthropic" && provider !== "openai" && provider !== "groq" && provider !== "ollama") {
     return { ok: false, reason: `ERA_LLM_PROVIDER "${raw}" is not supported` };
   }
   const model = env("ERA_MODEL_NAME") ?? DEFAULT_MODELS[provider];
@@ -94,6 +96,8 @@ export function providerEnv() {
   return {
     openaiApiKey: env("OPENAI_API_KEY") ?? env("ERA_API_KEY"),
     openaiBaseUrl: (env("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/+$/, ""),
+    groqApiKey: env("GROQ_API_KEY"),
+    groqBaseUrl: (env("GROQ_BASE_URL") ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
     ollamaBaseUrl: (env("OLLAMA_BASE_URL") ?? "http://127.0.0.1:11434").replace(/\/+$/, "")
   };
 }

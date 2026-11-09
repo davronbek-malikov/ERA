@@ -7,7 +7,7 @@ import type { KnowledgeSource } from "@/server/ai/knowledge";
  * Everything in src/server/ai is server-only: provider keys, prompts and context never reach the browser.
  */
 
-export type ProviderName = "anthropic" | "openai" | "ollama";
+export type ProviderName = "anthropic" | "openai" | "groq" | "ollama";
 
 export type AgentKind = "student" | "teacher" | "admin";
 
