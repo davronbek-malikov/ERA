@@ -1,4 +1,5 @@
 import { Prisma, PublicationStatus, UserRole } from "@prisma/client";
+import { cache } from "react";
 
 import { createApiErrorResponse } from "@/lib/app-errors";
 import { getCurrentUser } from "@/lib/auth";
@@ -85,6 +86,12 @@ export async function requireStudentUser() {
  * INSTRUCTOR → their own profile (or null); ADMIN → only a profile explicitly linked to their account.
  */
 export async function getInstructorIdForUser(user: Pick<AuthUser, "id" | "email" | "role">): Promise<string | null> {
+  return instructorIdFor(user.id, user.role, user.email ?? "");
+}
+
+/** Cached per request (React `cache()`), keyed by primitive values: layouts, pages and nav share one lookup. */
+const instructorIdFor = cache(async function instructorIdFor(id: string, role: UserRole, email: string): Promise<string | null> {
+  const user = { id, role, email };
   if (user.role === UserRole.INSTRUCTOR) {
     const instructor = await getInstructorRecordForUser(user);
     return instructor?.id ?? null;
@@ -96,7 +103,7 @@ export async function getInstructorIdForUser(user: Pick<AuthUser, "id" | "email"
     return linked?.id ?? null;
   }
   return null;
-}
+});
 
 export type StudioScope = { kind: "admin" } | { kind: "instructor"; instructorId: string } | { kind: "none" };
 

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
@@ -164,7 +165,12 @@ export async function getSessionUser() {
   };
 }
 
-export async function getCurrentUser() {
+/**
+ * The signed-in user, re-read from the database (so suspensions apply at once). Wrapped in React `cache()`:
+ * a page, its layouts and the navigation all ask for the user, but the database is queried once per request.
+ * Outside a React render (route handlers, server actions) `cache` doesn't dedupe and simply calls through.
+ */
+export const getCurrentUser = cache(async function getCurrentUser() {
   const session = await getSession();
   if (!session) {
     return null;
@@ -197,4 +203,4 @@ export async function getCurrentUser() {
   }
 
   return user;
-}
+});
