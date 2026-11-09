@@ -1452,3 +1452,12 @@ Planned features and what they're waiting for. "Backend fix" items are Phase 1 w
 | S-STORAGE | Private buckets and signed read links | Protected materials, personal documents | T15, S5, S9, 6C |
 
 **Ready to build now (no blocker):** shells and navigation (section 4); the module, lesson-content, quiz and practice editors (T6, T7); the pre-publish checklist (T14); course-scoped progress UI over existing data (T11, after D3); optional onboarding (S1).
+
+
+## Navigation update: Students (Student Management & Payments)
+
+- **Admin → Students:** Student management (`/admin/students`), Payments, Exams & schedule, Teacher permissions.
+- **Teacher → Students:** My students (`/teacher/my-students`), Payments (only with permission), Exams & schedule. The earlier teacher "Students" page is now called **Progress**.
+- **Student → My courses:** a new "Enrollments & payments" section.
+
+See `docs/ERA_STUDENT_MANAGEMENT.md`.

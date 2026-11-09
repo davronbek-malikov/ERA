@@ -5,6 +5,7 @@ import { BookOpen } from "lucide-react";
 import { WorkspacePage } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
+import { MyEnrollmentsSection } from "@/components/management/my-enrollments";
 import { EmptyState } from "@/components/shared/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/feedback";
@@ -91,6 +92,7 @@ export default async function LearnCoursesPage() {
             ))}
           </ul>
         )}
+        <MyEnrollmentsSection userId={user.id} />
       </WorkspacePage>
     </WorkspaceShell>
   );

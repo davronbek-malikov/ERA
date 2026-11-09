@@ -4,8 +4,9 @@ import type { KnowledgeSource } from "@/server/ai/knowledge";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { ACTION_VIEW_SELECT, linkActionsToMessage, toActionView } from "@/server/ai/actions";
 import { conversationTitle } from "@/server/ai/prompts";
-import type { EngineMessage, ExecutionContext } from "@/server/ai/types";
+import type { ActionView, EngineMessage, ExecutionContext } from "@/server/ai/types";
 import { authErrors } from "@/server/authz";
 
 /*
@@ -17,11 +18,29 @@ import { authErrors } from "@/server/authz";
  * completed, so a failed or cancelled stream never leaves a half-saved exchange.
  */
 
-export type StoredMessage = { id: string; role: "USER" | "ASSISTANT"; content: string; createdAt: string; sources?: KnowledgeSource[] };
+export type StoredMessage = {
+  id: string;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  createdAt: string;
+  sources?: KnowledgeSource[];
+  /** Proposed management changes attached to an assistant answer (Student Management). */
+  actions?: ActionView[];
+};
 
-function toStored(message: { id: string; role: "USER" | "ASSISTANT"; content: string; createdAt: Date; sources?: Prisma.JsonValue | null }): StoredMessage {
+function toStored(
+  message: { id: string; role: "USER" | "ASSISTANT"; content: string; createdAt: Date; sources?: Prisma.JsonValue | null },
+  actions?: ActionView[]
+): StoredMessage {
   const sources = Array.isArray(message.sources) ? (message.sources as unknown as KnowledgeSource[]) : undefined;
-  return { id: message.id, role: message.role, content: message.content, createdAt: message.createdAt.toISOString(), ...(sources?.length ? { sources } : {}) };
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt.toISOString(),
+    ...(sources?.length ? { sources } : {}),
+    ...(actions?.length ? { actions } : {})
+  };
 }
 
 function toEngine(messages: Array<{ role: "USER" | "ASSISTANT"; content: string }>): EngineMessage[] {
@@ -38,7 +57,7 @@ export async function getLessonThread(userId: string, lessonId: string, limit: n
       select: { id: true, role: true, content: true, createdAt: true, sources: true }
     })
   );
-  return rows.reverse().map(toStored);
+  return rows.reverse().map((row) => toStored(row));
 }
 
 export async function getLessonHistoryForModel(userId: string, lessonId: string, limit: number) {
@@ -76,10 +95,13 @@ export async function getConversationMessages(userId: string, conversationId: st
       where: { conversationId: conversation.id, userId },
       orderBy: { createdAt: "desc" },
       take: limit,
-      select: { id: true, role: true, content: true, createdAt: true, sources: true }
+      select: { id: true, role: true, content: true, createdAt: true, sources: true, actions: { orderBy: { createdAt: "asc" }, select: ACTION_VIEW_SELECT } }
     })
   );
-  return { conversation, messages: rows.reverse().map(toStored) };
+  return {
+    conversation,
+    messages: rows.reverse().map(({ actions, ...message }) => toStored(message, actions.map(toActionView)))
+  };
 }
 
 export async function getConversationHistoryForModel(userId: string, conversationId: string, agent: AiAgent, limit: number) {
@@ -88,7 +110,14 @@ export async function getConversationHistoryForModel(userId: string, conversatio
 }
 
 /** Persists one completed exchange. Creates the conversation on its first turn. */
-export async function saveCompletedTurn(context: ExecutionContext, agent: AiAgent, question: string, answer: string, sources?: KnowledgeSource[]) {
+export async function saveCompletedTurn(
+  context: ExecutionContext,
+  agent: AiAgent,
+  question: string,
+  answer: string,
+  sources?: KnowledgeSource[],
+  actionIds: string[] = []
+) {
   const sourceData = sources?.length ? { sources: sources as unknown as Prisma.InputJsonValue } : {};
   return retryOnDatabaseFailure(() =>
     prisma.$transaction(async (tx) => {
@@ -117,7 +146,8 @@ export async function saveCompletedTurn(context: ExecutionContext, agent: AiAgen
       const base = { userId, agent, conversationId, courseId: context.thread.courseId };
       const user = await tx.chatMessage.create({ data: { ...base, role: "USER", content: question } });
       const assistant = await tx.chatMessage.create({ data: { ...base, role: "ASSISTANT", content: answer, ...sourceData } });
-      return { conversationId, messages: [toStored(user), toStored(assistant)] };
+      const actions = await linkActionsToMessage(tx, userId, actionIds, assistant.id, conversationId);
+      return { conversationId, messages: [toStored(user), toStored(assistant, actions)] };
     })
   );
 }

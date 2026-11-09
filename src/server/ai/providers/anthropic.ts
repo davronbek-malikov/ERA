@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { anthropicOptions } from "@/server/ai/config";
 import { AiError } from "@/server/ai/errors";
-import type { AiProvider, ProviderEvent, ProviderRequest } from "@/server/ai/types";
+import type { AiProvider, ProviderEvent, ProviderMessage, ProviderRequest, ToolCall } from "@/server/ai/types";
 
 /*
  * Anthropic Claude adapter (official SDK). Credentials are resolved by the SDK from the server environment
@@ -53,6 +53,30 @@ function mapError(error: unknown): AiError {
   return new AiError("ai-provider-unavailable", error instanceof Error ? error.message : "unknown");
 }
 
+type AnthropicMessage = Anthropic.Beta.Messages.BetaMessageParam;
+
+/** Provider-neutral transcript → Messages API turns. Tool results go back as a user turn of tool_result blocks. */
+function toAnthropicMessages(messages: ProviderMessage[]): AnthropicMessage[] {
+  return messages.map((message): AnthropicMessage => {
+    if (message.role === "tool") {
+      return {
+        role: "user",
+        content: message.results.map((result) => ({
+          type: "tool_result" as const,
+          tool_use_id: result.toolCallId,
+          content: result.content,
+          ...(result.isError ? { is_error: true } : {})
+        }))
+      };
+    }
+    if (message.role === "assistant" && "raw" in message && Array.isArray(message.raw)) {
+      // The exact content blocks Claude produced (text, thinking, tool_use) are sent back unchanged.
+      return { role: "assistant", content: message.raw as Anthropic.Beta.Messages.BetaContentBlockParam[] };
+    }
+    return { role: message.role, content: message.content };
+  });
+}
+
 export function createAnthropicProvider(model: string): AiProvider {
   return {
     name: "anthropic",
@@ -68,7 +92,18 @@ export function createAnthropicProvider(model: string): AiProvider {
             model,
             max_tokens: request.maxOutputTokens,
             system: request.system,
-            messages: request.messages,
+            messages: toAnthropicMessages(request.messages),
+            ...(request.tools?.length
+              ? {
+                  tools: request.tools.map((tool) => ({
+                    name: tool.name,
+                    description: tool.description,
+                    input_schema: tool.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
+                    // Inputs are small, but stream them as generated; the server validates every input itself.
+                    eager_input_streaming: true
+                  }))
+                }
+              : {}),
             ...(effort ? { output_config: { effort } } : {}),
             ...(fallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {})
           },
@@ -91,10 +126,17 @@ export function createAnthropicProvider(model: string): AiProvider {
 
         // Authoritative text: the text blocks after the last fallback switch point.
         const lastFallback = final.content.map((block) => block.type).lastIndexOf("fallback");
-        const finalText = final.content
-          .slice(lastFallback + 1)
-          .flatMap((block) => (block.type === "text" ? [block.text] : []))
-          .join("");
+        const answerBlocks = final.content.slice(lastFallback + 1);
+        const finalText = answerBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+        // Tool calls are only acted on after a normal tool_use stop (never after max_tokens or a refusal).
+        const toolCalls: ToolCall[] =
+          final.stop_reason === "tool_use"
+            ? answerBlocks.flatMap((block) =>
+                block.type === "tool_use"
+                  ? [{ id: block.id, name: block.name, input: (block.input && typeof block.input === "object" ? block.input : {}) as Record<string, unknown> }]
+                  : []
+              )
+            : [];
 
         const usage = final.usage;
         yield {
@@ -102,6 +144,7 @@ export function createAnthropicProvider(model: string): AiProvider {
           model: final.model,
           stopReason: final.stop_reason ?? null,
           finalText,
+          ...(toolCalls.length ? { toolCalls, raw: answerBlocks } : {}),
           usage: {
             inputTokens: usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
             outputTokens: usage.output_tokens,

@@ -9,6 +9,7 @@ import { composeSelectionMessage, parseSelection, resolveSelectionSource, stored
 import { getConversationHistoryForModel, requireOwnedConversation } from "@/server/ai/conversations";
 import { buildKnowledgeContext } from "@/server/ai/knowledge";
 import { prepareAgentRun, runAgent } from "@/server/ai/engine";
+import { buildManagementToolset } from "@/server/ai/management-tools";
 import { sseResponse } from "@/server/ai/sse";
 import { AGENT_ENUM } from "@/server/ai/types";
 import { assertSameOrigin, toApiErrorResponse } from "@/server/authz";
@@ -68,7 +69,9 @@ export async function POST(request: NextRequest) {
         courseId: agent === "teacher" ? courseId : null,
         title: (storedMessage ?? message).replace(/\s+/g, " ")
       },
-      locale
+      locale,
+      // Student Management tools (read now, propose changes for confirmation). Not for Ask ERA AI selections.
+      tools: selection ? undefined : await buildManagementToolset(user, agent, conversation?.id ?? null)
     });
 
     // Knowledge Base (Prompt 09): authorized passages (teacher: own courses/private/platform; admin: platform and

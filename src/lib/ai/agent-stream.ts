@@ -1,3 +1,4 @@
+import type { ActionCardView } from "@/components/assistant/action-card";
 import type { SourceView } from "@/components/assistant/source-list";
 
 /*
@@ -13,6 +14,8 @@ export type AgentStreamMessage = {
   createdAt: string;
   /** Knowledge Base sources of an assistant answer (Prompt 09). */
   sources?: SourceView[];
+  /** Changes the assistant proposed in this answer, each confirmed separately (Student Management). */
+  actions?: ActionCardView[];
 };
 
 export type AgentStreamError =
@@ -37,6 +40,10 @@ export type AgentStreamHandlers = {
   onDelta?: (text: string) => void;
   /** The server discarded the partial answer (a fallback model took over); clear it. */
   onReset?: () => void;
+  /** The assistant is using a tool (e.g. "Looking up students"). */
+  onTool?: (label: string) => void;
+  /** The assistant proposed a change; show it for confirmation. */
+  onAction?: (action: ActionCardView) => void;
 };
 
 export type AgentStreamResult = { conversationId: string | null; messages: AgentStreamMessage[] };
@@ -110,6 +117,8 @@ export async function streamAgent(url: string, body: Record<string, unknown>, si
         if (event.type === "start") handlers.onStart?.({ conversationId: (event.conversationId as string | null) ?? null });
         else if (event.type === "delta") handlers.onDelta?.(String(event.text ?? ""));
         else if (event.type === "reset") handlers.onReset?.();
+        else if (event.type === "tool") handlers.onTool?.(String(event.label ?? ""));
+        else if (event.type === "action" && event.action) handlers.onAction?.(event.action as ActionCardView);
         else if (event.type === "done") {
           return { conversationId: (event.conversationId as string | null) ?? null, messages: (event.messages as AgentStreamMessage[]) ?? [] };
         } else if (event.type === "error") {

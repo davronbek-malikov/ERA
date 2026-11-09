@@ -96,7 +96,8 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
           status: "PUBLISHED"
         },
         select: {
-          id: true
+          id: true,
+          instructorId: true
         }
       })
     );
@@ -105,6 +106,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       return createApiErrorResponse(404, "course-not-found", "Course not found.");
     }
 
+    // An existing enrollment is left untouched (update: {}): re-enrolling never restores restricted access.
     await retryOnDatabaseFailure(() =>
       prisma.enrollment.upsert({
         where: {
@@ -117,6 +119,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
         create: {
           userId: currentUser.id,
           courseId: course.id,
+          instructorId: course.instructorId,
           progress: 0
         }
       })

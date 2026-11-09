@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, BookOpenCheck, ClipboardCheck, Compass, FileStack, FolderTree, GraduationCap, Home, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, Users } from "lucide-react";
+import { BarChart3, BookOpen, BookOpenCheck, CalendarDays, ClipboardCheck, Compass, FileStack, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
 
 import { signOutAction } from "@/app/(public)/sign-in/actions";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -7,6 +7,7 @@ import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { getCurrentUser } from "@/lib/auth";
 import { getMessages, type Locale } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { can, getManagementActor } from "@/server/management/actor";
 import type { WorkspaceKind } from "@/server/workspace";
 
 /*
@@ -23,7 +24,13 @@ const copy = {
     browse: "Browse courses",
     lessons: "Lessons",
     assignments: "Assignments",
-    students: "Students",
+    students: "Progress",
+    myStudents: "My students",
+    payments: "Payments",
+    schedule: "Exams & schedule",
+    studentManagement: "Student management",
+    studentsGroup: "Students",
+    teacherPermissions: "Teacher permissions",
     assistant: "ERA Assistant",
     contentTools: "Content tools",
     courseEditor: "Course editor",
@@ -57,7 +64,13 @@ const copy = {
     browse: "Kurslarni ko'rish",
     lessons: "Darslar",
     assignments: "Topshiriqlar",
-    students: "O'quvchilar",
+    students: "Natijalar",
+    myStudents: "O'quvchilarim",
+    payments: "To'lovlar",
+    schedule: "Imtihonlar va jadval",
+    studentManagement: "O'quvchilarni boshqarish",
+    studentsGroup: "O'quvchilar",
+    teacherPermissions: "O'qituvchi ruxsatlari",
     assistant: "ERA Assistant",
     contentTools: "Kontent vositalari",
     courseEditor: "Kurs muharriri",
@@ -85,7 +98,7 @@ const copy = {
   }
 };
 
-function buildNav(workspace: WorkspaceKind, locale: Locale): { nav: NavGroup[]; tabs?: NavItem[]; home: string } {
+function buildNav(workspace: WorkspaceKind, locale: Locale, options: { teacherPayments?: boolean } = {}): { nav: NavGroup[]; tabs?: NavItem[]; home: string } {
   const t = copy[locale];
 
   if (workspace === "student") {
@@ -104,13 +117,20 @@ function buildNav(workspace: WorkspaceKind, locale: Locale): { nav: NavGroup[]; 
       { href: "/teacher/lessons", label: t.lessons, icon: <BookOpenCheck /> },
       { href: "/teacher/knowledge", label: t.knowledge, icon: <Library /> },
       { href: "/teacher/assignments", label: t.assignments, icon: <ClipboardCheck /> },
-      { href: "/teacher/students", label: t.students, icon: <Users /> },
+      { href: "/teacher/students", label: t.students, icon: <LineChart /> },
       { href: "/teacher/assistant", label: t.assistant, icon: <Sparkles /> }
+    ];
+    // Student Management (docs/ERA_STUDENT_MANAGEMENT.md). Payments only with the "see payments" permission.
+    const studentItems: NavItem[] = [
+      { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> },
+      ...(options.teacherPayments ? [{ href: "/teacher/payments", label: t.payments, icon: <Wallet /> }] : []),
+      { href: "/teacher/schedule", label: t.schedule, icon: <CalendarDays /> }
     ];
     return {
       home: "/teacher",
       nav: [
         { items: main },
+        { label: t.studentsGroup, items: studentItems },
         {
           label: t.contentTools,
           items: [
@@ -121,7 +141,7 @@ function buildNav(workspace: WorkspaceKind, locale: Locale): { nav: NavGroup[]; 
         },
         { label: t.account, items: [{ href: "/admin/settings", label: t.settings, icon: <Settings /> }] }
       ],
-      tabs: [main[0], main[1], main[2], main[4], main[5]]
+      tabs: [main[0], main[1], studentItems[0], main[2], main[6]]
     };
   }
 
@@ -129,6 +149,15 @@ function buildNav(workspace: WorkspaceKind, locale: Locale): { nav: NavGroup[]; 
     home: "/admin",
     nav: [
       { items: [{ href: "/admin", label: t.overview, icon: <LayoutDashboard />, matchNested: false }] },
+      {
+        label: t.studentsGroup,
+        items: [
+          { href: "/admin/students", label: t.studentManagement, icon: <UserRoundCog />, matchNested: false },
+          { href: "/admin/students/payments", label: t.payments, icon: <Wallet /> },
+          { href: "/admin/students/schedule", label: t.schedule, icon: <CalendarDays /> },
+          { href: "/admin/students/permissions", label: t.teacherPermissions, icon: <KeyRound /> }
+        ]
+      },
       {
         label: t.people,
         items: [
@@ -171,7 +200,8 @@ export async function WorkspaceShell({ workspace, children, assistant }: Workspa
   const [user, locale] = await Promise.all([getCurrentUser(), getLocale()]);
   const t = copy[locale];
   const messages = getMessages(locale);
-  const { nav, tabs, home } = buildNav(workspace, locale);
+  const managementActor = workspace === "teacher" ? await getManagementActor(user, "teacher") : null;
+  const { nav, tabs, home } = buildNav(workspace, locale, { teacherPayments: managementActor ? can(managementActor, "viewPayments") : false });
   const role = (user?.role ?? "STUDENT") as keyof typeof t.roles;
 
   // Only admins have a second workspace. Teacher data stays scoped to their own instructor profile.

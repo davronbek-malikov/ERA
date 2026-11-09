@@ -142,6 +142,20 @@ model User {
   badges              Badge[]
   practiceSubmissions PracticeSubmission[]
   courseReviews       CourseReview[]
+
+  // Student Management & Payments
+  enrollmentsCreated       Enrollment[]           @relation("EnrollmentCreatedBy")
+  accessGrants             Enrollment[]           @relation("EnrollmentAccessGrantedBy")
+  paymentsRecorded         PaymentTransaction[]   @relation("PaymentRecordedBy")
+  paymentsReviewed         PaymentTransaction[]   @relation("PaymentReviewedBy")
+  paymentsReversed         PaymentTransaction[]   @relation("PaymentReversedBy")
+  studentNotes             StudentNote[]          @relation("StudentNoteStudent")
+  studentNotesWritten      StudentNote[]          @relation("StudentNoteAuthor")
+  accessChanges            EnrollmentAccessLog[]
+  examsCreated             ExamSchedule[]
+  managementAuditLogs      ManagementAuditLog[]
+  aiPendingActions         AiPendingAction[]
+  instructorPermissionsSet InstructorPermission[]
 }
 
 model UserOnboarding {
@@ -200,6 +214,10 @@ model Instructor {
 
   user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   courses Course[]
+
+  assignedEnrollments Enrollment[]          @relation("EnrollmentInstructor")
+  exams               ExamSchedule[]
+  permissions         InstructorPermission?
 }
 
 model Subject {
@@ -265,6 +283,7 @@ model Course {
   lessons                  Lesson[]
   materials                CourseMaterial[]
   enrollments              Enrollment[]
+  exams                    ExamSchedule[]
   chatMessages             ChatMessage[]
   aiConversations          AiConversation[]
   knowledgeDocuments       KnowledgeDocument[]
@@ -487,12 +506,13 @@ model ChatMessage {
   content        String
   createdAt      DateTime        @default(now()) @map("created_at")
 
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course       Course?         @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson       Lesson?         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course       Course?           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson       Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  conversation AiConversation?   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   /// Knowledge Base sources the answer was grounded in (assistant messages only; Prompt 09).
   sources      Json?
+  actions      AiPendingAction[]
 
   @@index([userId, lessonId, createdAt])
   @@index([courseId, lessonId, createdAt])
@@ -510,9 +530,10 @@ model AiConversation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course   Course?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
   messages ChatMessage[]
+  actions  AiPendingAction[]
 
   @@index([userId, agent, updatedAt])
   @@map("ai_conversations")
@@ -588,14 +609,50 @@ model Enrollment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  currentLesson Lesson? @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  // Student Management & Payments (docs/ERA_STUDENT_MANAGEMENT.md). Dates are calendar dates in the
+  // platform timezone (ERA_TIMEZONE, default Asia/Seoul). Money is an integer amount of the currency's
+  // smallest unit (KRW won). Legacy self-enrollments keep price and arrangement null ("no fee recorded").
+  /// Assigned teacher (instructor profile). Defaults to the course's teacher.
+  instructorId        String?                @map("instructor_id")
+  status              EnrollmentStatus       @default(ACTIVE)
+  startDate           DateTime?              @map("start_date") @db.Date
+  endDate             DateTime?              @map("end_date") @db.Date
+  completedAt         DateTime?              @map("completed_at")
+  priceAmount         Int?                   @map("price_amount")
+  currency            String                 @default("KRW")
+  paymentArrangement  PaymentArrangement?    @map("payment_arrangement")
+  paymentDueDate      DateTime?              @map("payment_due_date") @db.Date
+  /// Course access, independent of the payment status (Pay Later keeps ACTIVE while UNPAID).
+  accessStatus        EnrollmentAccessStatus @default(ACTIVE) @map("access_status")
+  /// Last day of access (inclusive). Null = no expiry.
+  accessExpiresAt     DateTime?              @map("access_expires_at") @db.Date
+  /// When true, access stops automatically once the payment due date has passed with a balance left.
+  restrictWhenOverdue Boolean                @default(false) @map("restrict_when_overdue")
+  accessGrantedById   String?                @map("access_granted_by_id")
+  accessNote          String?                @map("access_note")
+  internalNote        String?                @map("internal_note")
+  createdById         String?                @map("created_by_id")
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course          Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentLesson   Lesson?               @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  instructor      Instructor?           @relation("EnrollmentInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
+  accessGrantedBy User?                 @relation("EnrollmentAccessGrantedBy", fields: [accessGrantedById], references: [id], onDelete: SetNull)
+  createdBy       User?                 @relation("EnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payments        PaymentTransaction[]
+  accessLogs      EnrollmentAccessLog[]
+  notes           StudentNote[]
+  examEntries     ExamParticipant[]
 
   @@unique([userId, courseId])
   @@index([userId])
   @@index([courseId])
   @@index([currentLessonId])
+  @@index([instructorId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([paymentDueDate])
 }
 
 model ActivityLog {
@@ -776,4 +833,249 @@ model KnowledgeChunk {
   @@unique([documentId, chunkIndex])
   @@index([embeddingModel])
   @@map("knowledge_chunks")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Student Management & Payments (docs/ERA_STUDENT_MANAGEMENT.md)
+// ---------------------------------------------------------------------------------------------
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  TRANSFERRED
+}
+
+enum EnrollmentAccessStatus {
+  ACTIVE
+  RESTRICTED
+  REVOKED
+}
+
+enum PaymentArrangement {
+  PAY_IN_FULL
+  PARTIAL
+  PAY_LATER
+  WAIVED
+}
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  ONLINE
+  OTHER
+}
+
+/// Manual verification: only APPROVED transactions count. REVERSED = approved earlier, then reversed.
+enum PaymentTransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVERSED
+}
+
+enum ManagementSource {
+  MANUAL
+  AI
+  SYSTEM
+}
+
+enum ExamStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum AiActionStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  CANCELLED
+  FAILED
+  EXPIRED
+}
+
+/// One payment or refund for one enrollment. Never deleted: corrections are reversals plus new records.
+model PaymentTransaction {
+  id              String                   @id @default(cuid())
+  enrollmentId    String                   @map("enrollment_id")
+  kind            PaymentKind              @default(PAYMENT)
+  amount          Int
+  currency        String                   @default("KRW")
+  method          PaymentMethod
+  transactionDate DateTime                 @map("transaction_date") @db.Date
+  status          PaymentTransactionStatus @default(PENDING)
+  reference       String?
+  description     String?
+  source          ManagementSource         @default(MANUAL)
+  recordedById    String?                  @map("recorded_by_id")
+  reviewedById    String?                  @map("reviewed_by_id")
+  reviewedAt      DateTime?                @map("reviewed_at")
+  rejectionReason String?                  @map("rejection_reason")
+  reversedById    String?                  @map("reversed_by_id")
+  reversedAt      DateTime?                @map("reversed_at")
+  reversalReason  String?                  @map("reversal_reason")
+  /// The transaction this one corrects (the original stays, reversed or rejected).
+  correctionOfId  String?                  @map("correction_of_id")
+  /// Same key = same request: retries never create a second transaction.
+  idempotencyKey  String?                  @unique @map("idempotency_key")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  enrollment   Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  reviewedBy   User?                @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reversedBy   User?                @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: SetNull)
+  correctionOf PaymentTransaction?  @relation("PaymentCorrection", fields: [correctionOfId], references: [id], onDelete: SetNull)
+  corrections  PaymentTransaction[] @relation("PaymentCorrection")
+
+  @@index([enrollmentId, status])
+  @@index([status, transactionDate])
+  @@index([transactionDate])
+  @@map("payment_transactions")
+}
+
+model EnrollmentAccessLog {
+  id                String                  @id @default(cuid())
+  enrollmentId      String                  @map("enrollment_id")
+  previousStatus    EnrollmentAccessStatus? @map("previous_status")
+  newStatus         EnrollmentAccessStatus  @map("new_status")
+  previousExpiresAt DateTime?               @map("previous_expires_at") @db.Date
+  newExpiresAt      DateTime?               @map("new_expires_at") @db.Date
+  arrangement       PaymentArrangement?
+  reason            String?
+  source            ManagementSource        @default(MANUAL)
+  changedById       String?                 @map("changed_by_id")
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  changedBy  User?      @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([enrollmentId, createdAt])
+  @@map("enrollment_access_logs")
+}
+
+model StudentNote {
+  id           String   @id @default(cuid())
+  studentId    String   @map("student_id")
+  enrollmentId String?  @map("enrollment_id")
+  note         String
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  student    User        @relation("StudentNoteStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  createdBy  User?       @relation("StudentNoteAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@map("student_notes")
+}
+
+model ExamSchedule {
+  id           String     @id @default(cuid())
+  courseId     String     @map("course_id")
+  instructorId String?    @map("instructor_id")
+  title        String
+  description  String?
+  /// Calendar date and local times (HH:MM) in the platform timezone.
+  examDate     DateTime   @map("exam_date") @db.Date
+  startTime    String     @map("start_time")
+  endTime      String?    @map("end_time")
+  status       ExamStatus @default(SCHEDULED)
+  createdById  String?    @map("created_by_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  course       Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructor   Instructor?       @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  participants ExamParticipant[]
+
+  @@index([examDate])
+  @@index([courseId, examDate])
+  @@index([instructorId, examDate])
+  @@map("exam_schedules")
+}
+
+/// Students taking an exam. An exam without participants applies to every active enrollment of its course.
+model ExamParticipant {
+  examId       String @map("exam_id")
+  enrollmentId String @map("enrollment_id")
+
+  exam       ExamSchedule @relation(fields: [examId], references: [id], onDelete: Cascade)
+  enrollment Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@id([examId, enrollmentId])
+  @@index([enrollmentId])
+  @@map("exam_participants")
+}
+
+/// What a teacher may do in Student Management beyond the defaults (own students, notes, exams).
+/// No row = defaults only. Set by administrators.
+model InstructorPermission {
+  instructorId         String   @id @map("instructor_id")
+  canViewPayments      Boolean  @default(false) @map("can_view_payments")
+  canRecordPayments    Boolean  @default(false) @map("can_record_payments")
+  canApprovePayments   Boolean  @default(false) @map("can_approve_payments")
+  canManageEnrollments Boolean  @default(false) @map("can_manage_enrollments")
+  canManageAccess      Boolean  @default(false) @map("can_manage_access")
+  updatedById          String?  @map("updated_by_id")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  instructor Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  updatedBy  User?      @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("instructor_permissions")
+}
+
+model ManagementAuditLog {
+  id         String           @id @default(cuid())
+  actorId    String?          @map("actor_id")
+  action     String
+  entityType String           @map("entity_type")
+  entityId   String           @map("entity_id")
+  beforeData Json?            @map("before_data")
+  afterData  Json?            @map("after_data")
+  source     ManagementSource @default(MANUAL)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("management_audit_logs")
+}
+
+/// A database change the AI proposed. It runs only when its owner confirms it, at most once.
+model AiPendingAction {
+  id             String         @id @default(cuid())
+  userId         String         @map("user_id")
+  agent          AiAgent
+  conversationId String?        @map("conversation_id")
+  messageId      String?        @map("message_id")
+  kind           String
+  payload        Json
+  preview        Json
+  status         AiActionStatus @default(PENDING)
+  result         Json?
+  error          String?
+  expiresAt      DateTime       @map("expires_at")
+  decidedAt      DateTime?      @map("decided_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      ChatMessage?    @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([conversationId, createdAt])
+  @@map("ai_pending_actions")
 }
