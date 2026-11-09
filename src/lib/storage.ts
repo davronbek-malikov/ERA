@@ -84,6 +84,17 @@ export const STORAGE_FOLDERS: Record<string, FolderPolicy> = {
 
 export const MATERIAL_FOLDERS = new Set(["lesson-materials", "course-materials"]);
 
+/**
+ * Headers that authenticate ERA's server to Supabase with SUPABASE_SERVICE_ROLE_KEY. Two key types are supported:
+ *  - new secret API keys ("sb_secret_..."): not JWTs, so they go ONLY in the `apikey` header (Supabase's gateway
+ *    turns them into a short-lived service-role token);
+ *  - legacy JWT keys ("eyJ..."): in both `apikey` and `Authorization: Bearer`, as before.
+ * Supabase is retiring the legacy keys; the new secret key can be rotated or revoked on its own.
+ */
+export function supabaseServiceHeaders(serviceRoleKey: string): Record<string, string> {
+  return serviceRoleKey.startsWith("sb_") ? { apikey: serviceRoleKey } : { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
+}
+
 export function getSupabaseStorageConfig() {
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.replace(/\/+$/, "");
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

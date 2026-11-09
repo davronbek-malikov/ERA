@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { getSupabaseStorageConfig } from "@/lib/storage";
+import { getSupabaseStorageConfig, supabaseServiceHeaders } from "@/lib/storage";
 import { chunkOptionsFromEnv, chunkSections } from "@/server/knowledge/chunking";
 import { embedInBatches, EmbeddingError, getEmbeddingProvider, toVectorLiteral } from "@/server/knowledge/embeddings";
 import { extractDocument, IngestionError, type KnowledgeFileType } from "@/server/knowledge/extract";
@@ -27,7 +27,7 @@ export async function downloadKnowledgeObject(path: string): Promise<Uint8Array>
   let response: Response;
   try {
     response = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/${bucket}/${encoded}`, {
-      headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey },
+      headers: supabaseServiceHeaders(serviceRoleKey),
       cache: "no-store"
     });
   } catch {
