@@ -93,3 +93,12 @@ ERA never pretends to answer when the provider fails. No answer is fabricated or
   bundled for the browser.
 - The model and provider are not influenced by request bodies.
 - Error messages are fixed strings; provider responses and stack traces stay in server logs.
+
+
+## Groq (added)
+
+Set `ERA_LLM_PROVIDER=groq` and `GROQ_API_KEY`. Groq uses the OpenAI Chat Completions protocol, so it runs through the OpenAI adapter with `https://api.groq.com/openai/v1`; `GROQ_BASE_URL` can override that address.
+
+The default model is `openai/gpt-oss-120b`, which supports tool calling, so the Student Management tools work. Set `ERA_MODEL_NAME` to use a different model.
+
+Groq doesn't provide embeddings, so the Knowledge Base still needs `ERA_EMBEDDING_PROVIDER` (Voyage or OpenAI). Without it, retrieval stays off and the assistants answer without document sources.

@@ -14,6 +14,8 @@ export function getProvider(): AiProvider {
       return createAnthropicProvider(config.model);
     case "openai":
       return createOpenAiProvider(config.model);
+    case "groq":
+      return createOpenAiProvider(config.model, "groq");
     case "ollama":
       return createOllamaProvider(config.model);
   }
