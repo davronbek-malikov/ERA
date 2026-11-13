@@ -351,3 +351,69 @@ export async function changeEnrollmentAccess(actor: ManagementActor, enrollmentI
     return { enrollmentId: current.id, studentName: current.user.name, courseTitle: current.course.title, after: snapshot(updated) };
   });
 }
+
+// ------------------------------------------------------------------------------------------------
+// Remove a student from a course / bring them back
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Removing a student from a course never deletes anything: the enrollment becomes CANCELLED with access REVOKED,
+ * so the student can't open the course, while payments, homework checks and history are kept. Only the teacher or
+ * an administrator can bring the student back (restore = ACTIVE again with access ACTIVE). Both are logged.
+ */
+export async function setCourseMembership(
+  actor: ManagementActor,
+  enrollmentId: string,
+  action: "remove" | "restore",
+  reason: string | null,
+  options: ChangeOptions
+) {
+  if (!can(actor, "manageEnrollments") && !can(actor, "manageAccess")) assertCan(actor, "manageEnrollments");
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.enrollment.findFirst({
+      where: { id: enrollmentId, ...enrollmentScope(actor) },
+      select: { ...ENROLLMENT_SNAPSHOT_SELECT, user: { select: { name: true } }, course: { select: { title: true } } }
+    });
+    if (!current) throw authErrors.notFound("Enrollment not found.");
+    const removing = action === "remove";
+    if (removing && current.status === "CANCELLED" && current.accessStatus === "REVOKED") {
+      throw conflict("no-change", `${current.user.name} is already removed from ${current.course.title}.`);
+    }
+    if (!removing && current.status === "ACTIVE" && current.accessStatus === "ACTIVE") {
+      throw conflict("no-change", `${current.user.name} is already in ${current.course.title}.`);
+    }
+    const nextAccess: EnrollmentAccessStatus = removing ? "REVOKED" : "ACTIVE";
+    const updated = await tx.enrollment.update({
+      where: { id: current.id },
+      data: {
+        status: removing ? "CANCELLED" : "ACTIVE",
+        completedAt: null,
+        accessStatus: nextAccess,
+        ...(removing ? {} : { accessGrantedById: actor.user.id, accessExpiresAt: null })
+      },
+      select: ENROLLMENT_SNAPSHOT_SELECT
+    });
+    await tx.enrollmentAccessLog.create({
+      data: {
+        enrollmentId: current.id,
+        previousStatus: current.accessStatus,
+        newStatus: nextAccess,
+        arrangement: current.paymentArrangement,
+        reason: `${removing ? "removed from course" : "returned to course"}${reason ? `: ${reason}` : ""}`,
+        source: options.source,
+        changedById: actor.user.id
+      }
+    });
+    const { user: _user, course: _course, ...before } = current;
+    await writeAudit(tx, {
+      actorId: actor.user.id,
+      action: removing ? "enrollment.remove" : "enrollment.restore",
+      entityType: "enrollment",
+      entityId: current.id,
+      before: snapshot(before),
+      after: { ...snapshot(updated), reason },
+      source: options.source
+    });
+    return { enrollmentId: current.id, studentName: current.user.name, courseTitle: current.course.title, status: updated.status };
+  });
+}

@@ -93,9 +93,9 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
                   <EraLogo className="h-8 w-8 sm:h-11 sm:w-11" />
                 </div>
                 <div className="min-w-0">
-                  {/* "ERA" alone on the narrowest phones, the full name from 400px up. */}
-                  <p className="whitespace-nowrap font-display text-base font-semibold sm:text-[1.15rem]">
-                    ERA<span className="hidden min-[400px]:inline"> Academy</span>
+                  {/* "ERA" alone on phones (the two header buttons need the room), the full name from 640px up. */}
+                  <p className="truncate whitespace-nowrap font-display text-base font-semibold sm:text-[1.15rem]">
+                    ERA<span className="hidden sm:inline"> Academy</span>
                   </p>
                   <p className="hidden text-[11px] uppercase tracking-[0.22em] text-muted-foreground/85 sm:block">
                     {t.navbar.brandTagline}

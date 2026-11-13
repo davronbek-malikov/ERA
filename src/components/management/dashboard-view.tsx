@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Search, Users } from "lucide-react";
 
 import { AccessBadge, EnrollmentStatusBadge, PaymentStatusBadge } from "@/components/management/badges";
 import { CreateEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { RecordPaymentButton } from "@/components/management/payment-forms";
-import { AddStudentButton } from "@/components/management/teaching-forms";
+import { AddStudentButton, CourseMembershipButton } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -187,6 +187,21 @@ export async function StudentManagementDashboard({
 
       <section className="flex flex-col gap-4" aria-label={T("Enrollments")}>
         <SectionHeader title={T("Students and enrollments")} description={T("One row per student per course. Open a student for full history and payments.")} />
+        {actor.kind !== "admin" ? (
+          // Teachers get one search box. It also finds students removed from a course, so they can be returned from their profile.
+          <form action={basePath} method="get" role="search" className="flex gap-2">
+            <input type="hidden" name="status" value="all" />
+            <Input type="search" name="q" defaultValue={filters.q} placeholder={T("Search students")} aria-label={T("Search students")} className="flex-1" />
+            <Button type="submit" variant="outline" aria-label={T("Search students")}>
+              <Search />
+            </Button>
+            {filtered ? (
+              <Link href={basePath} className={cn(buttonVariants({ variant: "ghost" }))}>
+                {T("Clear")}
+              </Link>
+            ) : null}
+          </form>
+        ) : (
         <form action={basePath} method="get" role="search" className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
           <label className="flex flex-col gap-1.5 md:col-span-2">
             <span className="text-xs font-medium text-muted-foreground">{T("Student name or email")}</span>
@@ -313,9 +328,11 @@ export async function StudentManagementDashboard({
             ) : null}
           </div>
         </form>
+        )}
 
         <DataTable
           caption={T("Students and enrollments")}
+          actionsLabel={T("Actions")}
           rows={list.rows}
           getRowKey={(row) => row.id}
           emptyState={
@@ -391,7 +408,7 @@ export async function StudentManagementDashboard({
                       row.money ? (
                         <span className="flex flex-col gap-1">
                           <PaymentStatusBadge status={row.money.status} overdue={row.money.overdue} />
-                          {row.money.pending ? <span className="text-xs text-muted-foreground">{formatMoney(row.money.pending, row.currency)} pending</span> : null}
+                          {row.money.pending ? <span className="text-xs text-muted-foreground">{T("{amount} pending", { amount: formatMoney(row.money.pending, row.currency) })}</span> : null}
                         </span>
                       ) : null
                   }
@@ -410,6 +427,9 @@ export async function StudentManagementDashboard({
               </Link>
               {can(actor, "recordPayments") && row.status === "ACTIVE" && row.arrangement !== "WAIVED" ? (
                 <RecordPaymentButton enrollmentId={row.id} workspace={workspace} today={today} label={T("Payment")} currency={row.currency} />
+              ) : null}
+              {(can(actor, "manageEnrollments") || can(actor, "manageAccess")) && row.status === "ACTIVE" ? (
+                <CourseMembershipButton workspace={workspace} enrollmentId={row.id} studentName={row.student.name} courseTitle={row.course.title} action="remove" compact />
               ) : null}
             </span>
           )}
