@@ -25,7 +25,7 @@ export type TeacherPermissions = {
   manageAccess: boolean;
 };
 
-export type Permission = keyof TeacherPermissions | "notes" | "exams";
+export type Permission = keyof TeacherPermissions | "notes" | "exams" | "teaching";
 
 export const NO_PERMISSIONS: TeacherPermissions = {
   viewPayments: false,
@@ -110,7 +110,8 @@ export async function requireManagementActor(workspace: "admin" | "teacher" = "a
 }
 
 export function can(actor: ManagementActor, permission: Permission): boolean {
-  if (permission === "notes" || permission === "exams") return true;
+  // Every teacher may always: write notes, schedule exams, build their own courses and lessons, check homework.
+  if (permission === "notes" || permission === "exams" || permission === "teaching") return true;
   return actor.permissions[permission];
 }
 
@@ -121,7 +122,8 @@ const DENIED_MESSAGE: Record<Permission, string> = {
   manageEnrollments: "You don't have permission to create or change enrollments.",
   manageAccess: "You don't have permission to change course access.",
   notes: "You can't add notes here.",
-  exams: "You can't manage exams here."
+  exams: "You can't manage exams here.",
+  teaching: "You can't manage courses or homework here."
 };
 
 export function assertCan(actor: ManagementActor, permission: Permission) {
@@ -168,7 +170,7 @@ export async function requireStudentInScope(actor: ManagementActor, studentId: s
         role: UserRole.STUDENT,
         ...(actor.kind === "teacher" ? { enrollments: { some: { instructorId: actor.instructorId } } } : {})
       },
-      select: { id: true, name: true, email: true, phone: true, status: true, createdAt: true }
+      select: { id: true, name: true, email: true, phone: true, status: true, createdAt: true, githubUrl: true }
     })
   );
   if (!student) throw authErrors.notFound("Student not found.");

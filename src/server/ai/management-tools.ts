@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { RequestError } from "@/lib/validation";
 import { abandonActions, createPendingAction, type ActionPreview } from "@/server/ai/actions";
 import type { AgentToolset, ToolCall, ToolDefinition, ToolOutcome } from "@/server/ai/types";
-import { can, getManagementActor, type ManagementActor } from "@/server/management/actor";
+import { can, enrollmentScope as enrollmentScopeFor, getManagementActor, type ManagementActor } from "@/server/management/actor";
 import type { AuthUser } from "@/server/authz";
 import { checkAccessChange, checkCreateEnrollment, checkUpdateEnrollment, changeEnrollmentAccess, createEnrollment, updateEnrollment } from "@/server/management/enrollments";
 import { checkExam, saveExam } from "@/server/management/exams";
@@ -31,6 +31,24 @@ import {
   listScopedCourses,
   searchStudentAccounts
 } from "@/server/management/queries";
+import {
+  addLesson,
+  checkCourse,
+  checkHomeworkReview,
+  checkLessonUpdate,
+  checkNewStudent,
+  createCourseWithLessons,
+  createStudent,
+  HOMEWORK_LABEL,
+  HOMEWORK_STATUSES,
+  listTeachingCourses,
+  parseCourse,
+  parseHomeworkReview,
+  parseLessonUpdate,
+  parseNewStudent,
+  reviewHomework,
+  updateLesson
+} from "@/server/management/teaching";
 import { addDays, formatCalendarDate, isDateString, monthRange, platformTimezone, todayInPlatform, weekday, WEEKDAY_NAMES } from "@/server/management/time";
 
 /*
@@ -267,6 +285,13 @@ const readTools: Record<string, ToolSpec> = {
         ...(view.money
           ? { price: view.money.price, approvedPaid: view.money.approved, remaining: view.money.remaining, paymentStatus: view.money.status, overdue: view.money.overdue, currency: view.currency }
           : {}),
+        homework: view.homework.map((lesson) => ({
+          lessonId: lesson.id,
+          lesson: `${lesson.position}. ${lesson.title}`,
+          status: lesson.review?.status ?? "NOT_SUBMITTED",
+          link: lesson.review?.githubUrl ?? null,
+          note: lesson.review?.note ?? null
+        })),
         payments: view.payments.map((payment) => ({
           transactionId: payment.id,
           kind: payment.kind,
@@ -282,7 +307,14 @@ const readTools: Record<string, ToolSpec> = {
       });
       return {
         content: json({
-          student: { studentId: profile.student.id, name: profile.student.name, email: profile.student.email, accountStatus: profile.student.status, registered: profile.student.createdAt.slice(0, 10) },
+          student: {
+            studentId: profile.student.id,
+            name: profile.student.name,
+            email: profile.student.email,
+            github: profile.student.githubUrl,
+            accountStatus: profile.student.status,
+            registered: profile.student.createdAt.slice(0, 10)
+          },
           teachers: profile.teachers.map((teacher) => teacher.name),
           currentEnrollments: profile.current.map(enrollment),
           courseHistory: profile.history.map(enrollment),
@@ -380,6 +412,85 @@ const readTools: Record<string, ToolSpec> = {
     async run(input, { actor }) {
       const summary = await getManagementSummary(actor, { from: dateArg(input.from, "from"), to: dateArg(input.to, "to") });
       return { content: json({ ...summary, note: "collected = approved payments minus approved refunds in the range; outstanding = what is still owed now." }) };
+    }
+  },
+
+  list_course_lessons: {
+    label: "Reading the lessons",
+    available: () => true,
+    definition: {
+      name: "list_course_lessons",
+      description:
+        "Lessons of the user's courses in order, with what the teacher taught and the homework of each lesson (lessonId for other tools). Without courseId: every course. Use it before checking or discussing a student's homework.",
+      inputSchema: { type: "object", properties: { courseId: { type: "string" } }, additionalProperties: false }
+    },
+    async run(input, { actor }) {
+      const courseId = str(input.courseId);
+      const courses = (await listTeachingCourses(actor)).filter((course) => !courseId || course.id === courseId);
+      return {
+        content: json({
+          courses: courses.map((course) => ({
+            courseId: course.id,
+            title: course.title,
+            activeStudents: course.activeStudents,
+            lessons: course.lessons.map((lesson) => ({ lessonId: lesson.id, number: lesson.position, title: lesson.title, taught: lesson.taughtSummary, homework: lesson.homework }))
+          }))
+        })
+      };
+    }
+  },
+
+  list_homework: {
+    label: "Checking homework",
+    available: () => true,
+    definition: {
+      name: "list_homework",
+      description:
+        "Homework check status per student and lesson for active enrollments: DONE (done correctly), NEEDS_WORK, SUBMITTED (waiting to be checked), NOT_SUBMITTED. Filter by course, lesson number or status. Use for 'who hasn't done lesson 3's homework' or 'what do I still need to check'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          courseId: { type: "string" },
+          lessonNumber: { type: "integer", minimum: 1 },
+          status: { type: "string", enum: HOMEWORK_STATUSES }
+        },
+        additionalProperties: false
+      }
+    },
+    async run(input, { actor }) {
+      const courseId = str(input.courseId);
+      const lessonNumber = typeof input.lessonNumber === "number" ? input.lessonNumber : undefined;
+      const status = HOMEWORK_STATUSES.includes(input.status as (typeof HOMEWORK_STATUSES)[number]) ? (input.status as string) : undefined;
+      const enrollments = await prisma.enrollment.findMany({
+        where: { ...enrollmentScopeFor(actor), status: "ACTIVE", ...(courseId ? { courseId } : {}) },
+        select: {
+          id: true,
+          user: { select: { name: true, githubUrl: true } },
+          course: { select: { title: true, lessons: { orderBy: { position: "asc" }, select: { id: true, position: true, title: true } } } },
+          homeworkReviews: { select: { lessonId: true, status: true, githubUrl: true, note: true } }
+        },
+        take: 300
+      });
+      const rows = enrollments.flatMap((enrollment) =>
+        enrollment.course.lessons
+          .filter((lesson) => !lessonNumber || lesson.position === lessonNumber)
+          .map((lesson) => {
+            const review = enrollment.homeworkReviews.find((item) => item.lessonId === lesson.id);
+            return {
+              enrollmentId: enrollment.id,
+              student: enrollment.user.name,
+              github: enrollment.user.githubUrl,
+              course: enrollment.course.title,
+              lessonId: lesson.id,
+              lesson: `${lesson.position}. ${lesson.title}`,
+              status: review?.status ?? "NOT_SUBMITTED",
+              link: review?.githubUrl ?? null,
+              note: review?.note ?? null
+            };
+          })
+          .filter((row) => !status || row.status === status)
+      );
+      return { content: json({ total: rows.length, homework: rows.slice(0, 150) }) };
     }
   },
 
@@ -741,6 +852,204 @@ const proposalTools: Record<string, ToolSpec> = {
     }
   },
 
+  propose_student: {
+    label: "Preparing the new student",
+    available: (actor) => can(actor, "manageEnrollments"),
+    definition: {
+      name: "propose_student",
+      description:
+        "Propose adding a NEW student account (name, email, optional GitHub and phone) and optionally enrolling them in a course (courseId from find_courses, startDate, endDate, priceAmount in won). Check with find_students first that they don't already exist. ERA generates a temporary password shown after confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          email: { type: "string" },
+          githubUrl: { type: "string" },
+          phone: { type: "string" },
+          courseId: { type: "string" },
+          startDate: { type: "string", description: "YYYY-MM-DD" },
+          endDate: { type: "string", description: "YYYY-MM-DD" },
+          priceAmount: { type: "integer", minimum: 0 },
+          paymentArrangement: { type: "string", enum: PAYMENT_ARRANGEMENTS }
+        },
+        required: ["name", "email"],
+        additionalProperties: false
+      }
+    },
+    async run(input, context) {
+      const raw = {
+        name: input.name,
+        email: input.email,
+        githubUrl: input.githubUrl,
+        phone: input.phone,
+        ...(input.courseId
+          ? {
+              courseId: input.courseId,
+              startDate: input.startDate ?? todayInPlatform(),
+              endDate: input.endDate,
+              priceAmount: input.priceAmount ?? 0,
+              paymentArrangement: input.paymentArrangement ?? "PAY_IN_FULL"
+            }
+          : {})
+      };
+      const parsed = parseNewStudent(raw);
+      await checkNewStudent(context.actor, parsed);
+      const course = input.courseId ? (await listScopedCourses(context.actor)).find((item) => item.id === input.courseId) : null;
+      if (input.courseId && !course) throw new RequestError(404, "not-found", "Course not found.");
+      return propose(context, "create_student", raw, {
+        title: `Add student ${parsed.name}`,
+        lines: [
+          { label: "Name", value: parsed.name },
+          { label: "Email", value: parsed.email },
+          ...(parsed.githubUrl ? [{ label: "GitHub", value: parsed.githubUrl }] : []),
+          ...(course
+            ? [
+                { label: "Course", value: course.title },
+                { label: "Dates", value: `${formatCalendarDate(String(raw.startDate))} → ${formatCalendarDate(typeof raw.endDate === "string" ? raw.endDate : null)}` },
+                { label: "Tuition", value: money(Number(raw.priceAmount ?? 0), "KRW") }
+              ]
+            : [{ label: "Course", value: "Not enrolled yet" }])
+        ],
+        warnings: ["A temporary password will be shown once after you confirm. Give it to the student."]
+      });
+    }
+  },
+
+  propose_course: {
+    label: "Preparing the course",
+    available: () => true,
+    definition: {
+      name: "propose_course",
+      description:
+        "Propose creating a course for this teacher with its lessons in order. Each lesson can include what was taught (taughtSummary) and the homework. E.g. 'Machine Learning Foundation, 4 weeks, 11 lessons'. If the user gives only a number of lessons, use titles 'Lesson 1', 'Lesson 2', …",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          durationWeeks: { type: "integer", minimum: 1, maximum: 104 },
+          lessons: {
+            type: "array",
+            maxItems: 60,
+            items: {
+              type: "object",
+              properties: { title: { type: "string" }, taughtSummary: { type: "string" }, homework: { type: "string" } },
+              required: ["title"],
+              additionalProperties: false
+            }
+          }
+        },
+        required: ["title", "lessons"],
+        additionalProperties: false
+      }
+    },
+    async run(input, context) {
+      const raw = { title: input.title, description: input.description, durationWeeks: input.durationWeeks, lessons: input.lessons };
+      const parsed = parseCourse(raw);
+      const { instructor } = await checkCourse(context.actor, parsed);
+      return propose(context, "create_course", raw, {
+        title: `Create course "${parsed.title}"`,
+        lines: [
+          { label: "Teacher", value: instructor.name },
+          ...(parsed.durationWeeks ? [{ label: "Duration", value: `${parsed.durationWeeks} weeks` }] : []),
+          { label: "Lessons", value: `${parsed.lessons.length}: ${parsed.lessons.slice(0, 6).map((lesson, i) => `${i + 1}. ${lesson.title}`).join(", ")}${parsed.lessons.length > 6 ? ", …" : ""}` },
+          { label: "With homework", value: `${parsed.lessons.filter((lesson) => lesson.homework).length} of ${parsed.lessons.length}` }
+        ],
+        warnings: []
+      });
+    }
+  },
+
+  propose_lesson: {
+    label: "Preparing the lesson",
+    available: () => true,
+    definition: {
+      name: "propose_lesson",
+      description:
+        "Propose adding a lesson to a course (courseId, title, taughtSummary, homework) or, with lessonId, updating an existing lesson's title, what was taught or its homework. Get ids from list_course_lessons.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          courseId: { type: "string" },
+          lessonId: { type: "string" },
+          title: { type: "string" },
+          taughtSummary: { type: "string" },
+          homework: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    },
+    async run(input, context) {
+      const raw = { title: input.title, taughtSummary: input.taughtSummary, homework: input.homework };
+      const lessonId = str(input.lessonId);
+      if (lessonId) {
+        const parsed = parseLessonUpdate(raw);
+        const lesson = await checkLessonUpdate(context.actor, lessonId);
+        return propose(context, "update_lesson", { lessonId, ...raw }, {
+          title: `Update lesson ${lesson.position} of ${lesson.course.title}`,
+          lines: [
+            { label: "Lesson", value: `${lesson.position}. ${parsed.title ?? lesson.title}` },
+            ...(parsed.taughtSummary !== undefined ? [{ label: "What I taught", value: parsed.taughtSummary ?? "—" }] : []),
+            ...(parsed.homework !== undefined ? [{ label: "Homework", value: parsed.homework ?? "—" }] : [])
+          ],
+          warnings: []
+        });
+      }
+      const courseId = str(input.courseId);
+      if (!courseId || !str(input.title)) throw new RequestError(400, "invalid-lesson", "To add a lesson give courseId and title (or lessonId to update one).");
+      const parsed = parseLessonUpdate(raw);
+      const course = (await listScopedCourses(context.actor)).find((item) => item.id === courseId);
+      if (!course) throw new RequestError(404, "not-found", "Course not found.");
+      return propose(context, "add_lesson", { courseId, ...raw }, {
+        title: `Add a lesson to ${course.title}`,
+        lines: [
+          { label: "Title", value: parsed.title ?? "" },
+          { label: "What I taught", value: parsed.taughtSummary ?? "—" },
+          { label: "Homework", value: parsed.homework ?? "—" }
+        ],
+        warnings: []
+      });
+    }
+  },
+
+  propose_homework_review: {
+    label: "Preparing the homework check",
+    available: () => true,
+    definition: {
+      name: "propose_homework_review",
+      description:
+        "Propose recording the teacher's check of one student's homework for one lesson: status DONE (done correctly), NEEDS_WORK, SUBMITTED or NOT_SUBMITTED, with the link to the student's work and a note. Get enrollmentId and lessonId from list_homework or get_student_profile.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          enrollmentId: { type: "string" },
+          lessonId: { type: "string" },
+          status: { type: "string", enum: HOMEWORK_STATUSES },
+          githubUrl: { type: "string" },
+          note: { type: "string" }
+        },
+        required: ["enrollmentId", "lessonId", "status"],
+        additionalProperties: false
+      }
+    },
+    async run(input, context) {
+      const raw = { enrollmentId: input.enrollmentId, lessonId: input.lessonId, status: input.status, githubUrl: input.githubUrl, note: input.note };
+      const parsed = parseHomeworkReview(raw);
+      const { enrollment, lesson, current } = await checkHomeworkReview(context.actor, parsed);
+      return propose(context, "homework_review", raw, {
+        title: `Homework: ${enrollment.user.name} · lesson ${lesson.position}`,
+        lines: [
+          { label: "Student", value: enrollment.user.name },
+          { label: "Lesson", value: `${lesson.position}. ${lesson.title} (${enrollment.course.title})` },
+          { label: "Result", value: `${current ? HOMEWORK_LABEL[current.status] : HOMEWORK_LABEL.NOT_SUBMITTED} → ${HOMEWORK_LABEL[parsed.status]}` },
+          ...(parsed.githubUrl ? [{ label: "Link", value: parsed.githubUrl }] : []),
+          ...(parsed.note ? [{ label: "Note", value: parsed.note }] : [])
+        ],
+        warnings: []
+      });
+    }
+  },
+
   propose_exam: {
     label: "Preparing the exam",
     available: () => true,
@@ -803,6 +1112,7 @@ function instructionsFor(actor: ManagementActor) {
     "- If a student or course name matches more than one record, or a student has several active enrollments and the course is unclear, ASK the user to choose (show the options) instead of guessing. If a required detail (dates, price, amount) is missing, ask for it.",
     "- Money: integers in Korean won. 500,000 KRW → 500000. Only APPROVED payments count as paid. A newly recorded payment is PENDING until someone verifies it; say so.",
     "- Payment status (paid/unpaid) and course access are different things. Pay Later lets an unpaid student study.",
+    "- Homework checking: each lesson has what the teacher taught and the homework (list_course_lessons). A student's homework per lesson is DONE (done correctly), NEEDS_WORK, SUBMITTED (waiting to be checked) or NOT_SUBMITTED (list_homework, get_student_profile). You can't open GitHub yourself: compare what the teacher tells you with the homework text, and record the result with propose_homework_review.",
     "- If a tool returns an error (permission, not found, conflict), explain it plainly; don't retry with invented ids.",
     can(actor, "viewPayments") ? "" : "- This user may not see payment information: don't speculate about prices, payments or balances."
   ]
@@ -893,6 +1203,32 @@ export async function executeManagementAction(user: AuthUser, action: { id: stri
     case "create_exam": {
       const result = await saveExam(actor, parseExam(payload), options);
       return { message: `Exam scheduled for ${result.courseTitle} on ${formatCalendarDate(result.exam.examDate, { weekday: true })}.`, data: { examId: result.examId } };
+    }
+    case "create_student": {
+      const result = await createStudent(actor, parseNewStudent(payload), options);
+      return {
+        message: `${result.student.name} was added (${result.student.email})${result.enrollment ? ` and enrolled in ${result.enrollment.courseTitle}` : ""}.${
+          result.temporaryPassword ? ` Temporary password: ${result.temporaryPassword} — give it to the student.` : ""
+        }`,
+        data: { studentId: result.student.id }
+      };
+    }
+    case "create_course": {
+      const result = await createCourseWithLessons(actor, parseCourse(payload), options);
+      return { message: `Course "${result.title}" created with ${result.lessons} lessons.`, data: { courseId: result.courseId } };
+    }
+    case "add_lesson": {
+      const parsed = parseLessonUpdate(payload);
+      const result = await addLesson(actor, String(payload.courseId ?? ""), { title: parsed.title ?? "Lesson", taughtSummary: parsed.taughtSummary ?? null, homework: parsed.homework ?? null }, options);
+      return { message: `Lesson ${result.position} "${result.title}" added to ${result.courseTitle}.`, data: { lessonId: result.lessonId } };
+    }
+    case "update_lesson": {
+      const result = await updateLesson(actor, String(payload.lessonId ?? ""), parseLessonUpdate(payload), options);
+      return { message: `Lesson ${result.position} of ${result.courseTitle} updated.`, data: { lessonId: result.lessonId } };
+    }
+    case "homework_review": {
+      const result = await reviewHomework(actor, parseHomeworkReview(payload), options);
+      return { message: `Homework saved: ${result.student}, lesson ${result.lesson} — ${HOMEWORK_LABEL[result.status]}.`, data: { reviewId: result.reviewId } };
     }
     default:
       throw new RequestError(400, "unknown-action", "This proposal type isn't supported.");

@@ -443,3 +443,128 @@ describe("ERA AI Student Management assistant", () => {
     assert.ok(/amount/i.test(r.text), r.text.slice(0, 300));
   });
 });
+
+describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
+  const hw = {};
+
+  test("the teacher workspace opens on My students", async () => {
+    const response = await get("/teacher", { session: teacherA });
+    assert.ok([303, 307, 308].includes(response.status), String(response.status));
+    assert.match(response.location ?? "", /\/teacher\/my-students$/);
+  });
+
+  test("a teacher creates a course with lessons; other teachers can't touch it", async () => {
+    const created = await post("/api/management/courses", {
+      session: teacherA,
+      json: {
+        workspace: "teacher",
+        title: "Machine Learning Foundation HW",
+        durationWeeks: 4,
+        lessons: [
+          { title: "Intro", taughtSummary: "Python + numpy", homework: "HOMEWORK_TEXT_1" },
+          { title: "Linear regression", homework: "Train a model" },
+          { title: "Logistic regression" }
+        ]
+      }
+    });
+    assert.equal(created.status, 201, created.text);
+    hw.courseId = created.data.courseId;
+    assert.equal(created.data.lessons, 3);
+    const lessons = await prisma.lesson.findMany({ where: { courseId: hw.courseId }, orderBy: { position: "asc" } });
+    assert.deepEqual(lessons.map((lesson) => lesson.position), [1, 2, 3]);
+    hw.lesson1 = lessons[0].id;
+    hw.lesson3 = lessons[2].id;
+    assert.equal((await post(`/api/management/courses/${hw.courseId}/lessons`, { session: teacherB, json: { workspace: "teacher", title: "x" } })).status, 404);
+    assert.equal((await call("PATCH", `/api/management/lessons/${hw.lesson3}`, { session: teacherB, json: { workspace: "teacher", homework: "x" } })).status, 404);
+    const added = await post(`/api/management/courses/${hw.courseId}/lessons`, { session: teacherA, json: { workspace: "teacher", title: "Trees", homework: "Fit a tree" } });
+    assert.equal(added.status, 201);
+    assert.equal(added.data.position, 4);
+    const edited = await call("PATCH", `/api/management/lessons/${hw.lesson3}`, {
+      session: teacherA,
+      json: { workspace: "teacher", taughtSummary: "Sigmoid, log loss", homework: "Classify Titanic" }
+    });
+    assert.equal(edited.status, 200, edited.text);
+  });
+
+  test("adding a student: admin (with enrollment and temporary password); duplicates and missing permission refused", async () => {
+    const created = await post("/api/management/students", {
+      session: admin,
+      json: { name: "Homework Student", email: "hw-student@security.test", githubUrl: "github.com/hwstudent", courseId: hw.courseId, startDate: today, priceAmount: 500000 }
+    });
+    assert.equal(created.status, 201, created.text);
+    assert.match(created.data.temporaryPassword, /^Era-[a-z0-9]{4}-[a-z0-9]{4}$/);
+    assert.equal(created.data.enrollment.courseTitle, "Machine Learning Foundation HW");
+    hw.studentId = created.data.student.id;
+    hw.enrollmentId = created.data.enrollment.enrollmentId;
+    const user = await prisma.user.findUnique({ where: { id: hw.studentId } });
+    assert.equal(user.role, "STUDENT");
+    assert.equal(user.githubUrl, "https://github.com/hwstudent");
+    assert.notEqual(user.passwordHash, created.data.temporaryPassword, "only the hash is stored");
+    assert.equal((await post("/api/management/students", { session: admin, json: { name: "Dup", email: "hw-student@security.test" } })).status, 409);
+    assert.equal((await post("/api/management/students", { session: teacherB, json: { workspace: "teacher", name: "No", email: "no-perm@security.test" } })).status, 403);
+    assert.equal((await post("/api/management/students", { session: studentA, json: { name: "No", email: "no-perm2@security.test" } })).status, 403);
+  });
+
+  test("homework checks: the student's teacher records them; profile shows lesson, homework and result", async () => {
+    const review = await call("PUT", "/api/management/homework", {
+      session: teacherA,
+      json: { workspace: "teacher", enrollmentId: hw.enrollmentId, lessonId: hw.lesson1, status: "DONE", githubUrl: "https://github.com/hwstudent/ml/tree/main/lesson-1", note: "Clean notebook" }
+    });
+    assert.equal(review.status, 200, review.text);
+    const again = await call("PUT", "/api/management/homework", {
+      session: teacherA,
+      json: { workspace: "teacher", enrollmentId: hw.enrollmentId, lessonId: hw.lesson3, status: "NEEDS_WORK", note: "Missing plots" }
+    });
+    assert.equal(again.status, 200);
+    assert.equal(await prisma.homeworkReview.count({ where: { enrollmentId: hw.enrollmentId } }), 2);
+
+    const { profile: p } = await profile(teacherA, hw.studentId, "teacher");
+    const view = p.current.find((item) => item.id === hw.enrollmentId);
+    assert.equal(view.homework.length, 4);
+    assert.equal(view.homework[0].homework, "HOMEWORK_TEXT_1");
+    assert.equal(view.homework[0].review.status, "DONE");
+    assert.equal(view.homework[2].review.status, "NEEDS_WORK");
+    assert.equal(view.homework[1].review, null);
+    assert.equal(p.student.githubUrl, "https://github.com/hwstudent");
+
+    const list = await get("/teacher/my-students", { session: teacherA });
+    assert.ok(list.text.includes("Homework Student") && list.text.includes("1/4"), "list shows homework progress");
+  });
+
+  test("homework checks are scoped and validated", async () => {
+    const body = { workspace: "teacher", enrollmentId: hw.enrollmentId, lessonId: hw.lesson1, status: "DONE" };
+    assert.equal((await call("PUT", "/api/management/homework", { session: teacherB, json: body })).status, 404, "another teacher's student");
+    assert.equal((await call("PUT", "/api/management/homework", { session: teacherA, json: { ...body, status: "PERFECT" } })).status, 400);
+    assert.equal((await call("PUT", "/api/management/homework", { session: teacherA, json: { ...body, lessonId: l.lessonA1.id } })).status, 404, "lesson of another course");
+    assert.equal((await call("PUT", "/api/management/homework", { session: teacherA, json: { ...body, githubUrl: "javascript:alert(1)" } })).status, 400);
+    assert.equal((await call("PUT", "/api/management/homework", { session: studentA, json: body })).status, 403);
+    const page = await get("/learn/courses", { session: as({ id: hw.studentId, role: "STUDENT", name: "Homework Student" }) });
+    assert.ok(!page.text.includes("Clean notebook") && !page.text.includes("Missing plots"), "teacher notes aren't shown to the student");
+  });
+
+  test("the chatbot reads lessons and homework, and records a check only after confirmation", async () => {
+    const lessons = await chat(teacherA, "teacher", [`TOOLCALL list_course_lessons {"courseId":"${hw.courseId}"}`]);
+    assert.ok(lessons.text.includes("HOMEWORK_TEXT_1") && lessons.text.includes("Classify Titanic"), lessons.text.slice(0, 400));
+    const todo = await chat(teacherA, "teacher", [`TOOLCALL list_homework {"courseId":"${hw.courseId}","status":"NOT_SUBMITTED"}`]);
+    assert.ok(todo.text.includes("2. Linear regression") && !todo.text.includes("1. Intro"), todo.text.slice(0, 400));
+
+    const proposal = await chat(teacherA, "teacher", [
+      `TOOLCALL propose_homework_review {"enrollmentId":"${hw.enrollmentId}","lessonId":"${hw.lesson3}","status":"DONE","note":"Fixed the plots"}`
+    ]);
+    assert.equal(proposal.actions.length, 1, JSON.stringify(proposal.error ?? proposal.text));
+    assert.equal((await prisma.homeworkReview.findFirst({ where: { enrollmentId: hw.enrollmentId, lessonId: hw.lesson3 } })).status, "NEEDS_WORK", "unchanged before confirmation");
+    assert.equal((await confirmAction(teacherA, proposal.actions[0].id)).data.action.status, "EXECUTED");
+    const after = await prisma.homeworkReview.findFirst({ where: { enrollmentId: hw.enrollmentId, lessonId: hw.lesson3 } });
+    assert.equal(after.status, "DONE");
+    assert.equal(after.note, "Fixed the plots");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { entityId: after.id, action: "homework.review", source: "AI" } }));
+
+    const course = await chat(teacherA, "teacher", ['TOOLCALL propose_course {"title":"Deep Learning HW","lessons":[{"title":"CNNs","homework":"Build a CNN"}]}']);
+    assert.equal(course.actions.length, 1, JSON.stringify(course.error ?? course.text));
+    const confirmed = await confirmAction(teacherA, course.actions[0].id);
+    assert.equal(confirmed.data.action.status, "EXECUTED");
+    const createdCourse = await prisma.course.findFirst({ where: { title: "Deep Learning HW" }, include: { lessons: true } });
+    assert.equal(createdCourse.instructorId, ins.instructorA, "created for the teacher who asked");
+    assert.equal(createdCourse.lessons[0].homework, "Build a CNN");
+  });
+});

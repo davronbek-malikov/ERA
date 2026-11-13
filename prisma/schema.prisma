@@ -124,6 +124,8 @@ model User {
   status       String   @default("ACTIVE")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  /// Student's GitHub profile or repository (homework checking). Shown to the student's teachers only.
+  githubUrl    String?  @map("github_url")
 
   enrollments         Enrollment[]
   instructorProfile   Instructor?
@@ -156,6 +158,7 @@ model User {
   managementAuditLogs      ManagementAuditLog[]
   aiPendingActions         AiPendingAction[]
   instructorPermissionsSet InstructorPermission[]
+  homeworkReviewsChecked   HomeworkReview[]       @relation("HomeworkReviewedBy")
 }
 
 model UserOnboarding {
@@ -413,18 +416,22 @@ model CourseModule {
 }
 
 model Lesson {
-  id          String            @id @default(cuid())
-  courseId    String
-  moduleId    String?
-  title       String
-  slug        String
-  description String?
-  videoUrl    String?
-  duration    String?
-  position    Int
-  status      PublicationStatus @default(PUBLISHED)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id            String            @id @default(cuid())
+  courseId      String
+  moduleId      String?
+  title         String
+  slug          String
+  description   String?
+  videoUrl      String?
+  duration      String?
+  position      Int
+  status        PublicationStatus @default(PUBLISHED)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  /// Teacher's own record of what was taught in this lesson (homework checking, docs/ERA_TEACHER_HOMEWORK.md).
+  taughtSummary String?           @map("taught_summary")
+  /// The homework given in this lesson, as the teacher wrote it.
+  homework      String?
 
   course             Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
   module             CourseModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
@@ -437,6 +444,7 @@ model Lesson {
   quizQuestions      LessonQuizQuestion[]
   practiceExercises  PracticeExercise[]
   currentEnrollments Enrollment[]         @relation("EnrollmentCurrentLesson")
+  homeworkReviews    HomeworkReview[]
 
   @@unique([courseId, slug])
   @@unique([courseId, position])
@@ -643,6 +651,7 @@ model Enrollment {
   accessLogs      EnrollmentAccessLog[]
   notes           StudentNote[]
   examEntries     ExamParticipant[]
+  homeworkReviews HomeworkReview[]
 
   @@unique([userId, courseId])
   @@index([userId])
@@ -1078,4 +1087,38 @@ model AiPendingAction {
   @@index([userId, status, createdAt])
   @@index([conversationId, createdAt])
   @@map("ai_pending_actions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Homework checking (docs/ERA_TEACHER_HOMEWORK.md)
+// ---------------------------------------------------------------------------------------------
+
+enum HomeworkStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  NEEDS_WORK
+  DONE
+}
+
+/// The teacher's check of one student's homework for one lesson (one row per enrollment and lesson).
+model HomeworkReview {
+  id           String         @id @default(cuid())
+  enrollmentId String         @map("enrollment_id")
+  lessonId     String         @map("lesson_id")
+  status       HomeworkStatus @default(NOT_SUBMITTED)
+  /// Link to the student's work for this homework (repository, folder, commit or notebook).
+  githubUrl    String?        @map("github_url")
+  note         String?
+  checkedAt    DateTime?      @map("checked_at")
+  checkedById  String?        @map("checked_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  checkedBy  User?      @relation("HomeworkReviewedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, lessonId])
+  @@index([lessonId, status])
+  @@map("homework_reviews")
 }

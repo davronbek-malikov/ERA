@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, BookOpenCheck, CalendarDays, ClipboardCheck, Compass, FileStack, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
+import { BarChart3, BookOpen, BookOpenCheck, CalendarDays, Compass, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
 
 import { signOutAction } from "@/app/(public)/sign-in/actions";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -111,38 +111,14 @@ function buildNav(workspace: WorkspaceKind, locale: Locale, options: { teacherPa
   }
 
   if (workspace === "teacher") {
-    const main: NavItem[] = [
-      { href: "/teacher", label: t.home, icon: <Home />, matchNested: false },
-      { href: "/teacher/courses", label: t.myCourses, icon: <BookOpen /> },
-      { href: "/teacher/lessons", label: t.lessons, icon: <BookOpenCheck /> },
-      { href: "/teacher/knowledge", label: t.knowledge, icon: <Library /> },
-      { href: "/teacher/assignments", label: t.assignments, icon: <ClipboardCheck /> },
-      { href: "/teacher/students", label: t.students, icon: <LineChart /> },
+    // Focused Teacher Workspace (docs/ERA_TEACHER_HOMEWORK.md): students + homework checking, and the assistant.
+    // The other teacher pages still exist (and keep their own access checks); they're just not in the menu.
+    const items: NavItem[] = [
+      { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> },
       { href: "/teacher/assistant", label: t.assistant, icon: <Sparkles /> }
     ];
-    // Student Management (docs/ERA_STUDENT_MANAGEMENT.md). Payments only with the "see payments" permission.
-    const studentItems: NavItem[] = [
-      { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> },
-      ...(options.teacherPayments ? [{ href: "/teacher/payments", label: t.payments, icon: <Wallet /> }] : []),
-      { href: "/teacher/schedule", label: t.schedule, icon: <CalendarDays /> }
-    ];
-    return {
-      home: "/teacher",
-      nav: [
-        { items: main },
-        { label: t.studentsGroup, items: studentItems },
-        {
-          label: t.contentTools,
-          items: [
-            { href: "/admin/courses", label: t.courseEditor, icon: <FileStack /> },
-            { href: "/admin/lessons", label: t.lessonEditor, icon: <FileStack /> },
-            { href: "/admin/materials", label: t.materials, icon: <FolderTree /> }
-          ]
-        },
-        { label: t.account, items: [{ href: "/admin/settings", label: t.settings, icon: <Settings /> }] }
-      ],
-      tabs: [main[0], main[1], studentItems[0], main[2], main[6]]
-    };
+    void options;
+    return { home: "/teacher/my-students", nav: [{ items }], tabs: items };
   }
 
   return {
