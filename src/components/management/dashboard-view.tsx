@@ -4,7 +4,7 @@ import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Search, Users } from
 import { AccessBadge, EnrollmentStatusBadge, PaymentStatusBadge } from "@/components/management/badges";
 import { CreateEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { RecordPaymentButton } from "@/components/management/payment-forms";
-import { AddStudentButton, CourseMembershipButton } from "@/components/management/teaching-forms";
+import { AddStudentButton, CourseMembershipButton, TeacherStudentSearch } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -189,18 +189,7 @@ export async function StudentManagementDashboard({
         <SectionHeader title={T("Students and enrollments")} description={T("One row per student per course. Open a student for full history and payments.")} />
         {actor.kind !== "admin" ? (
           // Teachers get one search box. It also finds students removed from a course, so they can be returned from their profile.
-          <form action={basePath} method="get" role="search" className="flex gap-2">
-            <input type="hidden" name="status" value="all" />
-            <Input type="search" name="q" defaultValue={filters.q} placeholder={T("Search students")} aria-label={T("Search students")} className="flex-1" />
-            <Button type="submit" variant="outline" aria-label={T("Search students")}>
-              <Search />
-            </Button>
-            {filtered ? (
-              <Link href={basePath} className={cn(buttonVariants({ variant: "ghost" }))}>
-                {T("Clear")}
-              </Link>
-            ) : null}
-          </form>
+          <TeacherStudentSearch basePath={basePath} q={filters.q ?? ""} payment={filters.paymentStatus ?? ""} showPayment={showMoney} />
         ) : (
         <form action={basePath} method="get" role="search" className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
           <label className="flex flex-col gap-1.5 md:col-span-2">
