@@ -32,7 +32,10 @@ export const PASSWORD = "Security-Test-2026!";
 async function wipe() {
   // Second guard: only a database that contains nothing but security-test fixtures may be cleared.
   // A development or production database (any other account) is never touched.
-  const foreign = await prisma.user.count({ where: { NOT: { email: { endsWith: "@security.test" } } } });
+  // Students added by tests without an email get an internal "@no-email.eraacademy.local" address (they can't sign in).
+  const foreign = await prisma.user.count({
+    where: { AND: [{ NOT: { email: { endsWith: "@security.test" } } }, { NOT: { email: { endsWith: "@no-email.eraacademy.local" } } }] }
+  });
   if (foreign > 0) {
     console.error(`Refusing to reset: this database has ${foreign} non-test account(s). Use a dedicated test database.`);
     process.exit(1);

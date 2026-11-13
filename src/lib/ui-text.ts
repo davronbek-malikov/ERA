@@ -22,6 +22,8 @@ const UZ: Record<string, string> = {
   "Lesson {number}": "{number}-dars",
   "Homework — {lesson}": "Uy vazifasi — {lesson}",
   "Contact": "Aloqa",
+  "{lessons} lessons · {students} active students": "{lessons} ta dars · {students} ta faol o'quvchi",
+  "No homework yet": "Uy vazifasi yo'q",
   to: "gacha",
   "Saved.": "Saqlandi.",
   "Write what you taught and the homework for each lesson; they appear next to every student's homework check.":

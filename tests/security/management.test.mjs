@@ -603,6 +603,7 @@ describe("Students without email, Telegram contact, course order", () => {
     const edited = await call("PATCH", `/api/management/students/${user.id}`, { session: admin, json: { telegram: "+998901234567" } });
     assert.equal(edited.status, 200, edited.text);
     assert.equal(edited.data.telegram, "+998901234567");
+    await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
   });
 
   test("teachers set their own course order; other teachers' courses can't be included", async () => {
