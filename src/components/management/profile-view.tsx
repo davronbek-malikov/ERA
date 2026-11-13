@@ -1,4 +1,4 @@
-import { CalendarDays, ExternalLink, History, ShieldCheck, StickyNote } from "lucide-react";
+import { CalendarDays, ChevronRight, ExternalLink, History, ShieldCheck, StickyNote } from "lucide-react";
 
 import {
   AccessBadge,
@@ -227,49 +227,56 @@ async function HomeworkSection({ view, workspace }: { view: EnrollmentView; work
         {view.homework.map((lesson) => {
           const badge = HOMEWORK_BADGE[lesson.review?.status ?? "NOT_SUBMITTED"];
           return (
-            <li key={lesson.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <span className="font-medium">
-                  {lesson.position}. {lesson.title}
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
-                  <Badge variant={badge.variant}>{T(badge.label)}</Badge>
-                  <HomeworkReviewButton
-                    workspace={workspace}
-                    enrollmentId={view.id}
-                    lessonId={lesson.id}
-                    lessonLabel={`${lesson.position}. ${lesson.title}`}
-                    current={lesson.review ? { status: lesson.review.status, githubUrl: lesson.review.githubUrl, note: lesson.review.note } : null}
-                  />
-                </span>
-              </div>
-              <div className="grid gap-2 text-sm md:grid-cols-2">
-                <div className="rounded-md bg-muted/60 p-2">
-                  <p className="text-xs font-medium text-muted-foreground">{T("What I taught")}</p>
-                  <p className="whitespace-pre-wrap">{lesson.taughtSummary || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
-                </div>
-                <div className="rounded-md bg-muted/60 p-2">
-                  <p className="text-xs font-medium text-muted-foreground">{T("Homework")}</p>
-                  <p className="whitespace-pre-wrap">{lesson.homework || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
-                </div>
-              </div>
-              {lesson.review?.githubUrl || lesson.review?.note || lesson.review?.checkedAt ? (
-                <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  {lesson.review?.githubUrl ? (
-                    <a href={lesson.review.githubUrl} target="_blank" rel="noopener noreferrer" className="flex w-fit items-center gap-1 text-primary hover:underline">
-                      <ExternalLink className="size-3.5" aria-hidden="true" />
-                      {T("Student's work")}
-                    </a>
+            <li key={lesson.id} className="rounded-lg border border-border">
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 font-medium">
+                    {lesson.position}. {lesson.title}
+                  </span>
+                  <Badge variant={badge.variant} className="shrink-0">
+                    {T(badge.label)}
+                  </Badge>
+                </summary>
+                <div className="flex flex-col gap-2 border-t border-border p-3">
+                  <div className="grid gap-2 text-sm md:grid-cols-2">
+                    <div className="rounded-md bg-muted/60 p-2">
+                      <p className="text-xs font-medium text-muted-foreground">{T("What I taught")}</p>
+                      <p className="whitespace-pre-wrap">{lesson.taughtSummary || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
+                    </div>
+                    <div className="rounded-md bg-muted/60 p-2">
+                      <p className="text-xs font-medium text-muted-foreground">{T("Homework")}</p>
+                      <p className="whitespace-pre-wrap">{lesson.homework || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
+                    </div>
+                  </div>
+                  {lesson.review?.githubUrl || lesson.review?.note || lesson.review?.checkedAt ? (
+                    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                      {lesson.review?.githubUrl ? (
+                        <a href={lesson.review.githubUrl} target="_blank" rel="noopener noreferrer" className="flex w-fit items-center gap-1 text-primary hover:underline">
+                          <ExternalLink className="size-3.5" aria-hidden="true" />
+                          {T("Student's work")}
+                        </a>
+                      ) : null}
+                      {lesson.review?.note ? <span className="whitespace-pre-wrap text-foreground">{lesson.review.note}</span> : null}
+                      {lesson.review?.checkedAt ? (
+                        <span>
+                          {T("Checked {date}", { date: lesson.review.checkedAt.slice(0, 10) })}
+                          {lesson.review.checkedBy ? ` · ${lesson.review.checkedBy}` : ""}
+                        </span>
+                      ) : null}
+                    </div>
                   ) : null}
-                  {lesson.review?.note ? <span className="whitespace-pre-wrap text-foreground">Note: {lesson.review.note}</span> : null}
-                  {lesson.review?.checkedAt ? (
-                    <span>
-                      {T("Checked {date}", { date: lesson.review.checkedAt.slice(0, 10) })}
-                      {lesson.review.checkedBy ? ` · ${lesson.review.checkedBy}` : ""}
-                    </span>
-                  ) : null}
+                  <div>
+                    <HomeworkReviewButton
+                      workspace={workspace}
+                      enrollmentId={view.id}
+                      lessonId={lesson.id}
+                      lessonLabel={`${lesson.position}. ${lesson.title}`}
+                      current={lesson.review ? { status: lesson.review.status, githubUrl: lesson.review.githubUrl, note: lesson.review.note } : null}
+                    />
+                  </div>
                 </div>
-              ) : null}
+              </details>
             </li>
           );
         })}
