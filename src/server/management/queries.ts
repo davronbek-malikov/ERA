@@ -227,12 +227,14 @@ export async function getManagementSummary(actor: ManagementActor, range: { from
   const from = range.from ?? monthStart;
   const to = range.to ?? monthEnd;
   const scope = enrollmentScope(actor);
+  // Cards describe current students only: removed (cancelled), expired or transferred enrollments stay in history.
+  const current = { ...scope, status: { in: ["ACTIVE", "COMPLETED"] as EnrollmentStatus[] } };
 
   const [students, enrollments, collectedRows, pending, examCount] = await retryOnDatabaseFailure(() =>
     Promise.all([
       actor.kind === "admin"
         ? prisma.user.count({ where: { role: UserRole.STUDENT } })
-        : prisma.user.count({ where: { role: UserRole.STUDENT, enrollments: { some: scope } } }),
+        : prisma.user.count({ where: { role: UserRole.STUDENT, enrollments: { some: current } } }),
       prisma.enrollment.findMany({
         where: { ...scope, status: { in: ["ACTIVE", "COMPLETED"] }, user: { role: UserRole.STUDENT } },
         select: {
@@ -249,7 +251,7 @@ export async function getManagementSummary(actor: ManagementActor, range: { from
         where: { status: "APPROVED", enrollment: scope, transactionDate: { gte: toDbDate(from), lte: toDbDate(to) } },
         select: { kind: true, amount: true, status: true }
       }),
-      prisma.paymentTransaction.findMany({ where: { status: "PENDING", enrollment: scope }, select: { kind: true, amount: true } }),
+      prisma.paymentTransaction.findMany({ where: { status: "PENDING", enrollment: current }, select: { kind: true, amount: true } }),
       prisma.examSchedule.count({ where: { ...examScope(actor), status: "SCHEDULED", examDate: { gte: toDbDate(today), lte: toDbDate(addDays(today, UPCOMING_EXAM_DAYS)) } } })
     ])
   );
