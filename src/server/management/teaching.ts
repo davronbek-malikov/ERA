@@ -1,11 +1,12 @@
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 
 import { Prisma, UserRole, type HomeworkStatus, type ManagementSource } from "@prisma/client";
 
-import { hashPassword, normalizePhone } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
 import { slugify } from "@/lib/slugs";
+import { PLACEHOLDER_EMAIL_DOMAIN } from "@/lib/student-contact";
 import { invalid, isSafeHttpUrl, optionalId, requireId, requireString, RequestError } from "@/lib/validation";
 import { authErrors } from "@/server/authz";
 import { assertCan, courseScope, enrollmentScope, requireStudentInScope, type ManagementActor } from "@/server/management/actor";
@@ -105,25 +106,41 @@ export function parseHomeworkReview(raw: Raw): HomeworkReviewInput {
   };
 }
 
+/** "@name", "name", "t.me/name", "https://t.me/name" → "@name"; phone numbers are kept as digits with "+". */
+export function parseTelegram(value: unknown): string | null {
+  const text = optionalText(value, "Telegram", 80);
+  if (!text) return null;
+  const link = /^(?:https?:\/\/)?(?:www\.)?t(?:elegram)?\.me\/([A-Za-z0-9_]{4,32})\/?$/i.exec(text);
+  if (link) return `@${link[1]}`;
+  if (/^@?[A-Za-z][A-Za-z0-9_]{3,31}$/.test(text)) return text.startsWith("@") ? text : `@${text}`;
+  const digits = text.replace(/[\s().-]/g, "");
+  if (/^\+?\d{7,15}$/.test(digits)) return digits;
+  throw invalid("invalid-telegram", "Enter a Telegram username (e.g. @alikarimov) or a phone number.");
+}
+
 export type NewStudentInput = {
   name: string;
-  email: string;
-  phone: string | null;
+  email: string | null;
+  telegram: string | null;
   githubUrl: string | null;
   password: string | null;
   enrollment: Raw | null;
 };
 
 export function parseNewStudent(raw: Raw): NewStudentInput {
-  const email = requireString(raw.email, "email", { max: 200 }).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw invalid("invalid-email", "Enter a valid email address.");
-  const phoneRaw = optionalText(raw.phone, "phone", 40);
-  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
-  if (phoneRaw && !phone) throw invalid("invalid-phone", "Enter a valid phone number, e.g. +821012345678.");
+  const emailRaw = optionalText(raw.email, "email", 200)?.toLowerCase() ?? null;
+  if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) throw invalid("invalid-email", "Enter a valid email address.");
   const password = optionalText(raw.password, "password", 200);
   if (password && password.length < 8) throw invalid("invalid-password", "The password must be at least 8 characters.");
   const enrollment = raw.courseId ? { ...raw, studentId: "pending" } : null;
-  return { name: requireString(raw.name, "name", { min: 2, max: 120 }), email, phone, githubUrl: parseGithubUrl(raw.githubUrl), password, enrollment };
+  return {
+    name: requireString(raw.name, "name", { min: 2, max: 120 }),
+    email: emailRaw,
+    telegram: parseTelegram(raw.telegram),
+    githubUrl: parseGithubUrl(raw.githubUrl),
+    password,
+    enrollment
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -139,18 +156,18 @@ function temporaryPassword() {
 
 export async function checkNewStudent(actor: ManagementActor, input: NewStudentInput) {
   assertCan(actor, "manageEnrollments");
-  const existing = await prisma.user.findFirst({
-    where: { OR: [{ email: input.email }, ...(input.phone ? [{ phone: input.phone }] : [])] },
-    select: { email: true }
-  });
-  if (existing) {
-    throw conflict("account-exists", existing.email === input.email ? `An account with ${input.email} already exists. Enroll that student instead.` : "That phone number already belongs to an account.");
+  if (input.email) {
+    const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
+    if (existing) throw conflict("account-exists", `An account with ${input.email} already exists. Enroll that student instead.`);
   }
   if (input.enrollment) parseCreateEnrollment(input.enrollment, todayInPlatform());
 }
 
 export async function createStudent(actor: ManagementActor, input: NewStudentInput, options: Options) {
   await checkNewStudent(actor, input);
+  // No email → an internal address (never shown) and a random password: the teacher tracks this student, and the
+  // student doesn't sign in. With an email, a temporary password is returned once so the student can sign in.
+  const email = input.email ?? `student-${randomUUID().replace(/-/g, "").slice(0, 16)}@${PLACEHOLDER_EMAIL_DOMAIN}`;
   const password = input.password ?? temporaryPassword();
   let student: { id: string; name: string; email: string };
   try {
@@ -158,8 +175,8 @@ export async function createStudent(actor: ManagementActor, input: NewStudentInp
       const created = await tx.user.create({
         data: {
           name: input.name,
-          email: input.email,
-          phone: input.phone,
+          email,
+          telegram: input.telegram,
           githubUrl: input.githubUrl,
           passwordHash: await hashPassword(password),
           role: UserRole.STUDENT,
@@ -167,12 +184,19 @@ export async function createStudent(actor: ManagementActor, input: NewStudentInp
         },
         select: { id: true, name: true, email: true }
       });
-      await writeAudit(tx, { actorId: actor.user.id, action: "student.create", entityType: "student", entityId: created.id, after: { ...created, githubUrl: input.githubUrl }, source: options.source });
+      await writeAudit(tx, {
+        actorId: actor.user.id,
+        action: "student.create",
+        entityType: "student",
+        entityId: created.id,
+        after: { ...created, telegram: input.telegram, githubUrl: input.githubUrl },
+        source: options.source
+      });
       await tx.activityLog.create({ data: { type: "USER_CREATED", message: `${created.name} added by ${actor.user.name}`, userId: actor.user.id, context: { studentId: created.id, source: options.source } } });
       return created;
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw conflict("account-exists", "An account with this email or phone already exists.");
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw conflict("account-exists", "An account with this email already exists.");
     throw error;
   }
 
@@ -180,17 +204,28 @@ export async function createStudent(actor: ManagementActor, input: NewStudentInp
   if (input.enrollment) {
     enrollment = await createEnrollment(actor, parseCreateEnrollment({ ...input.enrollment, studentId: student.id }, todayInPlatform()), options);
   }
-  return { student, temporaryPassword: input.password ? null : password, enrollment };
+  return { student, temporaryPassword: input.email && !input.password ? password : null, enrollment };
 }
 
-export async function updateStudentGithub(actor: ManagementActor, studentId: string, githubUrl: string | null, options: Options) {
+export type ContactInput = { githubUrl?: string | null; telegram?: string | null };
+
+export function parseContact(raw: Raw): ContactInput {
+  const out: ContactInput = {};
+  if (raw.githubUrl !== undefined) out.githubUrl = parseGithubUrl(raw.githubUrl);
+  if (raw.telegram !== undefined) out.telegram = parseTelegram(raw.telegram);
+  if (!Object.keys(out).length) throw invalid("nothing-to-change", "Nothing to change.");
+  return out;
+}
+
+/** GitHub link and Telegram of a student the actor teaches (or any student, for admins). */
+export async function updateStudentContact(actor: ManagementActor, studentId: string, input: ContactInput, options: Options) {
   assertCan(actor, "teaching");
   const student = await requireStudentInScope(actor, studentId);
   return prisma.$transaction(async (tx) => {
-    const before = await tx.user.findUniqueOrThrow({ where: { id: student.id }, select: { githubUrl: true } });
-    await tx.user.update({ where: { id: student.id }, data: { githubUrl } });
-    await writeAudit(tx, { actorId: actor.user.id, action: "student.github", entityType: "student", entityId: student.id, before, after: { githubUrl }, source: options.source });
-    return { studentId: student.id, githubUrl };
+    const before = await tx.user.findUniqueOrThrow({ where: { id: student.id }, select: { githubUrl: true, telegram: true } });
+    const after = await tx.user.update({ where: { id: student.id }, data: input, select: { githubUrl: true, telegram: true } });
+    await writeAudit(tx, { actorId: actor.user.id, action: "student.contact", entityType: "student", entityId: student.id, before, after, source: options.source });
+    return { studentId: student.id, ...after };
   });
 }
 
@@ -232,8 +267,11 @@ export async function checkCourse(actor: ManagementActor, input: CourseInput) {
 export async function createCourseWithLessons(actor: ManagementActor, input: CourseInput, options: Options) {
   const { instructor } = await checkCourse(actor, input);
   return prisma.$transaction(async (tx) => {
+    // New courses go to the end of this teacher's list.
+    const last = await tx.course.findFirst({ where: { instructorId: instructor.id }, orderBy: { position: "desc" }, select: { position: true } });
     const course = await tx.course.create({
       data: {
+        position: (last?.position ?? 0) + 1,
         title: input.title,
         slug: await uniqueCourseSlug(tx, input.title),
         shortDescription: input.description?.slice(0, 280) ?? null,
@@ -358,7 +396,7 @@ export async function listTeachingCourses(actor: ManagementActor) {
   const courses = await retryOnDatabaseFailure(() =>
     prisma.course.findMany({
       where: courseScope(actor),
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
         title: true,
@@ -396,5 +434,39 @@ export async function getEnrollmentHomework(enrollmentId: string, courseId: stri
           }
         : null
     };
+  });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Course order
+// ------------------------------------------------------------------------------------------------
+
+export function parseCourseOrder(raw: Raw): string[] {
+  const ids = Array.isArray(raw.courseIds) ? raw.courseIds : [];
+  if (!ids.length || ids.length > 200) throw invalid("invalid-courseIds", "Send the courses in their new order.");
+  const parsed = ids.map((id) => requireId(id, "courseId"));
+  if (new Set(parsed).size !== parsed.length) throw invalid("duplicate-courseIds", "A course appears twice.");
+  return parsed;
+}
+
+/** Saves the teacher's own course order (positions 1..n). Every course must be in the actor's scope. */
+export async function reorderCourses(actor: ManagementActor, courseIds: string[], options: Options) {
+  assertCan(actor, "teaching");
+  return prisma.$transaction(async (tx) => {
+    const found = await tx.course.findMany({ where: { id: { in: courseIds }, ...courseScope(actor) }, select: { id: true, position: true } });
+    if (found.length !== courseIds.length) throw authErrors.notFound("Course not found.");
+    for (const [index, id] of courseIds.entries()) {
+      await tx.course.update({ where: { id }, data: { position: index + 1 } });
+    }
+    await writeAudit(tx, {
+      actorId: actor.user.id,
+      action: "course.reorder",
+      entityType: "course",
+      entityId: courseIds[0],
+      before: found.map((course) => ({ id: course.id, position: course.position })),
+      after: courseIds.map((id, index) => ({ id, position: index + 1 })),
+      source: options.source
+    });
+    return { order: courseIds };
   });
 }

@@ -126,6 +126,8 @@ model User {
   updatedAt    DateTime @updatedAt
   /// Student's GitHub profile or repository (homework checking). Shown to the student's teachers only.
   githubUrl    String?  @map("github_url")
+  /// Telegram username or number, for teachers to contact the student.
+  telegram     String?
 
   enrollments         Enrollment[]
   instructorProfile   Instructor?

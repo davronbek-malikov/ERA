@@ -7,6 +7,7 @@ import { SectionHeader } from "@/components/workspace/workspace-ui";
 import { formatMoney } from "@/server/management/money";
 import { getMyEnrollments } from "@/server/management/student-view";
 import { formatCalendarDate } from "@/server/management/time";
+import { getT } from "@/lib/i18n-server";
 
 /*
  * The student's own enrollments, payments and access (Student Management, "Student view"). Read-only.
@@ -16,7 +17,8 @@ import { formatCalendarDate } from "@/server/management/time";
 type Views = Awaited<ReturnType<typeof getMyEnrollments>>;
 type View = Views["current"][number];
 
-function Row({ view }: { view: View }) {
+async function Row({ view }: { view: View }) {
+  const T = await getT();
   const showMoney = view.money.status !== "NO_FEE";
   return (
     <li className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
@@ -30,14 +32,14 @@ function Row({ view }: { view: View }) {
         </div>
         <span className="flex flex-wrap gap-1.5">
           {view.status !== "ACTIVE" ? <EnrollmentStatusBadge status={view.status} /> : null}
-          {view.access.allowed ? <Badge variant="primary">You can study</Badge> : <Badge variant="warning">Access paused</Badge>}
-          {view.payLater ? <Badge variant="outline">Pay Later</Badge> : null}
+          {view.access.allowed ? <Badge variant="primary">{T("You can study")}</Badge> : <Badge variant="warning">{T("Access paused")}</Badge>}
+          {view.payLater ? <Badge variant="outline">{T("Pay Later")}</Badge> : null}
           {showMoney ? <PaymentStatusBadge status={view.money.status} overdue={view.money.overdue} /> : null}
         </span>
       </div>
 
       {!view.access.allowed ? (
-        <Alert variant="warning" title="Course access is paused">
+        <Alert variant="warning" title={T("Course access is paused")}>
           {view.access.message}
         </Alert>
       ) : null}
@@ -45,19 +47,19 @@ function Row({ view }: { view: View }) {
       {showMoney ? (
         <dl className="grid gap-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-muted-foreground">Course price</dt>
+            <dt className="text-xs text-muted-foreground">{T("Course price")}</dt>
             <dd className="tabular-nums">{formatMoney(view.money.price, view.currency)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Paid (confirmed)</dt>
+            <dt className="text-xs text-muted-foreground">{T("Paid (confirmed)")}</dt>
             <dd className="tabular-nums">{formatMoney(view.money.approved, view.currency)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Remaining</dt>
+            <dt className="text-xs text-muted-foreground">{T("Remaining")}</dt>
             <dd className="font-semibold tabular-nums">{formatMoney(view.money.remaining, view.currency)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Payment due</dt>
+            <dt className="text-xs text-muted-foreground">{T("Payment due")}</dt>
             <dd className="flex items-center gap-1">
               {view.money.overdue ? <AlertTriangle className="size-3.5 text-error" aria-hidden="true" /> : null}
               {formatCalendarDate(view.paymentDueDate)}
@@ -68,13 +70,13 @@ function Row({ view }: { view: View }) {
 
       {view.money.pending ? (
         <p className="text-xs text-muted-foreground">
-          {formatMoney(view.money.pending, view.currency)} received and waiting for confirmation by your teacher or ERA.
+          {T("{amount} received and waiting for confirmation by your teacher or ERA.", { amount: formatMoney(view.money.pending, view.currency) })}
         </p>
       ) : null}
 
       {showMoney && view.payments.length ? (
         <details className="text-sm">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">My payments ({view.payments.length})</summary>
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{T("My payments ({count})", { count: view.payments.length })}</summary>
           <ul className="mt-2 flex flex-col gap-1">
             {view.payments.map((payment) => (
               <li key={payment.id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -94,13 +96,14 @@ function Row({ view }: { view: View }) {
 }
 
 export async function MyEnrollmentsSection({ userId }: { userId: string }) {
+  const T = await getT();
   const { current, history } = await getMyEnrollments(userId);
   if (!current.length && !history.length) return null;
   return (
-    <section className="flex flex-col gap-4" aria-label="Enrollments and payments">
+    <section className="flex flex-col gap-4" aria-label={T("Enrollments and payments")}>
       <SectionHeader
-        title="Enrollments & payments"
-        description="Your course dates, access and payments. Questions about a payment? Contact your teacher or ERA support."
+        title={T("Enrollments & payments")}
+        description={T("Your course dates, access and payments. Questions about a payment? Contact your teacher or ERA support.")}
       />
       {current.length ? (
         <ul className="grid gap-4 lg:grid-cols-2">
@@ -113,7 +116,7 @@ export async function MyEnrollmentsSection({ userId }: { userId: string }) {
         <div className="flex flex-col gap-3">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <History className="size-4" aria-hidden="true" />
-            Course history
+            {T("Course history")}
           </h3>
           <ul className="grid gap-4 lg:grid-cols-2">
             {history.map((view) => (

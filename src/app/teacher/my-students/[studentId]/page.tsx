@@ -8,6 +8,7 @@ import { AuthzError } from "@/server/authz";
 import { getManagementActor, requireStudentInScope } from "@/server/management/actor";
 import { requireTeacher } from "@/server/workspace";
 import { StudentProfileView } from "@/components/management/profile-view";
+import { getT } from "@/lib/i18n-server";
 
 export const metadata: Metadata = { title: "Student profile", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ studentId: string }> };
 
 export default async function Page({ params }: PageProps) {
+  const T = await getT();
   const user = await requireTeacher("/teacher/my-students");
   const actor = await getManagementActor(user, "teacher");
   const { studentId } = await params;
@@ -29,7 +31,7 @@ export default async function Page({ params }: PageProps) {
   return (
     <WorkspaceShell workspace="teacher">
       <WorkspacePage className="flex flex-col gap-6">
-        <PageHeader breadcrumbs={[{ label: "Teacher", href: "/teacher" }, { label: "My students", href: "/teacher/my-students" }, { label: name }]} title={name} description={"Your enrollments with this student, their history and notes."} />
+        <PageHeader breadcrumbs={[{ label: T("Teacher"), href: "/teacher" }, { label: T("My students"), href: "/teacher/my-students" }, { label: name }]} title={name} description={T("Your enrollments with this student, their history and notes.")} />
         <StudentProfileView actor={actor} studentId={studentId} workspace="teacher" />
       </WorkspacePage>
     </WorkspaceShell>

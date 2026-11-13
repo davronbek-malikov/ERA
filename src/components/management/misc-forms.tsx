@@ -12,6 +12,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useT } from "@/components/i18n/locale-provider";
 
 // ------------------------------------------------------------------------------------------------
 // Notes
@@ -26,14 +27,15 @@ export function AddNoteButton({
   workspace: Workspace;
   enrollments: Array<{ id: string; course: string }>;
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
   return (
     <FormDialog
-      triggerLabel="Add note"
+      triggerLabel={T("Add note")}
       triggerIcon={<StickyNote />}
-      title="Add an internal note"
-      description="Staff only. Students never see notes."
-      submitLabel="Save note"
+      title={T("Add an internal note")}
+      description={T("Staff only. Students never see notes.")}
+      submitLabel={T("Save note")}
       onSubmit={async (form) =>
         Boolean(
           await run(
@@ -45,9 +47,9 @@ export function AddNoteButton({
         )
       }
     >
-      <Field id={`note-course-${studentId}`} label="About">
+      <Field id={`note-course-${studentId}`} label={T("About")}>
         <Select id={`note-course-${studentId}`} name="enrollmentId" defaultValue="">
-          <option value="">The student in general</option>
+          <option value="">{T("The student in general")}</option>
           {enrollments.map((enrollment) => (
             <option key={enrollment.id} value={enrollment.id}>
               {enrollment.course}
@@ -55,7 +57,7 @@ export function AddNoteButton({
           ))}
         </Select>
       </Field>
-      <Field id={`note-text-${studentId}`} label="Note" required>
+      <Field id={`note-text-${studentId}`} label={T("Note")} required>
         <Textarea id={`note-text-${studentId}`} name="note" rows={4} required maxLength={4000} />
       </Field>
     </FormDialog>
@@ -92,6 +94,7 @@ export function ExamFormButton({
   today: string;
   timezone: string;
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
   const [courseId, setCourseId] = React.useState(initial?.courseId ?? courses[0]?.id ?? "");
   const [students, setStudents] = React.useState<Array<{ id: string; user: { name: string } }>>([]);
@@ -135,7 +138,7 @@ export function ExamFormButton({
 
   return (
     <FormDialog
-      triggerLabel={initial?.id ? "Edit" : "Schedule exam"}
+      triggerLabel={initial?.id ? T("Edit") : "Schedule exam"}
       triggerVariant={initial?.id ? "outline" : "default"}
       triggerSize={initial?.id ? "sm" : "md"}
       triggerIcon={initial?.id ? <PencilLine /> : <CalendarPlus />}
@@ -147,7 +150,7 @@ export function ExamFormButton({
       onSubmit={submit}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="exam-course" label="Course" required>
+        <Field id="exam-course" label={T("Course")} required>
           <Select
             id="exam-course"
             value={courseId}
@@ -163,31 +166,31 @@ export function ExamFormButton({
             ))}
           </Select>
         </Field>
-        <Field id="exam-title" label="Title" required>
+        <Field id="exam-title" label={T("Title")} required>
           <Input id="exam-title" name="title" defaultValue={initial?.title ?? ""} required maxLength={160} placeholder="Midterm exam" />
         </Field>
-        <Field id="exam-date" label="Date" required>
+        <Field id="exam-date" label={T("Date")} required>
           <Input id="exam-date" name="examDate" type="date" defaultValue={initial?.examDate ?? today} required />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field id="exam-start" label="Start" required>
+          <Field id="exam-start" label={T("Start")} required>
             <Input id="exam-start" name="startTime" type="time" defaultValue={initial?.startTime ?? "10:00"} required />
           </Field>
-          <Field id="exam-end" label="End">
+          <Field id="exam-end" label={T("End")}>
             <Input id="exam-end" name="endTime" type="time" defaultValue={initial?.endTime ?? ""} />
           </Field>
         </div>
         {initial?.id ? (
-          <Field id="exam-status" label="Status">
+          <Field id="exam-status" label={T("Status")}>
             <Select id="exam-status" name="status" defaultValue={initial.status}>
               <option value="SCHEDULED">Scheduled</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
+              <option value="COMPLETED">{T("Completed")}</option>
+              <option value="CANCELLED">{T("Cancelled")}</option>
             </Select>
           </Field>
         ) : null}
       </div>
-      <Field id="exam-description" label="Description">
+      <Field id="exam-description" label={T("Description")}>
         <Textarea id="exam-description" name="description" rows={2} defaultValue={initial?.description ?? ""} maxLength={2000} />
       </Field>
       <fieldset className="flex flex-col gap-1 rounded-lg border border-border p-3">
@@ -208,13 +211,14 @@ export function ExamFormButton({
 }
 
 export function DeleteExamButton({ examId, workspace, title }: { examId: string; workspace: Workspace; title: string }) {
+  const T = useT();
   const { run } = useManagementMutation();
   return (
     <ConfirmDialog
       trigger={
         <Button size="sm" variant="ghost">
           <Trash2 />
-          Delete
+          {T("Delete")}
         </Button>
       }
       title="Delete this exam?"
@@ -235,6 +239,7 @@ export function DeleteExamButton({ examId, workspace, title }: { examId: string;
 type Permissions = { viewPayments: boolean; recordPayments: boolean; approvePayments: boolean; manageEnrollments: boolean; manageAccess: boolean };
 
 export function TeacherPermissionsForm({ instructorId, initial, labels }: { instructorId: string; initial: Permissions; labels: Record<keyof Permissions, string> }) {
+  const T = useT();
   const { run, pending } = useManagementMutation();
   const [value, setValue] = React.useState(initial);
   const dirty = (Object.keys(initial) as Array<keyof Permissions>).some((key) => initial[key] !== value[key]);
@@ -268,7 +273,7 @@ export function TeacherPermissionsForm({ instructorId, initial, labels }: { inst
       ))}
       <div>
         <Button type="submit" size="sm" disabled={!dirty || pending}>
-          {pending ? "Saving…" : "Save permissions"}
+          {pending ? T("Saving…") : "Save permissions"}
         </Button>
       </div>
     </form>

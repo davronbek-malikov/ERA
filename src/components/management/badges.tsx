@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { getT } from "@/lib/i18n-server";
 
 /*
  * Status badges for Student Management (ERA Design System: color carries meaning, text always says it too).
@@ -15,12 +16,13 @@ const PAYMENT: Record<string, { label: string; variant: Variant }> = {
   NO_FEE: { label: "No fee", variant: "neutral" }
 };
 
-export function PaymentStatusBadge({ status, overdue }: { status: string; overdue?: boolean }) {
+export async function PaymentStatusBadge({ status, overdue }: { status: string; overdue?: boolean }) {
+  const T = await getT();
   const meta = PAYMENT[status] ?? { label: status, variant: "neutral" as Variant };
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Badge variant={meta.variant}>{meta.label}</Badge>
-      {overdue ? <Badge variant="error">Overdue</Badge> : null}
+      <Badge variant={meta.variant}>{T(meta.label)}</Badge>
+      {overdue ? <Badge variant="error">{T("Overdue")}</Badge> : null}
     </span>
   );
 }
@@ -31,13 +33,14 @@ const ACCESS: Record<string, { label: string; variant: Variant }> = {
   REVOKED: { label: "Revoked", variant: "error" }
 };
 
-export function AccessBadge({ status, allowed, payLater }: { status: string; allowed?: boolean; payLater?: boolean }) {
+export async function AccessBadge({ status, allowed, payLater }: { status: string; allowed?: boolean; payLater?: boolean }) {
+  const T = await getT();
   const meta = ACCESS[status] ?? { label: status, variant: "neutral" as Variant };
   const blockedAnyway = status === "ACTIVE" && allowed === false;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Badge variant={blockedAnyway ? "warning" : meta.variant}>{blockedAnyway ? "Paused" : meta.label}</Badge>
-      {payLater ? <Badge variant="outline">Pay Later</Badge> : null}
+      <Badge variant={blockedAnyway ? "warning" : meta.variant}>{blockedAnyway ? T("Paused") : meta.label}</Badge>
+      {payLater ? <Badge variant="outline">{T("Pay Later")}</Badge> : null}
     </span>
   );
 }
@@ -50,9 +53,10 @@ const ENROLLMENT: Record<string, { label: string; variant: Variant }> = {
   TRANSFERRED: { label: "Transferred", variant: "neutral" }
 };
 
-export function EnrollmentStatusBadge({ status }: { status: string }) {
+export async function EnrollmentStatusBadge({ status }: { status: string }) {
+  const T = await getT();
   const meta = ENROLLMENT[status] ?? { label: status, variant: "neutral" as Variant };
-  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+  return <Badge variant={meta.variant}>{T(meta.label)}</Badge>;
 }
 
 const TRANSACTION: Record<string, { label: string; variant: Variant }> = {
@@ -62,9 +66,10 @@ const TRANSACTION: Record<string, { label: string; variant: Variant }> = {
   REVERSED: { label: "Reversed", variant: "neutral" }
 };
 
-export function TransactionStatusBadge({ status }: { status: string }) {
+export async function TransactionStatusBadge({ status }: { status: string }) {
+  const T = await getT();
   const meta = TRANSACTION[status] ?? { label: status, variant: "neutral" as Variant };
-  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+  return <Badge variant={meta.variant}>{T(meta.label)}</Badge>;
 }
 
 export const ARRANGEMENT_LABEL: Record<string, string> = {

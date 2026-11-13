@@ -159,6 +159,7 @@ const readTools: Record<string, ToolSpec> = {
             studentId: student.id,
             name: student.name,
             email: student.email,
+            telegram: student.telegram,
             accountStatus: student.status,
             enrollments: enrollments
               .filter((row) => row.student.id === student.id)
@@ -231,6 +232,7 @@ const readTools: Record<string, ToolSpec> = {
             studentId: row.student.id,
             student: row.student.name,
             email: row.student.email,
+            telegram: row.student.telegram,
             course: row.course.title,
             courseId: row.course.id,
             teacher: row.teacher?.name ?? null,
@@ -311,6 +313,7 @@ const readTools: Record<string, ToolSpec> = {
             studentId: profile.student.id,
             name: profile.student.name,
             email: profile.student.email,
+            telegram: profile.student.telegram,
             github: profile.student.githubUrl,
             accountStatus: profile.student.status,
             registered: profile.student.createdAt.slice(0, 10)
@@ -858,21 +861,21 @@ const proposalTools: Record<string, ToolSpec> = {
     definition: {
       name: "propose_student",
       description:
-        "Propose adding a NEW student account (name, email, optional GitHub and phone) and optionally enrolling them in a course (courseId from find_courses, startDate, endDate, priceAmount in won). Check with find_students first that they don't already exist. ERA generates a temporary password shown after confirmation.",
+        "Propose adding a NEW student (name; optional Telegram username or number, GitHub link and email) and optionally enrolling them in a course (courseId from find_courses, startDate, endDate, priceAmount in won). Check with find_students first that they don't already exist. Email is optional: students added without one are records for the teacher and don't sign in.",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string" },
-          email: { type: "string" },
+          telegram: { type: "string", description: "@username or phone number" },
           githubUrl: { type: "string" },
-          phone: { type: "string" },
+          email: { type: "string" },
           courseId: { type: "string" },
           startDate: { type: "string", description: "YYYY-MM-DD" },
           endDate: { type: "string", description: "YYYY-MM-DD" },
           priceAmount: { type: "integer", minimum: 0 },
           paymentArrangement: { type: "string", enum: PAYMENT_ARRANGEMENTS }
         },
-        required: ["name", "email"],
+        required: ["name"],
         additionalProperties: false
       }
     },
@@ -880,8 +883,8 @@ const proposalTools: Record<string, ToolSpec> = {
       const raw = {
         name: input.name,
         email: input.email,
+        telegram: input.telegram,
         githubUrl: input.githubUrl,
-        phone: input.phone,
         ...(input.courseId
           ? {
               courseId: input.courseId,
@@ -900,8 +903,9 @@ const proposalTools: Record<string, ToolSpec> = {
         title: `Add student ${parsed.name}`,
         lines: [
           { label: "Name", value: parsed.name },
-          { label: "Email", value: parsed.email },
+          ...(parsed.telegram ? [{ label: "Telegram", value: parsed.telegram }] : []),
           ...(parsed.githubUrl ? [{ label: "GitHub", value: parsed.githubUrl }] : []),
+          ...(parsed.email ? [{ label: "Email", value: parsed.email }] : []),
           ...(course
             ? [
                 { label: "Course", value: course.title },
@@ -910,7 +914,7 @@ const proposalTools: Record<string, ToolSpec> = {
               ]
             : [{ label: "Course", value: "Not enrolled yet" }])
         ],
-        warnings: ["A temporary password will be shown once after you confirm. Give it to the student."]
+        warnings: parsed.email ? ["A temporary password will be shown once after you confirm. Give it to the student."] : []
       });
     }
   },
@@ -1207,7 +1211,7 @@ export async function executeManagementAction(user: AuthUser, action: { id: stri
     case "create_student": {
       const result = await createStudent(actor, parseNewStudent(payload), options);
       return {
-        message: `${result.student.name} was added (${result.student.email})${result.enrollment ? ` and enrolled in ${result.enrollment.courseTitle}` : ""}.${
+        message: `${result.student.name} was added${result.enrollment ? ` and enrolled in ${result.enrollment.courseTitle}` : ""}.${
           result.temporaryPassword ? ` Temporary password: ${result.temporaryPassword} — give it to the student.` : ""
         }`,
         data: { studentId: result.student.id }

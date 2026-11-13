@@ -5,6 +5,7 @@ import { retryOnDatabaseFailure } from "@/lib/server-data";
 import { can, courseScope, enrollmentScope, examScope, requireStudentInScope, type ManagementActor } from "@/server/management/actor";
 import { evaluateEnrollmentAccess } from "@/server/management/access";
 import { isOverdue, summarizePayments, type PaymentStatus, type PaymentSummary } from "@/server/management/money";
+import { visibleEmail } from "@/lib/student-contact";
 import { getEnrollmentHomework } from "@/server/management/teaching";
 import { addDays, fromDbDate, monthRange, toDbDate, todayInPlatform } from "@/server/management/time";
 
@@ -39,7 +40,8 @@ export type EnrollmentFilters = {
 
 export type EnrollmentRow = {
   id: string;
-  student: { id: string; name: string; email: string };
+  /** email is null when the student has none (internal placeholder address). */
+  student: { id: string; name: string; email: string | null; telegram: string | null };
   course: { id: string; title: string; slug: string };
   teacher: { id: string; name: string } | null;
   status: EnrollmentStatus;
@@ -58,7 +60,7 @@ export type EnrollmentRow = {
 };
 
 const ROW_INCLUDE = {
-  user: { select: { id: true, name: true, email: true } },
+  user: { select: { id: true, name: true, email: true, telegram: true } },
   course: { select: { id: true, title: true, slug: true, _count: { select: { lessons: true } } } },
   instructor: { select: { id: true, name: true } },
   payments: { select: { kind: true, amount: true, status: true } },
@@ -97,7 +99,7 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
       const access = await evaluateEnrollmentAccess(enrollment, today);
       return {
         id: enrollment.id,
-        student: enrollment.user,
+        student: { ...enrollment.user, email: visibleEmail(enrollment.user.email) },
         course: { id: enrollment.course.id, title: enrollment.course.title, slug: enrollment.course.slug },
         teacher: enrollment.instructor,
         status: enrollment.status,
@@ -414,7 +416,7 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
 
   const teachers = [...new Map(enrollmentViews.filter((view) => view.teacher).map((view) => [view.teacher!.id, view.teacher!])).values()];
   return {
-    student: { ...student, createdAt: student.createdAt.toISOString() },
+    student: { ...student, email: visibleEmail(student.email), createdAt: student.createdAt.toISOString() },
     teachers,
     current: enrollmentViews.filter((view) => view.status === "ACTIVE"),
     history: enrollmentViews.filter((view) => view.status !== "ACTIVE"),
@@ -637,16 +639,17 @@ export async function searchStudentAccounts(actor: ManagementActor, query: strin
       },
       orderBy: { name: "asc" },
       take: limit,
-      select: { id: true, name: true, email: true, status: true }
+      select: { id: true, name: true, email: true, telegram: true, status: true }
     })
-  );
+  ).then((rows) => rows.map((row) => ({ ...row, email: visibleEmail(row.email) })));
 }
 
 export async function listScopedCourses(actor: ManagementActor) {
   return retryOnDatabaseFailure(() =>
     prisma.course.findMany({
       where: courseScope(actor),
-      orderBy: { title: "asc" },
+      // The teacher's own order (Courses & lessons → ↑ ↓), then creation order.
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
       select: { id: true, title: true, slug: true, status: true, instructorId: true, instructor: { select: { name: true } } }
     })
   );

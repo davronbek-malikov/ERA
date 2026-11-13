@@ -585,3 +585,34 @@ describe("Voice input for the assistant", () => {
     assert.equal(forged.status, 403);
   });
 });
+
+describe("Students without email, Telegram contact, course order", () => {
+  test("a teacher adds a student with only a name and Telegram; no email or password is shown", async () => {
+    const created = await post("/api/management/students", { session: admin, json: { name: "Telegram Only", telegram: "t.me/tg_only_student", courseId: m.courseA2.id, startDate: today, priceAmount: 300000 } });
+    assert.equal(created.status, 201, created.text);
+    assert.equal(created.data.temporaryPassword, null, "no sign-in details for a record-only student");
+    const user = await prisma.user.findUnique({ where: { id: created.data.student.id } });
+    assert.equal(user.telegram, "@tg_only_student");
+    assert.match(user.email, /@no-email\.eraacademy\.local$/);
+    const { profile: p } = await profile(admin, user.id);
+    assert.equal(p.student.email, null, "the internal address is never returned");
+    assert.equal(p.student.telegram, "@tg_only_student");
+    const page = await get(`/admin/students/${user.id}`, { session: admin });
+    assert.ok(!page.text.includes("no-email.eraacademy.local"));
+    assert.equal((await post("/api/management/students", { session: admin, json: { name: "Bad TG", telegram: "not a handle!" } })).status, 400);
+    const edited = await call("PATCH", `/api/management/students/${user.id}`, { session: admin, json: { telegram: "+998901234567" } });
+    assert.equal(edited.status, 200, edited.text);
+    assert.equal(edited.data.telegram, "+998901234567");
+  });
+
+  test("teachers set their own course order; other teachers' courses can't be included", async () => {
+    const mine = await prisma.course.findMany({ where: { instructorId: ins.instructorA }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    const reversed = mine.map((course) => course.id).reverse();
+    const saved = await call("PUT", "/api/management/courses/order", { session: teacherA, json: { workspace: "teacher", courseIds: reversed } });
+    assert.equal(saved.status, 200, saved.text);
+    const after = await prisma.course.findMany({ where: { instructorId: ins.instructorA }, orderBy: { position: "asc" }, select: { id: true } });
+    assert.deepEqual(after.map((course) => course.id), reversed);
+    assert.equal((await call("PUT", "/api/management/courses/order", { session: teacherA, json: { workspace: "teacher", courseIds: [...reversed, c.courseB.id] } })).status, 404);
+    assert.equal((await call("PUT", "/api/management/courses/order", { session: studentA, json: { courseIds: reversed } })).status, 403);
+  });
+});

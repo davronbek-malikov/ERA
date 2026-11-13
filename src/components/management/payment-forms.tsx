@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import type { Workspace } from "@/components/management/enrollment-forms";
+import { useT } from "@/components/i18n/locale-provider";
 
 /*
  * Manual payment verification (Student Management). Recording creates a PENDING transaction; only an approval
@@ -31,13 +32,14 @@ export function RecordPaymentButton({
   label?: string;
   currency?: string;
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
   const [key, setKey] = React.useState(newIdempotencyKey);
 
   async function submit(form: FormData) {
     const amount = formAmount(form, "amount");
     if (!amount || Number.isNaN(amount)) {
-      toast({ title: "Enter the amount as a whole number of won, e.g. 100000.", variant: "error" });
+      toast({ title: T("Enter the amount as a whole number of won, e.g. 100000."), variant: "error" });
       return false;
     }
     const result = await run(
@@ -65,37 +67,37 @@ export function RecordPaymentButton({
     <FormDialog
       triggerLabel={label}
       triggerIcon={<HandCoins />}
-      title="Record a payment"
-      description="For money received outside ERA (bank transfer, cash…). It is saved as pending and counts only after someone verifies and approves it."
-      submitLabel="Record as pending"
+      title={T("Record a payment")}
+      description={T("For money received outside ERA (bank transfer, cash…). It is saved as pending and counts only after someone verifies and approves it.")}
+      submitLabel={T("Record as pending")}
       onOpen={() => setKey(newIdempotencyKey())}
       onSubmit={submit}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id={`pay-amount-${enrollmentId}`} label="Amount (₩)" required>
+        <Field id={`pay-amount-${enrollmentId}`} label={T("Amount (₩)")} required>
           <Input id={`pay-amount-${enrollmentId}`} name="amount" inputMode="numeric" placeholder="100000" required />
         </Field>
-        <Field id={`pay-kind-${enrollmentId}`} label="Type">
+        <Field id={`pay-kind-${enrollmentId}`} label={T("Type")}>
           <Select id={`pay-kind-${enrollmentId}`} name="kind" defaultValue="PAYMENT">
-            <option value="PAYMENT">Payment received</option>
-            <option value="REFUND">Refund given back</option>
+            <option value="PAYMENT">{T("Payment received")}</option>
+            <option value="REFUND">{T("Refund given back")}</option>
           </Select>
         </Field>
-        <Field id={`pay-method-${enrollmentId}`} label="Method">
+        <Field id={`pay-method-${enrollmentId}`} label={T("Method")}>
           <Select id={`pay-method-${enrollmentId}`} name="method" defaultValue="BANK_TRANSFER">
-            <option value="BANK_TRANSFER">Bank transfer</option>
-            <option value="CASH">Cash</option>
-            <option value="ONLINE">Online</option>
-            <option value="OTHER">Other</option>
+            <option value="BANK_TRANSFER">{T("Bank transfer")}</option>
+            <option value="CASH">{T("Cash")}</option>
+            <option value="ONLINE">{T("Online")}</option>
+            <option value="OTHER">{T("Other")}</option>
           </Select>
         </Field>
-        <Field id={`pay-date-${enrollmentId}`} label="Payment date">
+        <Field id={`pay-date-${enrollmentId}`} label={T("Payment date")}>
           <Input id={`pay-date-${enrollmentId}`} name="transactionDate" type="date" defaultValue={today} />
         </Field>
-        <Field id={`pay-ref-${enrollmentId}`} label="Reference (optional)" hint="e.g. bank transfer number">
+        <Field id={`pay-ref-${enrollmentId}`} label={T("Reference (optional)")} hint={T("e.g. bank transfer number")}>
           <Input id={`pay-ref-${enrollmentId}`} name="reference" maxLength={120} />
         </Field>
-        <Field id={`pay-note-${enrollmentId}`} label="Note (optional)">
+        <Field id={`pay-note-${enrollmentId}`} label={T("Note (optional)")}>
           <Input id={`pay-note-${enrollmentId}`} name="description" maxLength={500} />
         </Field>
       </div>
@@ -118,6 +120,7 @@ export function PaymentReviewActions({
   canApprove: boolean;
   canCorrect: boolean;
 }) {
+  const T = useT();
   const { run, pending } = useManagementMutation();
   const [key, setKey] = React.useState(newIdempotencyKey);
   const url = `/api/management/payments/${transactionId}`;
@@ -130,69 +133,69 @@ export function PaymentReviewActions({
             trigger={
               <Button size="sm" disabled={pending}>
                 <BadgeCheck />
-                Approve
+                {T("Approve")}
               </Button>
             }
-            title="Approve this payment?"
+            title={T("Approve this payment?")}
             description={`Approve ${amount.toLocaleString("en-US")} only if you have verified the money was actually received. It will then count toward the balance.`}
-            confirmLabel="Approve payment"
+            confirmLabel={T("Approve payment")}
             onConfirm={async () => {
-              await run(url, "POST", { workspace, decision: "approve" }, "Payment approved.");
+              await run(url, "POST", { workspace, decision: "approve" }, T("Payment approved."));
             }}
           />
           <FormDialog
-            triggerLabel="Reject"
+            triggerLabel={T("Reject")}
             triggerIcon={<Ban />}
-            title="Reject this payment"
-            description="The payment stays in the history as rejected and never counts."
-            submitLabel="Reject payment"
+            title={T("Reject this payment")}
+            description={T("The payment stays in the history as rejected and never counts.")}
+            submitLabel={T("Reject payment")}
             destructive
-            onSubmit={async (form) => Boolean(await run(url, "POST", { workspace, decision: "reject", reason: formString(form, "reason") }, "Payment rejected."))}
+            onSubmit={async (form) => Boolean(await run(url, "POST", { workspace, decision: "reject", reason: formString(form, "reason") }, T("Payment rejected.")))}
           >
-            <Field id={`reject-reason-${transactionId}`} label="Reason" required>
-              <Input id={`reject-reason-${transactionId}`} name="reason" required maxLength={500} placeholder="e.g. Transfer not found in the bank account" />
+            <Field id={`reject-reason-${transactionId}`} label={T("Reason")} required>
+              <Input id={`reject-reason-${transactionId}`} name="reason" required maxLength={500} placeholder={T("e.g. Transfer not found in the bank account")} />
             </Field>
           </FormDialog>
         </>
       ) : null}
       {status === "APPROVED" && canApprove ? (
         <FormDialog
-          triggerLabel="Reverse"
+          triggerLabel={T("Reverse")}
           triggerIcon={<Undo2 />}
-          title="Reverse this payment"
-          description="Use this if an approved payment turned out to be wrong. It stays in the history as reversed and stops counting."
-          submitLabel="Reverse payment"
+          title={T("Reverse this payment")}
+          description={T("Use this if an approved payment turned out to be wrong. It stays in the history as reversed and stops counting.")}
+          submitLabel={T("Reverse payment")}
           destructive
-          onSubmit={async (form) => Boolean(await run(url, "POST", { workspace, decision: "reverse", reason: formString(form, "reason") }, "Payment reversed."))}
+          onSubmit={async (form) => Boolean(await run(url, "POST", { workspace, decision: "reverse", reason: formString(form, "reason") }, T("Payment reversed.")))}
         >
-          <Field id={`reverse-reason-${transactionId}`} label="Reason" required>
+          <Field id={`reverse-reason-${transactionId}`} label={T("Reason")} required>
             <Input id={`reverse-reason-${transactionId}`} name="reason" required maxLength={500} />
           </Field>
         </FormDialog>
       ) : null}
       {(status === "PENDING" || status === "APPROVED") && canCorrect ? (
         <FormDialog
-          triggerLabel="Correct"
+          triggerLabel={T("Correct")}
           triggerIcon={<PencilLine />}
-          title="Correct the amount"
-          description="The original record is kept (reversed or rejected) and a new pending record with the right amount is linked to it."
-          submitLabel="Record correction"
+          title={T("Correct the amount")}
+          description={T("The original record is kept (reversed or rejected) and a new pending record with the right amount is linked to it.")}
+          submitLabel={T("Record correction")}
           onOpen={() => setKey(newIdempotencyKey())}
           onSubmit={async (form) => {
             const corrected = formAmount(form, "amount");
             if (!corrected || Number.isNaN(corrected)) {
-              toast({ title: "Enter the correct amount in whole won.", variant: "error" });
+              toast({ title: T("Enter the correct amount in whole won."), variant: "error" });
               return false;
             }
             return Boolean(
-              await run(url, "POST", { workspace, decision: "correct", amount: corrected, reason: formString(form, "reason"), idempotencyKey: key }, "Correction recorded as pending.")
+              await run(url, "POST", { workspace, decision: "correct", amount: corrected, reason: formString(form, "reason"), idempotencyKey: key }, T("Correction recorded as pending."))
             );
           }}
         >
-          <Field id={`correct-amount-${transactionId}`} label="Correct amount (₩)" hint={`Currently ${amount.toLocaleString("en-US")}`} required>
+          <Field id={`correct-amount-${transactionId}`} label={T("Correct amount (₩)")} hint={`Currently ${amount.toLocaleString("en-US")}`} required>
             <Input id={`correct-amount-${transactionId}`} name="amount" inputMode="numeric" required />
           </Field>
-          <Field id={`correct-reason-${transactionId}`} label="Reason" required>
+          <Field id={`correct-reason-${transactionId}`} label={T("Reason")} required>
             <Input id={`correct-reason-${transactionId}`} name="reason" required maxLength={500} />
           </Field>
         </FormDialog>

@@ -5,12 +5,14 @@ import { WorkspacePage } from "@/components/layout/app-shell";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { WorkspaceAssistant } from "@/components/workspace/workspace-assistant";
 import { requireAdmin } from "@/server/workspace";
+import { getT } from "@/lib/i18n-server";
 
 export const metadata: Metadata = { title: "Admin Assistant", robots: { index: false } };
 
 type PageProps = { searchParams: Promise<{ c?: string }> };
 
 export default async function AdminAssistantPage({ searchParams }: PageProps) {
+  const T = await getT();
   // "Continue in the assistant" from Ask ERA AI opens that conversation (ownership is checked by the API).
   const { c: initialConversationId } = await searchParams;
   await requireAdmin("/admin/assistant");
@@ -22,7 +24,7 @@ export default async function AdminAssistantPage({ searchParams }: PageProps) {
           initialConversationId={initialConversationId}
           kind="admin-assistant"
           name="Admin Assistant"
-          greeting="What's on the agenda today?"
+          greeting={T("What's on the agenda today?")}
           suggestions={[
             { label: "Who hasn't paid?", prompt: "Which students have not paid?", icon: <Wallet /> },
             { label: "Payments waiting for approval", prompt: "Who has pending payments?", icon: <ClipboardCheck /> },
