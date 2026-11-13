@@ -204,3 +204,104 @@ export function PaymentReviewActions({
     </div>
   );
 }
+
+/**
+ * One step for the usual case "the student paid me": records the payment and, when the teacher may approve,
+ * approves it right away so it counts. Without approval permission it stays pending for an administrator.
+ */
+export function MarkPaidButton({
+  enrollmentId,
+  workspace,
+  today,
+  remaining,
+  canApprove,
+  currency = "KRW"
+}: {
+  enrollmentId: string;
+  workspace: Workspace;
+  today: string;
+  remaining: number;
+  canApprove: boolean;
+  currency?: string;
+}) {
+  const T = useT();
+  const { run } = useManagementMutation();
+  const [key, setKey] = React.useState(newIdempotencyKey);
+
+  async function submit(form: FormData) {
+    const amount = formAmount(form, "amount");
+    if (!amount || Number.isNaN(amount)) {
+      toast({ title: T("Enter the amount as a whole number of won, e.g. 100000."), variant: "error" });
+      return false;
+    }
+    const body = {
+      workspace,
+      enrollmentId,
+      kind: "PAYMENT",
+      amount,
+      currency,
+      method: formString(form, "method") || "OTHER",
+      transactionDate: formString(form, "transactionDate") || today,
+      reference: null,
+      description: null,
+      idempotencyKey: key
+    };
+    if (!canApprove) {
+      const result = await run("/api/management/payments", "POST", body, "Payment recorded. It is pending until approved.");
+      if (result) setKey(newIdempotencyKey());
+      return Boolean(result);
+    }
+    let transactionId: string | undefined;
+    try {
+      const response = await fetch("/api/management/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; transaction?: { id?: string } } | null;
+      if (!response.ok || !payload?.ok || !payload.transaction?.id) {
+        toast({ title: payload?.error ?? T("That didn't work. Please try again."), variant: "error" });
+        return false;
+      }
+      transactionId = payload.transaction.id;
+    } catch {
+      toast({ title: T("You seem to be offline. Nothing was saved."), variant: "error" });
+      return false;
+    }
+    setKey(newIdempotencyKey());
+    const approved = await run(`/api/management/payments/${transactionId}`, "POST", { workspace, decision: "approve" }, "Payment confirmed. It now counts as paid.");
+    // Close either way: the payment is recorded; if approval failed it simply stays pending in the history.
+    if (!approved) window.location.reload();
+    return true;
+  }
+
+  return (
+    <FormDialog
+      triggerLabel={T("Confirm payment")}
+      triggerVariant="default"
+      triggerIcon={<BadgeCheck />}
+      title={T("The student paid")}
+      description={
+        canApprove
+          ? T("Only confirm money you actually received. It counts as paid right away and is kept in the payment history.")
+          : T("It is saved and counts after an administrator approves it.")
+      }
+      submitLabel={T("Confirm payment")}
+      onOpen={() => setKey(newIdempotencyKey())}
+      onSubmit={submit}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id={`paid-amount-${enrollmentId}`} label={T("Amount (₩)")} required>
+          <Input id={`paid-amount-${enrollmentId}`} name="amount" inputMode="numeric" defaultValue={String(remaining)} required />
+        </Field>
+        <Field id={`paid-method-${enrollmentId}`} label={T("Method")}>
+          <Select id={`paid-method-${enrollmentId}`} name="method" defaultValue="BANK_TRANSFER">
+            <option value="BANK_TRANSFER">{T("Bank transfer")}</option>
+            <option value="CASH">{T("Cash")}</option>
+            <option value="ONLINE">{T("Online")}</option>
+            <option value="OTHER">{T("Other")}</option>
+          </Select>
+        </Field>
+        <Field id={`paid-date-${enrollmentId}`} label={T("Payment date")}>
+          <Input id={`paid-date-${enrollmentId}`} name="transactionDate" type="date" defaultValue={today} />
+        </Field>
+      </div>
+    </FormDialog>
+  );
+}

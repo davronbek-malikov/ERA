@@ -10,7 +10,7 @@ import {
 } from "@/components/management/badges";
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
-import { PaymentReviewActions, RecordPaymentButton } from "@/components/management/payment-forms";
+import { PaymentReviewActions, RecordPaymentButton, MarkPaidButton } from "@/components/management/payment-forms";
 import { CourseMembershipButton, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
 import { telegramUrl } from "@/lib/student-contact";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -71,6 +71,16 @@ async function EnrollmentCard({
           <EnrollmentStatusBadge status={view.status} />
           <AccessBadge status={view.accessStatus} allowed={view.accessAllowed} payLater={view.arrangement === "PAY_LATER"} />
           {view.money ? <PaymentStatusBadge status={view.money.status} overdue={view.money.overdue} /> : null}
+          {view.money && view.money.remaining > 0 && view.status === "ACTIVE" && view.arrangement !== "WAIVED" && can(actor, "recordPayments") ? (
+            <MarkPaidButton
+              enrollmentId={view.id}
+              workspace={workspace}
+              today={today}
+              remaining={view.money.remaining}
+              canApprove={can(actor, "approvePayments")}
+              currency={view.currency}
+            />
+          ) : null}
         </span>
       </header>
 

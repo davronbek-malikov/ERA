@@ -22,6 +22,12 @@ const UZ: Record<string, string> = {
   "Lesson {number}": "{number}-dars",
   "Homework — {lesson}": "Uy vazifasi — {lesson}",
   "Contact": "Aloqa",
+  "Confirm payment": "Tasdiqlash",
+  "The student paid": "O'quvchi to'lov qildi",
+  "Only confirm money you actually received. It counts as paid right away and is kept in the payment history.":
+    "Faqat haqiqatan olgan pulingizni tasdiqlang. U darhol to'langan deb hisoblanadi va To'lovlar tarixida saqlanadi.",
+  "It is saved and counts after an administrator approves it.": "U saqlanadi va administrator tasdiqlagandan keyin hisoblanadi.",
+  "Payment confirmed. It now counts as paid.": "To'lov tasdiqlandi. Endi u to'langan deb hisoblanadi.",
   "{amount} recorded and waiting for approval (not counted yet). Approve it in the payment history below.":
     "{amount} yozilgan va tasdiqlashni kutmoqda (hali hisoblanmagan). Uni pastdagi To'lovlar tarixida tasdiqlang.",
   "Paid {amount} more than the price.": "Narxdan {amount} ortiq to'langan.",
