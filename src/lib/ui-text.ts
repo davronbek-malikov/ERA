@@ -22,6 +22,7 @@ const UZ: Record<string, string> = {
   "Lesson {number}": "{number}-dars",
   "Homework — {lesson}": "Uy vazifasi — {lesson}",
   "Contact": "Aloqa",
+  "All payments": "Barcha to'lovlar",
   "Confirm payment": "Tasdiqlash",
   "The student paid": "O'quvchi to'lov qildi",
   "Only confirm money you actually received. It counts as paid right away and is kept in the payment history.":

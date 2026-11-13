@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, BookPlus, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, UserCheck, UserMinus, UserPlus } from "lucide-react";
+import { ArrowDown, ArrowUp, BookPlus, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, Search, UserCheck, UserMinus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
@@ -472,5 +472,66 @@ export function CourseMembershipButton({
         await run(`/api/management/enrollments/${enrollmentId}/membership`, "POST", { workspace, action }, removing ? "Removed from the course." : "Returned to the course.");
       }}
     />
+  );
+}
+
+/**
+ * The teacher's student list filter: one search box plus (when they may see payments) a payment dropdown that
+ * applies as soon as it changes. A name search also finds students removed from a course (history), so they can
+ * be opened and returned; the payment filter only looks at current students.
+ */
+export function TeacherStudentSearch({
+  basePath,
+  q,
+  payment,
+  showPayment
+}: {
+  basePath: string;
+  q: string;
+  payment: string;
+  showPayment: boolean;
+}) {
+  const T = useT();
+  const router = useRouter();
+  const [text, setText] = React.useState(q);
+
+  function go(nextQ: string, nextPayment: string) {
+    const params = new URLSearchParams();
+    if (nextQ.trim()) {
+      params.set("q", nextQ.trim());
+      params.set("status", "all");
+    }
+    if (nextPayment) params.set("payment", nextPayment);
+    const query = params.toString();
+    router.push(query ? `${basePath}?${query}` : basePath);
+  }
+
+  return (
+    <form
+      role="search"
+      className="flex flex-wrap gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        go(text, payment);
+      }}
+    >
+      <Input type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder={T("Search students")} aria-label={T("Search students")} className="min-w-0 flex-1 basis-48" />
+      {showPayment ? (
+        <Select value={payment} onChange={(event) => go(text, event.target.value)} aria-label={T("Payment status")} className="w-auto min-w-40">
+          <option value="">{T("All payments")}</option>
+          <option value="FULLY_PAID">{T("Fully paid")}</option>
+          <option value="PARTIALLY_PAID">{T("Partially paid")}</option>
+          <option value="UNPAID">{T("Unpaid")}</option>
+        </Select>
+      ) : null}
+      <Button type="submit" variant="outline" aria-label={T("Search students")}>
+        <Search />
+      </Button>
+      {q || payment ? (
+        <Button type="button" variant="ghost" onClick={() => { setText(""); go("", ""); }}>
+          {T("Clear")}
+        </Button>
+      ) : null}
+    </form>
   );
 }
