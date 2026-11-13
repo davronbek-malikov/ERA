@@ -135,14 +135,14 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
   }
 
   return (
+    // Only the open panel and the round button accept taps. The wrapper never does, and the closed panel is
+    // removed from the layout entirely — an invisible panel used to cover the page and block form fields on phones.
     <div className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex justify-end sm:inset-x-6 sm:bottom-6">
-      <div className="pointer-events-auto flex w-full max-w-[24rem] flex-col items-end gap-3 sm:w-auto">
+      <div className="pointer-events-none flex w-full max-w-[24rem] flex-col items-end gap-3 sm:w-auto">
         <div
           className={cn(
-            "w-full overflow-hidden rounded-xl border border-primary/15 bg-card/95 shadow-[0_20px_60px_rgba(76,99,210,0.18)] backdrop-blur-xl transition-all duration-300 sm:w-[24rem]",
-            isOpen
-              ? "translate-y-0 scale-100 opacity-100"
-              : "pointer-events-none translate-y-4 scale-95 opacity-0"
+            "w-full overflow-hidden rounded-xl border border-primary/15 bg-card/95 shadow-[0_20px_60px_rgba(76,99,210,0.18)] backdrop-blur-xl sm:w-[24rem]",
+            isOpen ? "pointer-events-auto max-h-[calc(100dvh-6rem)] overflow-y-auto" : "hidden"
           )}
         >
           <div className="border-b border-border/70 bg-muted px-5 py-4">
@@ -251,7 +251,7 @@ export function EraGuideChatbot({ locale = "en" }: EraGuideChatbotProps) {
         <button
           type="button"
           onClick={() => setIsOpen((current) => !current)}
-          className="group flex items-center gap-3 rounded-full border border-primary/20 bg-card px-4 py-3 text-left shadow-[0_18px_45px_rgba(59,130,246,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(79,70,229,0.24)]"
+          className="group pointer-events-auto flex items-center gap-3 rounded-full border border-primary/20 bg-card px-4 py-3 text-left shadow-[0_18px_45px_rgba(59,130,246,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(79,70,229,0.24)]"
           aria-expanded={isOpen}
           aria-label={copy.ask}
         >

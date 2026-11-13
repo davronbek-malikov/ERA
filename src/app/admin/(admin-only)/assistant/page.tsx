@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { BarChart3, ClipboardCheck, Wallet } from "lucide-react";
 
 import { WorkspacePage } from "@/components/layout/app-shell";
-import { PageHeader } from "@/components/layout/page-header";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { WorkspaceAssistant } from "@/components/workspace/workspace-assistant";
 import { requireAdmin } from "@/server/workspace";
@@ -17,22 +17,16 @@ export default async function AdminAssistantPage({ searchParams }: PageProps) {
 
   return (
     <WorkspaceShell workspace="admin">
-      <WorkspacePage className="flex flex-col gap-6">
-        <PageHeader
-          breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Admin Assistant" }]}
-          title="Admin Assistant"
-          description="Ask about platform statistics and course activity. It works with aggregate data only and never reads private conversations."
-        />
+      <WorkspacePage width="full" className="py-4">
         <WorkspaceAssistant
           initialConversationId={initialConversationId}
           kind="admin-assistant"
           name="Admin Assistant"
-          intro="I'll explain platform statistics and course activity, and where to find admin functions. I can't change anything myself: you make changes in the admin pages."
+          greeting="What's on the agenda today?"
           suggestions={[
-            "Summarize platform statistics",
-            "Which courses are still unpublished?",
-            "Which courses have the most enrollments?",
-            "How do I add a new teacher?"
+            { label: "Who hasn't paid?", prompt: "Which students have not paid?", icon: <Wallet /> },
+            { label: "Payments waiting for approval", prompt: "Who has pending payments?", icon: <ClipboardCheck /> },
+            { label: "Platform summary", prompt: "Summarize platform statistics", icon: <BarChart3 /> }
           ]}
         />
       </WorkspacePage>

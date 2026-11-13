@@ -69,9 +69,9 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
       <Container className="py-3.5">
-        <div className="rounded-2xl border border-border/70 bg-card/88 px-4 py-3 shadow-soft sm:px-5 2xl:px-6">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+        <div className="rounded-2xl border border-border/70 bg-card/88 px-3 py-2.5 shadow-soft sm:px-5 sm:py-3 2xl:px-6">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <PublicNavDrawer
                 locale={locale}
                 title={locale === "uz" ? "ERA navigatsiyasi" : "ERA navigation"}
@@ -88,12 +88,15 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
                 cta={!user ? { href: "/courses", label: t.navbar.startLearning } : undefined}
               />
 
-              <Link href="/" className="flex min-w-0 items-center gap-3">
-                <div className="rounded-2xl bg-accent p-1.5 shadow-soft">
-                  <EraLogo className="h-11 w-11" />
+              <Link href="/" className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <div className="shrink-0 rounded-2xl bg-accent p-1 shadow-soft sm:p-1.5">
+                  <EraLogo className="h-8 w-8 sm:h-11 sm:w-11" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-display text-[1.15rem] font-semibold">ERA Academy</p>
+                  {/* "ERA" alone on the narrowest phones, the full name from 400px up. */}
+                  <p className="whitespace-nowrap font-display text-base font-semibold sm:text-[1.15rem]">
+                    ERA<span className="hidden min-[400px]:inline"> Academy</span>
+                  </p>
                   <p className="hidden text-[11px] uppercase tracking-[0.22em] text-muted-foreground/85 sm:block">
                     {t.navbar.brandTagline}
                   </p>
@@ -101,7 +104,7 @@ export async function Navbar({ user: initialUser }: NavbarProps) {
               </Link>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
               {user ? (
                 <>
                   <Link

@@ -66,7 +66,8 @@ export function PublicNavDrawer({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="shrink-0 gap-2 shadow-soft">
           <Menu className="h-4 w-4" />
-          {locale === "uz" ? "Menyu" : "Menu"}
+          {/* Icon only on phones, so the brand name fits in the header. */}
+          <span className="sr-only sm:not-sr-only">{locale === "uz" ? "Menyu" : "Menu"}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="left-0 top-0 h-screen w-[min(88vw,22rem)] translate-x-0 translate-y-0 rounded-none rounded-r-[1.75rem] border-r border-border/80 p-0 shadow-[0_30px_80px_rgba(15,23,42,0.22)] data-[state=closed]:slide-out-to-left-full data-[state=open]:slide-in-from-left-full">

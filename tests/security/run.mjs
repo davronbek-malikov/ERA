@@ -57,6 +57,8 @@ const env = {
   ERA_KB_MIN_SCORE: "0.2",
   VOYAGE_API_KEY: "",
   OPENAI_API_KEY: "",
+  // Never call real providers from tests (.env may hold real keys; process env wins over .env).
+  GROQ_API_KEY: "",
   SECURITY_BASE_URL: `http://localhost:${APP_PORT}`,
   SECURITY_STORAGE_URL: `http://127.0.0.1:${STORAGE_PORT}`,
   SECURITY_AUTH_SECRET: AUTH_SECRET

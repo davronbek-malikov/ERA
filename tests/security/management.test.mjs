@@ -568,3 +568,20 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.equal(createdCourse.lessons[0].homework, "Build a CNN");
   });
 });
+
+describe("Voice input for the assistant", () => {
+  const audio = () => {
+    const form = new FormData();
+    form.append("audio", new Blob([new Uint8Array(4000)], { type: "audio/webm" }), "voice.webm");
+    return form;
+  };
+  test("only teachers and admins may transcribe; nothing works without a configured provider", async () => {
+    assert.equal((await post("/api/ai/transcribe", { session: anonymous, body: audio() })).status, 401);
+    assert.equal((await post("/api/ai/transcribe", { session: studentA, body: audio() })).status, 403);
+    const teacher = await post("/api/ai/transcribe", { session: teacherA, body: audio() });
+    assert.equal(teacher.status, 503, "the test server has no GROQ_API_KEY / OPENAI_API_KEY");
+    assert.equal(teacher.data.code, "voice-not-configured");
+    const forged = await call("POST", "/api/ai/transcribe", { session: teacherA, body: audio(), headers: { origin: "https://evil.example" } });
+    assert.equal(forged.status, 403);
+  });
+});
