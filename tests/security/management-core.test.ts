@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { after, describe, test } from "node:test";
 
+import { normalizePhone } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { evaluateEnrollmentAccess } from "@/server/management/access";
 import { normalizePermissions, NO_PERMISSIONS } from "@/server/management/actor";
@@ -159,5 +160,14 @@ describe("Row Level Security (defence in depth for Supabase's public API)", () =
       return { users: users[0].n, payments: payments[0].n, notes: notes[0].n };
     });
     assert.deepEqual(visible, { users: 0, payments: 0, notes: 0 });
+  });
+});
+
+describe("Sign-in identifiers", () => {
+  test("an email with digits is never treated as a phone number", () => {
+    assert.equal(normalizePhone("davron96@gmail.com"), "");
+    assert.equal(normalizePhone("student2026@school.kr"), "");
+    assert.equal(normalizePhone("+82 10-1234-5678"), "+821012345678");
+    assert.equal(normalizePhone("010-1234-5678"), "01012345678");
   });
 });

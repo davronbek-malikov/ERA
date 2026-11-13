@@ -79,7 +79,9 @@ function decodeSession(token: string): SessionPayload | null {
 
 export function normalizePhone(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) {
+  // An email address is never a phone number, even when it contains digits ("name96@gmail.com" used to
+  // become the phone "96", so sign-in looked up the wrong account and failed).
+  if (!trimmed || trimmed.includes("@")) {
     return "";
   }
 
