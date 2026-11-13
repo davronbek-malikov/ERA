@@ -24,6 +24,7 @@ import {
   type EnrollmentRow
 } from "@/server/management/queries";
 import { formatCalendarDate, isDateString, todayInPlatform } from "@/server/management/time";
+import { getT } from "@/lib/i18n-server";
 
 /*
  * Student Management dashboard (Admin "Student management" and Teacher "My students").
@@ -85,6 +86,7 @@ export async function StudentManagementDashboard({
   profilePath: string;
   workspace: Workspace;
 }) {
+  const T = await getT();
   const filters = parseEnrollmentFilters(params);
   const rangeFrom = one(params, "rfrom");
   const rangeTo = one(params, "rto");
@@ -109,12 +111,12 @@ export async function StudentManagementDashboard({
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {actor.kind === "admin" ? "Every student and enrollment in ERA." : "Students assigned to you. Other teachers' students never appear here."}
+          {actor.kind === "admin" ? T("Every student and enrollment in ERA.") : T("Students assigned to you. Other teachers' students never appear here.")}
         </p>
         <span className="flex flex-wrap items-center gap-2">
         <Link href={`${basePath}/courses`} className={cn(buttonVariants({ variant: "outline" }))}>
           <BookOpen />
-          Courses &amp; lessons
+          {T("Courses & lessons")}
         </Link>
         {can(actor, "manageEnrollments") ? (
           <AddStudentButton
@@ -136,64 +138,64 @@ export async function StudentManagementDashboard({
         </span>
       </div>
 
-      <section className="flex flex-col gap-3" aria-label="Summary">
+      <section className="flex flex-col gap-3" aria-label={T("Summary")}>
         <StatStrip
           metrics={[
-            { label: actor.kind === "admin" ? "Registered students" : "My students", value: summary.students },
-            { label: "Active enrollments", value: summary.activeEnrollments },
-            { label: "Completed enrollments", value: summary.completedEnrollments },
-            { label: "Ending in 30 days", value: summary.endingSoon },
-            { label: "Exams in 14 days", value: summary.upcomingExams }
+            { label: actor.kind === "admin" ? T("Registered students") : T("My students"), value: summary.students },
+            { label: T("Active enrollments"), value: summary.activeEnrollments },
+            { label: T("Completed enrollments"), value: summary.completedEnrollments },
+            { label: T("Ending in 30 days"), value: summary.endingSoon },
+            { label: T("Exams in 14 days"), value: summary.upcomingExams }
           ]}
         />
         {summary.money ? (
           <>
             <StatStrip
               metrics={[
-                { label: "Collected", value: formatMoney(summary.money.collected, "KRW"), hint: `${formatCalendarDate(summary.money.from)} – ${formatCalendarDate(summary.money.to)}` },
-                { label: "Outstanding", value: formatMoney(summary.money.outstanding, "KRW"), hint: `${summary.money.overdue} overdue` },
-                { label: "Fully paid", value: summary.money.fullyPaid },
-                { label: "Partially paid", value: summary.money.partiallyPaid },
-                { label: "Unpaid", value: summary.money.unpaid },
+                { label: T("Collected"), value: formatMoney(summary.money.collected, "KRW"), hint: `${formatCalendarDate(summary.money.from)} – ${formatCalendarDate(summary.money.to)}` },
+                { label: T("Outstanding"), value: formatMoney(summary.money.outstanding, "KRW"), hint: T("{count} overdue", { count: summary.money.overdue }) },
+                { label: T("Fully paid"), value: summary.money.fullyPaid },
+                { label: T("Partially paid"), value: summary.money.partiallyPaid },
+                { label: T("Unpaid"), value: summary.money.unpaid },
                 {
-                  label: "Pending verification",
+                  label: T("Pending verification"),
                   value: summary.money.pendingCount,
                   hint: summary.money.pendingCount ? formatMoney(summary.money.pendingAmount, "KRW") : undefined
                 }
               ]}
             />
-            <form action={basePath} method="get" className="flex flex-wrap items-end gap-2 text-sm" aria-label="Reporting period">
+            <form action={basePath} method="get" className="flex flex-wrap items-end gap-2 text-sm" aria-label={T("Reporting period")}>
               {Object.entries(params).map(([key, value]) =>
                 typeof value === "string" && key !== "rfrom" && key !== "rto" ? <input key={key} type="hidden" name={key} value={value} /> : null
               )}
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">Collected from</span>
+                <span className="text-xs text-muted-foreground">{T("Collected from")}</span>
                 <Input type="date" name="rfrom" defaultValue={summary.money.from} className="h-9" />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">to</span>
+                <span className="text-xs text-muted-foreground">{T("to")}</span>
                 <Input type="date" name="rto" defaultValue={summary.money.to} className="h-9" />
               </label>
               <Button type="submit" variant="outline" size="sm">
-                Update totals
+                {T("Update totals")}
               </Button>
-              <span className="text-xs text-muted-foreground">Totals count approved payments only (minus approved refunds).</span>
+              <span className="text-xs text-muted-foreground">{T("Totals count approved payments only (minus approved refunds).")}</span>
             </form>
           </>
         ) : null}
       </section>
 
-      <section className="flex flex-col gap-4" aria-label="Enrollments">
-        <SectionHeader title="Students and enrollments" description="One row per student per course. Open a student for full history and payments." />
+      <section className="flex flex-col gap-4" aria-label={T("Enrollments")}>
+        <SectionHeader title={T("Students and enrollments")} description={T("One row per student per course. Open a student for full history and payments.")} />
         <form action={basePath} method="get" role="search" className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
           <label className="flex flex-col gap-1.5 md:col-span-2">
-            <span className="text-xs font-medium text-muted-foreground">Student name or email</span>
-            <Input type="search" name="q" defaultValue={filters.q} placeholder="Search students" />
+            <span className="text-xs font-medium text-muted-foreground">{T("Student name or email")}</span>
+            <Input type="search" name="q" defaultValue={filters.q} placeholder={T("Search students")} />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Course</span>
+            <span className="text-xs font-medium text-muted-foreground">{T("Course")}</span>
             <Select name="course" defaultValue={filters.courseId ?? ""}>
-              <option value="">All courses</option>
+              <option value="">{T("All courses")}</option>
               {courses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.title}
@@ -203,9 +205,9 @@ export async function StudentManagementDashboard({
           </label>
           {actor.kind === "admin" ? (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Teacher</span>
+              <span className="text-xs font-medium text-muted-foreground">{T("Teacher")}</span>
               <Select name="teacher" defaultValue={filters.instructorId ?? ""}>
-                <option value="">All teachers</option>
+                <option value="">{T("All teachers")}</option>
                 {instructors.map((instructor) => (
                   <option key={instructor.id} value={instructor.id}>
                     {instructor.name}
@@ -218,142 +220,144 @@ export async function StudentManagementDashboard({
           )}
           {showMoney ? (
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Payment status</span>
+              <span className="text-xs font-medium text-muted-foreground">{T("Payment status")}</span>
               <Select name="payment" defaultValue={filters.paymentStatus ?? ""}>
-                <option value="">Any</option>
-                <option value="FULLY_PAID">Fully paid</option>
-                <option value="PARTIALLY_PAID">Partially paid</option>
-                <option value="UNPAID">Unpaid</option>
-                <option value="WAIVED">Waived</option>
-                <option value="NO_FEE">No fee</option>
+                <option value="">{T("Any")}</option>
+                <option value="FULLY_PAID">{T("Fully paid")}</option>
+                <option value="PARTIALLY_PAID">{T("Partially paid")}</option>
+                <option value="UNPAID">{T("Unpaid")}</option>
+                <option value="WAIVED">{T("Waived")}</option>
+                <option value="NO_FEE">{T("No fee")}</option>
               </Select>
             </label>
           ) : null}
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Enrollment status</span>
+            <span className="text-xs font-medium text-muted-foreground">{T("Enrollment status")}</span>
             <Select name="status" defaultValue={filters.enrollmentStatus === "current" ? "" : filters.enrollmentStatus}>
-              <option value="">Active</option>
-              <option value="all">All (incl. history)</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="EXPIRED">Expired</option>
-              <option value="TRANSFERRED">Transferred</option>
+              <option value="">{T("Active")}</option>
+              <option value="all">{T("All (incl. history)")}</option>
+              <option value="COMPLETED">{T("Completed")}</option>
+              <option value="CANCELLED">{T("Cancelled")}</option>
+              <option value="EXPIRED">{T("Expired")}</option>
+              <option value="TRANSFERRED">{T("Transferred")}</option>
             </Select>
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Dates</span>
+            <span className="text-xs font-medium text-muted-foreground">{T("Dates")}</span>
             <Select name="dateField" defaultValue={filters.dateField}>
-              <option value="start">Course start between</option>
-              <option value="end">Course end between</option>
+              <option value="start">{T("Course start between")}</option>
+              <option value="end">{T("Course end between")}</option>
             </Select>
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">From</span>
+              <span className="text-xs font-medium text-muted-foreground">{T("From")}</span>
               <Input type="date" name="from" defaultValue={filters.from} />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium text-muted-foreground">To</span>
+              <span className="text-xs font-medium text-muted-foreground">{T("To")}</span>
               <Input type="date" name="to" defaultValue={filters.to} />
             </label>
           </div>
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Sort by</span>
+            <span className="text-xs font-medium text-muted-foreground">{T("Sort by")}</span>
             <span className="flex gap-2">
               <Select name="sort" defaultValue={filters.sort ?? ""}>
-                <option value="">Newest start</option>
-                <option value="student">Student</option>
-                <option value="course">Course</option>
-                <option value="start">Start date</option>
-                <option value="end">End date</option>
+                <option value="">{T("Newest start")}</option>
+                <option value="student">{T("Student")}</option>
+                <option value="course">{T("Course")}</option>
+                <option value="start">{T("Start date")}</option>
+                <option value="end">{T("End date")}</option>
                 {showMoney ? (
                   <>
-                    <option value="price">Price</option>
-                    <option value="paid">Paid</option>
-                    <option value="balance">Remaining</option>
-                    <option value="status">Payment status</option>
+                    <option value="price">{T("Price")}</option>
+                    <option value="paid">{T("Paid")}</option>
+                    <option value="balance">{T("Remaining")}</option>
+                    <option value="status">{T("Payment status")}</option>
                   </>
                 ) : null}
               </Select>
-              <Select name="dir" defaultValue={filters.dir} aria-label="Sort direction" className="w-24">
+              <Select name="dir" defaultValue={filters.dir} aria-label={T("Sort direction")} className="w-24">
                 <option value="asc">↑</option>
                 <option value="desc">↓</option>
               </Select>
             </span>
           </label>
           <fieldset className="flex flex-wrap items-center gap-4 text-sm md:col-span-3">
-            <legend className="sr-only">Quick filters</legend>
+            <legend className="sr-only">{T("Quick filters")}</legend>
             <label className="flex items-center gap-2">
               <input type="checkbox" name="exams" value="1" defaultChecked={filters.upcomingExams} />
-              Upcoming exams
+              {T("Upcoming exams")}
             </label>
             {showMoney ? (
               <>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" name="overdue" value="1" defaultChecked={filters.overdue} />
-                  Overdue payments
+                  {T("Overdue payments")}
                 </label>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" name="pending" value="1" defaultChecked={filters.pendingPayments} />
-                  Payments awaiting approval
+                  {T("Payments awaiting approval")}
                 </label>
               </>
             ) : null}
           </fieldset>
           <div className="flex items-end gap-2">
             <Button type="submit" variant="outline">
-              Apply
+              {T("Apply")}
             </Button>
             {filtered ? (
               <Link href={basePath} className={cn(buttonVariants({ variant: "ghost" }))}>
-                Clear
+                {T("Clear")}
               </Link>
             ) : null}
           </div>
         </form>
 
         <DataTable
-          caption="Students and enrollments"
+          caption={T("Students and enrollments")}
           rows={list.rows}
           getRowKey={(row) => row.id}
           emptyState={
             filtered ? (
-              <EmptyState title="No enrollments match these filters" description="Try other filters, or include history." actionLabel="Clear filters" actionHref={basePath} />
+              <EmptyState title={T("No enrollments match these filters")} description={T("Try other filters, or include history.")} actionLabel={T("Clear filters")} actionHref={basePath} />
             ) : (
               <EmptyState
                 icon={<Users />}
-                title="No active enrollments yet"
-                description={can(actor, "manageEnrollments") ? "Use New enrollment to add a student to a course." : "Students appear here when they're enrolled with you."}
+                title={T("No active enrollments yet")}
+                description={can(actor, "manageEnrollments") ? T("Use New enrollment to add a student to a course.") : T("Students appear here when they're enrolled with you.")}
               />
             )
           }
           columns={[
             {
               key: "student",
-              header: "Student",
+              header: T("Student"),
               mobile: "title",
               cell: (row) => (
                 <span className="flex min-w-0 flex-col">
                   <Link href={`${profilePath}/${row.student.id}`} className="font-medium hover:underline">
                     {row.student.name}
                   </Link>
-                  <span className="truncate text-xs text-muted-foreground">{row.student.email}</span>
+                  {row.student.telegram || row.student.email ? (
+                    <span className="truncate text-xs text-muted-foreground">{row.student.telegram ?? row.student.email}</span>
+                  ) : null}
                 </span>
               )
             },
             ...(actor.kind === "admin"
-              ? [{ key: "teacher", header: "Teacher", mobile: "hidden" as const, cell: (row: EnrollmentRow) => row.teacher?.name ?? <span className="text-muted-foreground">—</span> }]
+              ? [{ key: "teacher", header: T("Teacher"), mobile: "hidden" as const, cell: (row: EnrollmentRow) => row.teacher?.name ?? <span className="text-muted-foreground">—</span> }]
               : []),
             {
               key: "course",
-              header: "Course",
+              header: T("Course"),
               cell: (row) => (
                 <span className="flex flex-col gap-1">
                   <span>{row.course.title}</span>
                   {row.status !== "ACTIVE" ? <EnrollmentStatusBadge status={row.status} /> : null}
                   {row.hasUpcomingExam ? (
                     <Badge variant="accent" className="w-fit">
-                      <CalendarDays className="size-3" aria-hidden="true" /> Exam soon
+                      <CalendarDays className="size-3" aria-hidden="true" /> {T("Exam soon")}
                     </Badge>
                   ) : null}
                 </span>
@@ -361,28 +365,28 @@ export async function StudentManagementDashboard({
             },
             {
               key: "homework",
-              header: "Homework",
+              header: T("Homework"),
               cell: (row) =>
                 row.homework.total ? (
                   <span className="flex flex-col gap-1">
-                    <span className="tabular-nums">{`${row.homework.done}/${row.homework.total} done`}</span>
-                    {row.homework.toCheck ? <Badge variant="warning" className="w-fit">{row.homework.toCheck} to check</Badge> : null}
-                    {row.homework.needsWork ? <Badge variant="error" className="w-fit">{row.homework.needsWork} needs work</Badge> : null}
+                    <span className="tabular-nums">{T("{done}/{total} done", { done: row.homework.done, total: row.homework.total })}</span>
+                    {row.homework.toCheck ? <Badge variant="warning" className="w-fit">{T("{count} to check", { count: row.homework.toCheck })}</Badge> : null}
+                    {row.homework.needsWork ? <Badge variant="error" className="w-fit">{T("{count} needs work", { count: row.homework.needsWork })}</Badge> : null}
                   </span>
                 ) : (
-                  <span className="text-muted-foreground">No lessons</span>
+                  <span className="text-muted-foreground">{T("No lessons")}</span>
                 )
             },
-            { key: "start", header: "Start", mobile: "hidden", cell: (row) => formatCalendarDate(row.startDate) },
-            { key: "end", header: "End", cell: (row) => formatCalendarDate(row.endDate) },
+            { key: "start", header: T("Start"), mobile: "hidden", cell: (row) => formatCalendarDate(row.startDate) },
+            { key: "end", header: T("End"), cell: (row) => formatCalendarDate(row.endDate) },
             ...(showMoney
               ? [
-                  { key: "price", header: "Price", align: "right" as const, mobile: "hidden" as const, cell: (row: EnrollmentRow) => money(row, "price") },
-                  { key: "paid", header: "Paid", align: "right" as const, mobile: "hidden" as const, cell: (row: EnrollmentRow) => money(row, "approved") },
-                  { key: "remaining", header: "Remaining", align: "right" as const, cell: (row: EnrollmentRow) => money(row, "remaining") },
+                  { key: "price", header: T("Price"), align: "right" as const, mobile: "hidden" as const, cell: (row: EnrollmentRow) => money(row, "price") },
+                  { key: "paid", header: T("Paid"), align: "right" as const, mobile: "hidden" as const, cell: (row: EnrollmentRow) => money(row, "approved") },
+                  { key: "remaining", header: T("Remaining"), align: "right" as const, cell: (row: EnrollmentRow) => money(row, "remaining") },
                   {
                     key: "payment",
-                    header: "Payment",
+                    header: T("Payment"),
                     cell: (row: EnrollmentRow) =>
                       row.money ? (
                         <span className="flex flex-col gap-1">
@@ -395,25 +399,25 @@ export async function StudentManagementDashboard({
               : []),
             {
               key: "access",
-              header: "Access",
+              header: T("Access"),
               cell: (row) => <AccessBadge status={row.accessStatus} allowed={row.accessAllowed} payLater={row.arrangement === "PAY_LATER"} />
             }
           ]}
           rowActions={(row) => (
             <span className="flex flex-wrap justify-end gap-2">
               <Link href={`${profilePath}/${row.student.id}`} className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
-                Profile
+                {T("Profile")}
               </Link>
               {can(actor, "recordPayments") && row.status === "ACTIVE" && row.arrangement !== "WAIVED" ? (
-                <RecordPaymentButton enrollmentId={row.id} workspace={workspace} today={today} label="Payment" currency={row.currency} />
+                <RecordPaymentButton enrollmentId={row.id} workspace={workspace} today={today} label={T("Payment")} currency={row.currency} />
               ) : null}
             </span>
           )}
         />
 
-        <nav className="flex items-center justify-between gap-3 text-sm" aria-label="Pages">
+        <nav className="flex items-center justify-between gap-3 text-sm" aria-label={T("Pages")}>
           <span className="text-muted-foreground">
-            {list.total} enrollment{list.total === 1 ? "" : "s"} · page {list.page} of {list.pages}
+            {T("{total} enrollments · page {page} of {pages}", { total: list.total, page: list.page, pages: list.pages })}
           </span>
           <span className="flex gap-2">
             {list.page > 1 ? (

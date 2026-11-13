@@ -11,7 +11,8 @@ import {
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
 import { PaymentReviewActions, RecordPaymentButton } from "@/components/management/payment-forms";
-import { GithubLinkButton, HomeworkReviewButton } from "@/components/management/teaching-forms";
+import { HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
+import { telegramUrl } from "@/lib/student-contact";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/workspace/workspace-ui";
@@ -19,6 +20,7 @@ import { can, type ManagementActor } from "@/server/management/actor";
 import { formatMoney } from "@/server/management/money";
 import { getStudentProfile, listInstructorsForActor, listScopedCourses } from "@/server/management/queries";
 import { formatCalendarDate, todayInPlatform } from "@/server/management/time";
+import { getT } from "@/lib/i18n-server";
 
 /*
  * Student profile (Student Management): account, current enrollments, full course history, every payment
@@ -29,7 +31,8 @@ import { formatCalendarDate, todayInPlatform } from "@/server/management/time";
 type Profile = Awaited<ReturnType<typeof getStudentProfile>>;
 type EnrollmentView = Profile["current"][number];
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+async function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  const T = await getT();
   return (
     <div className="flex flex-col gap-0.5">
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -38,7 +41,7 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-function EnrollmentCard({
+async function EnrollmentCard({
   view,
   actor,
   workspace,
@@ -51,6 +54,7 @@ function EnrollmentCard({
   instructors: Array<{ id: string; name: string }>;
   today: string;
 }) {
+  const T = await getT();
   const canEdit = can(actor, "manageEnrollments") || can(actor, "manageAccess");
   return (
     <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:p-5" aria-label={view.course.title}>
@@ -58,7 +62,7 @@ function EnrollmentCard({
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="card-title">{view.course.title}</h3>
           <p className="text-xs text-muted-foreground">
-            {view.teacher ? `Teacher: ${view.teacher.name}` : "No teacher assigned"} · Progress {view.progress}%
+            {view.teacher ? T("Teacher: {name}", { name: view.teacher.name }) : T("No teacher assigned")} · {T("Progress {value}%", { value: view.progress })}
           </p>
         </div>
         <span className="flex flex-wrap items-center gap-1.5">
@@ -69,22 +73,22 @@ function EnrollmentCard({
       </header>
 
       <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Detail label="Start">{formatCalendarDate(view.startDate)}</Detail>
-        <Detail label="Expected end">{formatCalendarDate(view.endDate)}</Detail>
+        <Detail label={T("Start")}>{formatCalendarDate(view.startDate)}</Detail>
+        <Detail label={T("Expected end")}>{formatCalendarDate(view.endDate)}</Detail>
         {view.money ? (
           <>
-            <Detail label="Price">{formatMoney(view.money.price, view.currency)}</Detail>
-            <Detail label="Paid (approved)">{formatMoney(view.money.approved, view.currency)}</Detail>
-            <Detail label="Remaining">
+            <Detail label={T("Price")}>{formatMoney(view.money.price, view.currency)}</Detail>
+            <Detail label={T("Paid (approved)")}>{formatMoney(view.money.approved, view.currency)}</Detail>
+            <Detail label={T("Remaining")}>
               <span className={view.money.remaining > 0 ? "font-semibold" : undefined}>{formatMoney(view.money.remaining, view.currency)}</span>
             </Detail>
-            <Detail label="Payment due">{formatCalendarDate(view.paymentDueDate)}</Detail>
+            <Detail label={T("Payment due")}>{formatCalendarDate(view.paymentDueDate)}</Detail>
           </>
         ) : null}
-        <Detail label="Arrangement">{view.arrangement ? ARRANGEMENT_LABEL[view.arrangement] : "—"}</Detail>
-        <Detail label="Last day of access">{formatCalendarDate(view.accessExpiresAt)}</Detail>
-        {view.accessGrantedBy ? <Detail label="Access approved by">{view.accessGrantedBy}</Detail> : null}
-        {view.accessNote ? <Detail label="Approval note">{view.accessNote}</Detail> : null}
+        <Detail label={T("Arrangement")}>{view.arrangement ? T(ARRANGEMENT_LABEL[view.arrangement]) : "—"}</Detail>
+        <Detail label={T("Last day of access")}>{formatCalendarDate(view.accessExpiresAt)}</Detail>
+        {view.accessGrantedBy ? <Detail label={T("Access approved by")}>{view.accessGrantedBy}</Detail> : null}
+        {view.accessNote ? <Detail label={T("Approval note")}>{view.accessNote}</Detail> : null}
       </dl>
       {view.money?.pending ? (
         <p className="text-xs text-muted-foreground">{formatMoney(view.money.pending, view.currency)} recorded and waiting for verification (not counted yet).</p>
@@ -126,7 +130,7 @@ function EnrollmentCard({
 
       {view.money ? (
         <section aria-label={`Payments for ${view.course.title}`} className="flex flex-col gap-2">
-          <h4 className="text-sm font-semibold">Payment history</h4>
+          <h4 className="text-sm font-semibold">{T("Payment history")}</h4>
           {view.payments.length ? (
             <ol className="flex flex-col gap-2">
               {view.payments.map((payment) => (
@@ -138,24 +142,24 @@ function EnrollmentCard({
                         {formatMoney(payment.amount, payment.currency)}
                       </span>
                       <TransactionStatusBadge status={payment.status} />
-                      {payment.kind === "REFUND" ? <Badge variant="outline">Refund</Badge> : null}
-                      {payment.source === "AI" ? <Badge variant="outline">via ERA Assistant</Badge> : null}
+                      {payment.kind === "REFUND" ? <Badge variant="outline">{T("Refund")}</Badge> : null}
+                      {payment.source === "AI" ? <Badge variant="outline">{T("via ERA Assistant")}</Badge> : null}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {formatCalendarDate(payment.transactionDate)} · {METHOD_LABEL[payment.method] ?? payment.method}
-                      {payment.reference ? ` · Ref ${payment.reference}` : ""} · recorded by {payment.recordedBy ?? "—"}
+                      {formatCalendarDate(payment.transactionDate)} · {T(METHOD_LABEL[payment.method]) ?? payment.method}
+                      {payment.reference ? ` · Ref ${payment.reference}` : ""} · {T("recorded by {name}", { name: payment.recordedBy ?? "—" })}
                     </span>
                     {payment.description ? <span className="text-xs">{payment.description}</span> : null}
                     {payment.reviewedBy ? (
                       <span className="text-xs text-muted-foreground">
-                        {payment.status === "REJECTED" ? "Rejected" : "Reviewed"} by {payment.reviewedBy}
+                        {T(payment.status === "REJECTED" ? "Rejected by {name}" : "Reviewed by {name}", { name: payment.reviewedBy })}
                         {payment.reviewedAt ? ` on ${payment.reviewedAt.slice(0, 10)}` : ""}
                         {payment.rejectionReason ? ` — ${payment.rejectionReason}` : ""}
                       </span>
                     ) : null}
                     {payment.reversedBy ? (
                       <span className="text-xs text-muted-foreground">
-                        Reversed by {payment.reversedBy}
+                        {T("Reversed by {name}", { name: payment.reversedBy })}
                         {payment.reversedAt ? ` on ${payment.reversedAt.slice(0, 10)}` : ""} — {payment.reversalReason}
                       </span>
                     ) : null}
@@ -172,7 +176,7 @@ function EnrollmentCard({
               ))}
             </ol>
           ) : (
-            <p className="text-sm text-muted-foreground">No payments recorded yet.</p>
+            <p className="text-sm text-muted-foreground">{T("No payments recorded yet.")}</p>
           )}
         </section>
       ) : null}
@@ -205,15 +209,16 @@ const HOMEWORK_BADGE: Record<string, { label: string; variant: "success" | "warn
 };
 
 /** One row per lesson: what was taught, the homework, the student's link and the check result. */
-function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace: Workspace }) {
+async function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace: Workspace }) {
+  const T = await getT();
   if (!view.homework.length) {
-    return <p className="text-sm text-muted-foreground">This course has no lessons yet. Add them under Courses &amp; lessons.</p>;
+    return <p className="text-sm text-muted-foreground">{T("This course has no lessons yet. Add them under Courses & lessons.")}</p>;
   }
   const done = view.homework.filter((lesson) => lesson.review?.status === "DONE").length;
   return (
     <section aria-label={`Homework for ${view.course.title}`} className="flex flex-col gap-2">
       <h4 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-        Homework
+        {T("Homework")}
         <Badge variant={done === view.homework.length ? "success" : "neutral"}>
           {done}/{view.homework.length} done
         </Badge>
@@ -228,7 +233,7 @@ function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace:
                   {lesson.position}. {lesson.title}
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
-                  <Badge variant={badge.variant}>{badge.label}</Badge>
+                  <Badge variant={badge.variant}>{T(badge.label)}</Badge>
                   <HomeworkReviewButton
                     workspace={workspace}
                     enrollmentId={view.id}
@@ -240,12 +245,12 @@ function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace:
               </div>
               <div className="grid gap-2 text-sm md:grid-cols-2">
                 <div className="rounded-md bg-muted/60 p-2">
-                  <p className="text-xs font-medium text-muted-foreground">What I taught</p>
-                  <p className="whitespace-pre-wrap">{lesson.taughtSummary || <span className="text-muted-foreground">Not written yet</span>}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{T("What I taught")}</p>
+                  <p className="whitespace-pre-wrap">{lesson.taughtSummary || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
                 </div>
                 <div className="rounded-md bg-muted/60 p-2">
-                  <p className="text-xs font-medium text-muted-foreground">Homework</p>
-                  <p className="whitespace-pre-wrap">{lesson.homework || <span className="text-muted-foreground">Not written yet</span>}</p>
+                  <p className="text-xs font-medium text-muted-foreground">{T("Homework")}</p>
+                  <p className="whitespace-pre-wrap">{lesson.homework || <span className="text-muted-foreground">{T("Not written yet")}</span>}</p>
                 </div>
               </div>
               {lesson.review?.githubUrl || lesson.review?.note || lesson.review?.checkedAt ? (
@@ -253,14 +258,14 @@ function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace:
                   {lesson.review?.githubUrl ? (
                     <a href={lesson.review.githubUrl} target="_blank" rel="noopener noreferrer" className="flex w-fit items-center gap-1 text-primary hover:underline">
                       <ExternalLink className="size-3.5" aria-hidden="true" />
-                      Student&apos;s work
+                      {T("Student's work")}
                     </a>
                   ) : null}
                   {lesson.review?.note ? <span className="whitespace-pre-wrap text-foreground">Note: {lesson.review.note}</span> : null}
                   {lesson.review?.checkedAt ? (
                     <span>
-                      Checked {lesson.review.checkedAt.slice(0, 10)}
-                      {lesson.review.checkedBy ? ` by ${lesson.review.checkedBy}` : ""}
+                      {T("Checked {date}", { date: lesson.review.checkedAt.slice(0, 10) })}
+                      {lesson.review.checkedBy ? ` · ${lesson.review.checkedBy}` : ""}
                     </span>
                   ) : null}
                 </div>
@@ -274,22 +279,36 @@ function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace:
 }
 
 export async function StudentProfileView({ actor, studentId, workspace }: { actor: ManagementActor; studentId: string; workspace: Workspace }) {
+  const T = await getT();
   const today = todayInPlatform();
   const [profile, courses, instructors] = await Promise.all([getStudentProfile(actor, studentId), listScopedCourses(actor), listInstructorsForActor(actor)]);
   const all = [...profile.current, ...profile.history];
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-5" aria-label="Student information">
-        <Detail label="Name">{profile.student.name}</Detail>
-        <Detail label="Email">{profile.student.email}</Detail>
-        <Detail label="Account">
+      <section className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-5" aria-label={T("Student information")}>
+        <Detail label={T("Name")}>{profile.student.name}</Detail>
+        <Detail label={T("Telegram")}>
+          {profile.student.telegram ? (
+            telegramUrl(profile.student.telegram) ? (
+              <a href={telegramUrl(profile.student.telegram)!} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                {profile.student.telegram}
+              </a>
+            ) : (
+              profile.student.telegram
+            )
+          ) : (
+            <span className="text-muted-foreground">{T("Not set")}</span>
+          )}
+        </Detail>
+        {profile.student.email ? <Detail label={T("Email")}>{profile.student.email}</Detail> : null}
+        <Detail label={T("Account")}>
           <Badge variant={profile.student.status === "ACTIVE" ? "success" : "warning"}>{profile.student.status.toLowerCase()}</Badge>
         </Detail>
-        <Detail label="Assigned teacher">{profile.teachers.length ? profile.teachers.map((teacher) => teacher.name).join(", ") : "—"}</Detail>
-        <Detail label="Registered">{formatCalendarDate(profile.student.createdAt.slice(0, 10))}</Detail>
+        <Detail label={T("Assigned teacher")}>{profile.teachers.length ? profile.teachers.map((teacher) => teacher.name).join(", ") : "—"}</Detail>
+        <Detail label={T("Registered")}>{formatCalendarDate(profile.student.createdAt.slice(0, 10))}</Detail>
         <div className="flex flex-col gap-0.5 sm:col-span-2 lg:col-span-5">
-          <dt className="text-xs text-muted-foreground">GitHub</dt>
+          <dt className="text-xs text-muted-foreground">{T("GitHub")}</dt>
           <dd className="flex flex-wrap items-center gap-2 text-sm">
             {profile.student.githubUrl ? (
               <a href={profile.student.githubUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
@@ -297,16 +316,16 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
                 {profile.student.githubUrl.replace(/^https?:\/\//, "")}
               </a>
             ) : (
-              <span className="text-muted-foreground">Not added</span>
+              <span className="text-muted-foreground">{T("Not added")}</span>
             )}
-            <GithubLinkButton workspace={workspace} studentId={profile.student.id} current={profile.student.githubUrl} />
+            <StudentContactButton workspace={workspace} studentId={profile.student.id} github={profile.student.githubUrl} telegram={profile.student.telegram} />
           </dd>
         </div>
       </section>
 
-      <section className="flex flex-col gap-4" aria-label="Current enrollments">
+      <section className="flex flex-col gap-4" aria-label={T("Current enrollments")}>
         <SectionHeader
-          title="Current enrollments"
+          title={T("Current enrollments")}
           action={
             can(actor, "manageEnrollments") && courses.length ? (
               <CreateEnrollmentButton
@@ -323,12 +342,12 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
         {profile.current.length ? (
           profile.current.map((view) => <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} />)
         ) : (
-          <EmptyState title="No active enrollments" description="Completed and earlier enrollments are listed under Course history." />
+          <EmptyState title={T("No active enrollments")} description={T("Completed and earlier enrollments are listed under Course history.")} />
         )}
       </section>
 
-      <section className="flex flex-col gap-4" aria-label="Course history">
-        <SectionHeader title="Course history" description="Completed, cancelled, expired and transferred enrollments. Each one keeps its own dates and payments." />
+      <section className="flex flex-col gap-4" aria-label={T("Course history")}>
+        <SectionHeader title={T("Course history")} description={T("Completed, cancelled, expired and transferred enrollments. Each one keeps its own dates and payments.")} />
         {profile.history.length ? (
           <>
             <ol className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
@@ -351,13 +370,13 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
             ))}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">No earlier enrollments.</p>
+          <p className="text-sm text-muted-foreground">{T("No earlier enrollments.")}</p>
         )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="flex flex-col gap-3" aria-label="Exams">
-          <SectionHeader title="Exams" />
+        <section className="flex flex-col gap-3" aria-label={T("Exams")}>
+          <SectionHeader title={T("Exams")} />
           {profile.exams.length ? (
             <ul className="flex flex-col gap-2">
               {profile.exams.map((exam) => (
@@ -374,18 +393,18 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No exams scheduled.</p>
+            <p className="text-sm text-muted-foreground">{T("No exams scheduled.")}</p>
           )}
         </section>
 
-        <section className="flex flex-col gap-3" aria-label="Staff notes">
+        <section className="flex flex-col gap-3" aria-label={T("Staff notes")}>
           <SectionHeader
-            title="Staff notes"
+            title={T("Staff notes")}
             action={<AddNoteButton studentId={profile.student.id} workspace={workspace} enrollments={all.map((view) => ({ id: view.id, course: view.course.title }))} />}
           />
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <ShieldCheck className="size-3.5" aria-hidden="true" />
-            Never shown to the student.
+            {T("Never shown to the student.")}
           </p>
           {profile.notes.length ? (
             <ul className="flex flex-col gap-2">
@@ -403,7 +422,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No notes yet.</p>
+            <p className="text-sm text-muted-foreground">{T("No notes yet.")}</p>
           )}
         </section>
       </div>

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 
 import "@/app/globals.css";
+import { LocaleProvider } from "@/components/i18n/locale-provider";
 import { getLocale } from "@/lib/i18n-server";
 import { siteConfig } from "@/lib/site";
 import { Toaster } from "@/components/ui/toast";
@@ -79,7 +80,9 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body className={sans.variable}>
-        <div className="relative min-h-screen">{children}</div>
+        <LocaleProvider locale={locale}>
+          <div className="relative min-h-screen">{children}</div>
+        </LocaleProvider>
         <Toaster />
         <Analytics />
       </body>

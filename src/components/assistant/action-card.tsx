@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/i18n/locale-provider";
 
 /*
  * A change proposed by the ERA Assistant (Student Management). It is only a preview: nothing happens until the
@@ -34,6 +35,7 @@ const STATUS: Record<ActionCardView["status"], { label: string; variant: "neutra
 };
 
 export function ActionCard({ action, onChange }: { action: ActionCardView; onChange: (next: ActionCardView) => void }) {
+  const T = useT();
   const [busy, setBusy] = React.useState<"confirm" | "cancel" | null>(null);
   const status = STATUS[action.status];
   const pending = action.status === "PENDING";
@@ -49,14 +51,14 @@ export function ActionCard({ action, onChange }: { action: ActionCardView; onCha
       const payload = (await response.json().catch(() => null)) as { ok?: boolean; action?: ActionCardView; error?: string } | null;
       if (!response.ok || !payload?.ok || !payload.action) {
         if (response.status === 409) onChange({ ...action, status: "EXPIRED", resultMessage: payload?.error ?? null });
-        toast({ title: payload?.error ?? "That didn't work. Please try again.", variant: "error" });
+        toast({ title: payload?.error ?? T("That didn't work. Please try again."), variant: "error" });
         return;
       }
       onChange(payload.action);
-      if (payload.action.status === "EXECUTED") toast({ title: payload.action.resultMessage ?? "Done.", variant: "success" });
-      if (payload.action.status === "FAILED") toast({ title: payload.action.resultMessage ?? "Not done.", variant: "error" });
+      if (payload.action.status === "EXECUTED") toast({ title: payload.action.resultMessage ?? T("Done."), variant: "success" });
+      if (payload.action.status === "FAILED") toast({ title: payload.action.resultMessage ?? T("Not done."), variant: "error" });
     } catch {
-      toast({ title: "You seem to be offline. Nothing was changed.", variant: "error" });
+      toast({ title: T("You seem to be offline. Nothing was changed."), variant: "error" });
     } finally {
       setBusy(null);
     }
@@ -72,7 +74,7 @@ export function ActionCard({ action, onChange }: { action: ActionCardView; onCha
           <ShieldCheck className="size-4 shrink-0 text-accent-strong" aria-hidden="true" />
           {action.title}
         </h3>
-        <Badge variant={status.variant}>{status.label}</Badge>
+        <Badge variant={status.variant}>{T(status.label)}</Badge>
       </div>
 
       <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(8rem,auto),1fr]">
@@ -111,14 +113,14 @@ export function ActionCard({ action, onChange }: { action: ActionCardView; onCha
       {pending ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={() => void decide("confirm")} disabled={busy !== null} aria-busy={busy === "confirm"}>
-            {busy === "confirm" ? "Confirming…" : "Confirm"}
+            {busy === "confirm" ? T("Confirming…") : T("Confirm")}
           </Button>
           <Button size="sm" variant="outline" onClick={() => void decide("cancel")} disabled={busy !== null}>
-            Cancel
+            {T("Cancel")}
           </Button>
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock3 className="size-3.5" aria-hidden="true" />
-            Nothing changes until you confirm.
+            {T("Nothing changes until you confirm.")}
           </span>
         </div>
       ) : null}

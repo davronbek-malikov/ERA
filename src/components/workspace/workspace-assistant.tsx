@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { AgentStreamFailure, streamAgent, type AgentStreamMessage } from "@/lib/ai/agent-stream";
 import { speak, speechSupported, startRecording, stopSpeaking, transcribe, voiceSupported, type Recording } from "@/lib/ai/voice";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/i18n/locale-provider";
 
 /*
  * ERA Assistant for teachers and administrators (shared AI engine, docs/ERA_AI_ARCHITECTURE.md).
@@ -37,6 +38,7 @@ const NEW = "new";
 type TalkState = "off" | "listening" | "transcribing" | "thinking" | "speaking";
 
 export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialConversationId }: WorkspaceAssistantProps) {
+  const T = useT();
   const agent = kind === "teacher-assistant" ? "teacher" : "admin";
   const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = React.useState<string>(NEW);
@@ -95,12 +97,12 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
         setMessages(payload.messages ?? []);
       } catch {
         setMessages([]);
-        toast({ title: "This conversation couldn't load.", variant: "error" });
+        toast({ title: T("This conversation couldn't load."), variant: "error" });
       } finally {
         setLoadingMessages(false);
       }
     },
-    [agent]
+    [agent, T]
   );
 
   const openedInitial = React.useRef(false);
@@ -200,7 +202,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
         if (text) setInput((value) => (value.trim() ? `${value.trimEnd()} ${text}` : text));
         textarea.current?.focus();
       } catch (error) {
-        toast({ title: error instanceof Error ? error.message : "Voice input failed.", variant: "error" });
+        toast({ title: error instanceof Error ? error.message : T("Voice input failed."), variant: "error" });
       } finally {
         setDictating("off");
       }
@@ -211,7 +213,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
       recording.current = await startRecording({ onLevel: setLevel });
       setDictating("recording");
     } catch {
-      toast({ title: "Microphone not available", description: "Allow microphone access in your browser settings.", variant: "error" });
+      toast({ title: T("Microphone not available"), description: T("Allow microphone access in your browser settings."), variant: "error" });
     }
   }
 
@@ -225,7 +227,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
       recording.current = await startRecording({ onLevel: setLevel, autoStopSilenceMs: 1400, onAutoStop: () => resolveStop(), maxDurationMs: 90_000 });
     } catch {
       endTalk();
-      toast({ title: "Microphone not available", description: "Allow microphone access in your browser settings.", variant: "error" });
+      toast({ title: T("Microphone not available"), description: T("Allow microphone access in your browser settings."), variant: "error" });
       return;
     }
     await stopped;
@@ -239,7 +241,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
     try {
       text = await transcribe(audio);
     } catch (error) {
-      toast({ title: error instanceof Error ? error.message : "Voice input failed.", variant: "error" });
+      toast({ title: error instanceof Error ? error.message : T("Voice input failed."), variant: "error" });
     }
     if (!talkOn.current) return;
     if (!text) return void listenOnce();
@@ -255,7 +257,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
 
   function startTalk() {
     if (!voiceSupported()) {
-      toast({ title: "Voice isn't supported in this browser.", variant: "error" });
+      toast({ title: T("Voice isn't supported in this browser."), variant: "error" });
       return;
     }
     talkOn.current = true;
@@ -296,8 +298,8 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
         type="button"
         onClick={newConversation}
         className="flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-        aria-label="New chat"
-        title="New chat"
+        aria-label={T("New chat")}
+        title={T("New chat")}
       >
         <Plus className="size-5" />
       </button>
@@ -313,7 +315,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
         }}
         rows={1}
         maxLength={6000}
-        placeholder={dictating === "recording" ? "Listening… tap the mic to finish" : `Ask ${name}`}
+        placeholder={dictating === "recording" ? T("Listening… tap the mic to finish") : T("Ask {name}", { name })}
         aria-label={`Message ${name}`}
         className="max-h-48 min-h-10 flex-1 resize-none bg-transparent px-1 py-2.5 text-[15px] leading-6 outline-none [field-sizing:content] placeholder:text-muted-foreground"
       />
@@ -326,9 +328,9 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
             "flex size-10 shrink-0 items-center justify-center rounded-full transition-colors",
             dictating === "recording" ? "bg-error/10 text-error" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           )}
-          aria-label={dictating === "recording" ? "Stop dictation" : "Dictate with your voice"}
+          aria-label={dictating === "recording" ? T("Stop dictation") : T("Dictate with your voice")}
           aria-pressed={dictating === "recording"}
-          title="Dictate"
+          title={T("Dictate")}
         >
           {dictating === "transcribing" ? (
             <Loader2 className="size-5 animate-spin" />
@@ -347,12 +349,12 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
           type="button"
           onClick={() => abort.current?.abort()}
           className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-background"
-          aria-label="Stop"
+          aria-label={T("Stop")}
         >
           <Square className="size-3.5 fill-current" />
         </button>
       ) : input.trim() ? (
-        <button type="submit" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-label="Send">
+        <button type="submit" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground" aria-label={T("Send")}>
           <ArrowUp className="size-5" />
         </button>
       ) : canVoice ? (
@@ -361,13 +363,13 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
           onClick={startTalk}
           disabled={dictating !== "off"}
           className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90"
-          aria-label="Talk with the assistant"
-          title="Talk"
+          aria-label={T("Talk with the assistant")}
+          title={T("Talk")}
         >
           <AudioLines className="size-5" />
         </button>
       ) : (
-        <button type="submit" disabled className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-label="Send">
+        <button type="submit" disabled className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground" aria-label={T("Send")}>
           <ArrowUp className="size-5" />
         </button>
       )}
@@ -376,10 +378,10 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
 
   return (
     <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] gap-4">
-      <aside aria-label="Chat history" className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto lg:flex">
+      <aside aria-label={T("Chat history")} className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto lg:flex">
         <button type="button" onClick={newConversation} className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">
           <Plus className="size-4" />
-          New chat
+          {T("New chat")}
         </button>
         {conversations.map((conversation) => (
           <button
@@ -405,9 +407,9 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
               value={activeId === NEW ? "" : activeId}
               onChange={(event) => (event.target.value ? void openConversation(event.target.value) : newConversation())}
               className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm"
-              aria-label="Chat history"
+              aria-label={T("Chat history")}
             >
-              <option value="">New chat</option>
+              <option value="">{T("New chat")}</option>
               {conversations.map((conversation) => (
                 <option key={conversation.id} value={conversation.id}>
                   {conversation.title}
@@ -444,7 +446,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
             <div className="flex-1 overflow-y-auto">
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-1 py-4">
                 {loadingMessages ? (
-                  <div className="flex flex-col gap-2" role="status" aria-label="Loading conversation">
+                  <div className="flex flex-col gap-2" role="status" aria-label={T("Loading conversation")}>
                     <Skeleton className="ml-auto h-8 w-2/3 rounded-2xl" />
                     <Skeleton className="h-16 w-full rounded-xl" />
                   </div>
@@ -466,10 +468,10 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
                           type="button"
                           onClick={() => void speak(message.content)}
                           className="flex w-fit items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground opacity-70 hover:bg-muted hover:opacity-100"
-                          aria-label="Read aloud"
+                          aria-label={T("Read aloud")}
                         >
                           <Volume2 className="size-3.5" />
-                          Listen
+                          {T("Listen")}
                         </button>
                       ) : null}
                     </div>
@@ -495,7 +497,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
           <div
             className="absolute inset-x-0 bottom-0 z-10 mx-auto flex w-full max-w-3xl items-center gap-4 rounded-[1.75rem] border border-border bg-card p-3 shadow-panel"
             role="region"
-            aria-label="Talking with the assistant"
+            aria-label={T("Talking with the assistant")}
           >
             <span className="relative flex size-12 shrink-0 items-center justify-center">
               <span
@@ -508,13 +510,13 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
             </span>
             <span className="flex min-w-0 flex-1 flex-col" aria-live="polite">
               <span className="font-medium">
-                {talk === "listening" ? "Listening…" : talk === "transcribing" ? "Got it…" : talk === "thinking" ? (activity ?? "Thinking…") : "Speaking…"}
+                {talk === "listening" ? T("Listening…") : talk === "transcribing" ? T("Got it…") : talk === "thinking" ? (activity ?? T("Thinking…")) : T("Speaking…")}
               </span>
-              <span className="truncate text-xs text-muted-foreground">Just talk, and pause when you&apos;re done. Confirm changes on screen.</span>
+              <span className="truncate text-xs text-muted-foreground">{T("Just talk, and pause when you're done. Confirm changes on screen.")}</span>
             </span>
             <button type="button" onClick={endTalk} className="flex shrink-0 items-center gap-2 rounded-full bg-error px-4 py-2.5 text-sm font-medium text-white hover:opacity-90">
               <PhoneOff className="size-4" />
-              End
+              {T("End talk")}
             </button>
           </div>
         ) : null}

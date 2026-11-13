@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useT } from "@/components/i18n/locale-provider";
 
 /**
  * A button that opens a small form in a dialog. `onSubmit` returns true to close it. Used by every
@@ -36,6 +37,7 @@ export function FormDialog({
   onSubmit: (form: FormData) => Promise<boolean>;
   children: React.ReactNode;
 }) {
+  const T = useT();
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
 
@@ -73,10 +75,10 @@ export function FormDialog({
           {children}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-              Cancel
+              {T("Cancel")}
             </Button>
             <Button type="submit" variant={destructive ? "destructive" : "default"} disabled={pending} aria-busy={pending}>
-              {pending ? "Saving…" : submitLabel}
+              {pending ? T("Saving…") : submitLabel}
             </Button>
           </DialogFooter>
         </form>

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
+import { useT } from "@/components/i18n/locale-provider";
 import { toast } from "@/components/ui/toast";
 
 /*
@@ -11,6 +12,7 @@ import { toast } from "@/components/ui/toast";
  */
 export function useManagementMutation() {
   const router = useRouter();
+  const T = useT();
   const [pending, setPending] = React.useState(false);
 
   const run = React.useCallback(
@@ -24,20 +26,20 @@ export function useManagementMutation() {
         });
         const payload = (await response.json().catch(() => null)) as ({ ok?: boolean; error?: string } & Record<string, unknown>) | null;
         if (!response.ok || !payload?.ok) {
-          toast({ title: payload?.error ?? "That didn't work. Please try again.", variant: "error" });
+          toast({ title: payload?.error ?? T("That didn't work. Please try again."), variant: "error" });
           return null;
         }
-        toast({ title: success, variant: "success" });
+        toast({ title: T(success), variant: "success" });
         router.refresh();
         return payload;
       } catch {
-        toast({ title: "You seem to be offline. Nothing was saved.", variant: "error" });
+        toast({ title: T("You seem to be offline. Nothing was saved."), variant: "error" });
         return null;
       } finally {
         setPending(false);
       }
     },
-    [router]
+    [router, T]
   );
 
   return { run, pending };

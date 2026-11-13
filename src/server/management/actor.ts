@@ -170,7 +170,7 @@ export async function requireStudentInScope(actor: ManagementActor, studentId: s
         role: UserRole.STUDENT,
         ...(actor.kind === "teacher" ? { enrollments: { some: { instructorId: actor.instructorId } } } : {})
       },
-      select: { id: true, name: true, email: true, phone: true, status: true, createdAt: true, githubUrl: true }
+      select: { id: true, name: true, email: true, phone: true, status: true, createdAt: true, githubUrl: true, telegram: true }
     })
   );
   if (!student) throw authErrors.notFound("Student not found.");

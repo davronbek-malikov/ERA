@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { useT } from "@/components/i18n/locale-provider";
 
 /*
  * Enrollment forms (Student Management). The server re-validates everything and applies the user's permissions;
@@ -22,6 +23,7 @@ type InstructorOption = { id: string; name: string };
 type StudentOption = { id: string; name: string; email: string; status: string };
 
 function StudentPicker({ workspace, preset }: { workspace: Workspace; preset?: { id: string; name: string } }) {
+  const T = useT();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<StudentOption[]>([]);
   const [selected, setSelected] = React.useState<{ id: string; name: string } | null>(preset ?? null);
@@ -46,7 +48,7 @@ function StudentPicker({ workspace, preset }: { workspace: Workspace; preset?: {
 
   if (preset) {
     return (
-      <Field id="enroll-student" label="Student">
+      <Field id="enroll-student" label={T("Student")}>
         <Input id="enroll-student" value={preset.name} readOnly />
         <input type="hidden" name="studentId" value={preset.id} />
       </Field>
@@ -54,12 +56,12 @@ function StudentPicker({ workspace, preset }: { workspace: Workspace; preset?: {
   }
 
   return (
-    <Field id="enroll-student-search" label="Student" hint="Search existing student accounts by name or email." required>
-      <Input id="enroll-student-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. Ali or ali@example.com" autoComplete="off" />
+    <Field id="enroll-student-search" label={T("Student")} hint={T("Search existing student accounts by name or email.")} required>
+      <Input id="enroll-student-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={T("e.g. Ali or ali@example.com")} autoComplete="off" />
       <input type="hidden" name="studentId" value={selected?.id ?? ""} />
-      <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto" aria-label="Matching students">
-        {loading ? <li className="text-xs text-muted-foreground">Searching…</li> : null}
-        {!loading && !results.length ? <li className="text-xs text-muted-foreground">No matching student accounts.</li> : null}
+      <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto" aria-label={T("Matching students")}>
+        {loading ? <li className="text-xs text-muted-foreground">{T("Searching…")}</li> : null}
+        {!loading && !results.length ? <li className="text-xs text-muted-foreground">{T("No matching student accounts.")}</li> : null}
         {results.map((student) => (
           <li key={student.id}>
             <button
@@ -99,6 +101,7 @@ export function CreateEnrollmentButton({
   today: string;
   preset?: { id: string; name: string };
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
   const [key, setKey] = React.useState(newIdempotencyKey);
   const [arrangement, setArrangement] = React.useState("PAY_IN_FULL");
@@ -106,22 +109,22 @@ export function CreateEnrollmentButton({
   const course = courses.find((item) => item.id === courseId);
 
   const arrangements = [
-    { value: "PAY_IN_FULL", label: "Pay in full" },
-    { value: "PARTIAL", label: "Partial payments" },
-    ...(permissions.manageAccess ? [{ value: "PAY_LATER", label: "Pay Later (study before paying)" }] : []),
-    ...(permissions.approvePayments ? [{ value: "WAIVED", label: "Free / waived" }] : [])
+    { value: "PAY_IN_FULL", label: T("Pay in full") },
+    { value: "PARTIAL", label: T("Partial payments") },
+    ...(permissions.manageAccess ? [{ value: "PAY_LATER", label: T("Pay Later (study before paying)") }] : []),
+    ...(permissions.approvePayments ? [{ value: "WAIVED", label: T("Free / waived") }] : [])
   ];
 
   async function submit(form: FormData) {
     const studentId = formString(form, "studentId");
     if (!studentId) {
-      toast({ title: "Choose a student first.", variant: "error" });
+      toast({ title: T("Choose a student first."), variant: "error" });
       return false;
     }
     const price = permissions.viewPayments ? formAmount(form, "priceAmount") : null;
     const initial = permissions.recordPayments ? formAmount(form, "initialAmount") : null;
     if (Number.isNaN(price) || Number.isNaN(initial)) {
-      toast({ title: "Amounts must be whole numbers of won (e.g. 500000).", variant: "error" });
+      toast({ title: T("Amounts must be whole numbers of won (e.g. 500000)."), variant: "error" });
       return false;
     }
     const result = await run(
@@ -153,20 +156,20 @@ export function CreateEnrollmentButton({
 
   return (
     <FormDialog
-      triggerLabel="New enrollment"
+      triggerLabel={T("New enrollment")}
       triggerVariant="default"
       triggerSize="md"
       triggerIcon={<UserPlus />}
-      title="Enroll a student"
-      description="Creates a new enrollment. Earlier enrollments stay in the student's history."
-      submitLabel="Create enrollment"
+      title={T("Enroll a student")}
+      description={T("Creates a new enrollment. Earlier enrollments stay in the student's history.")}
+      submitLabel={T("Create enrollment")}
       wide
       onOpen={() => setKey(newIdempotencyKey())}
       onSubmit={submit}
     >
       <StudentPicker workspace={workspace} preset={preset} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="enroll-course" label="Course" required>
+        <Field id="enroll-course" label={T("Course")} required>
           <Select id="enroll-course" name="courseId" value={courseId} onChange={(event) => setCourseId(event.target.value)} required>
             {courses.map((item) => (
               <option key={item.id} value={item.id}>
@@ -176,9 +179,9 @@ export function CreateEnrollmentButton({
           </Select>
         </Field>
         {workspace === "admin" ? (
-          <Field id="enroll-teacher" label="Assigned teacher" hint={course ? `Course teacher: ${course.instructorName}` : undefined}>
+          <Field id="enroll-teacher" label={T("Assigned teacher")} hint={course ? `Course teacher: ${course.instructorName}` : undefined}>
             <Select id="enroll-teacher" name="instructorId" defaultValue="">
-              <option value="">Course teacher</option>
+              <option value="">{T("Course teacher")}</option>
               {instructors.map((instructor) => (
                 <option key={instructor.id} value={instructor.id}>
                   {instructor.name}
@@ -187,18 +190,18 @@ export function CreateEnrollmentButton({
             </Select>
           </Field>
         ) : null}
-        <Field id="enroll-start" label="Start date" required>
+        <Field id="enroll-start" label={T("Start date")} required>
           <Input id="enroll-start" name="startDate" type="date" defaultValue={today} required />
         </Field>
-        <Field id="enroll-end" label="Expected end date">
+        <Field id="enroll-end" label={T("Expected end date")}>
           <Input id="enroll-end" name="endDate" type="date" />
         </Field>
       </div>
 
       {permissions.viewPayments ? (
         <fieldset className="grid gap-4 rounded-lg border border-border p-3 sm:grid-cols-2">
-          <legend className="px-1 text-xs font-medium text-muted-foreground">Payment</legend>
-          <Field id="enroll-arrangement" label="Payment arrangement">
+          <legend className="px-1 text-xs font-medium text-muted-foreground">{T("Payment")}</legend>
+          <Field id="enroll-arrangement" label={T("Payment arrangement")}>
             <Select id="enroll-arrangement" value={arrangement} onChange={(event) => setArrangement(event.target.value)}>
               {arrangements.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -207,55 +210,55 @@ export function CreateEnrollmentButton({
               ))}
             </Select>
           </Field>
-          <Field id="enroll-price" label="Course price (₩)" hint="Whole won, e.g. 500000" required={arrangement !== "WAIVED"}>
+          <Field id="enroll-price" label={T("Course price (₩)")} hint={T("Whole won, e.g. 500000")} required={arrangement !== "WAIVED"}>
             <Input id="enroll-price" name="priceAmount" inputMode="numeric" placeholder="500000" />
           </Field>
-          <Field id="enroll-due" label="Payment due date" required={arrangement === "PAY_LATER"}>
+          <Field id="enroll-due" label={T("Payment due date")} required={arrangement === "PAY_LATER"}>
             <Input id="enroll-due" name="paymentDueDate" type="date" required={arrangement === "PAY_LATER"} />
           </Field>
           {permissions.recordPayments ? (
             <>
-              <Field id="enroll-initial" label="Initial payment (₩, optional)" hint="Recorded as pending until approved.">
+              <Field id="enroll-initial" label={T("Initial payment (₩, optional)")} hint={T("Recorded as pending until approved.")}>
                 <Input id="enroll-initial" name="initialAmount" inputMode="numeric" placeholder="0" />
               </Field>
-              <Field id="enroll-initial-method" label="Payment method">
+              <Field id="enroll-initial-method" label={T("Payment method")}>
                 <Select id="enroll-initial-method" name="initialMethod" defaultValue="BANK_TRANSFER">
-                  <option value="BANK_TRANSFER">Bank transfer</option>
-                  <option value="CASH">Cash</option>
-                  <option value="ONLINE">Online</option>
-                  <option value="OTHER">Other</option>
+                  <option value="BANK_TRANSFER">{T("Bank transfer")}</option>
+                  <option value="CASH">{T("Cash")}</option>
+                  <option value="ONLINE">{T("Online")}</option>
+                  <option value="OTHER">{T("Other")}</option>
                 </Select>
               </Field>
-              <Field id="enroll-initial-date" label="Payment date">
+              <Field id="enroll-initial-date" label={T("Payment date")}>
                 <Input id="enroll-initial-date" name="initialDate" type="date" defaultValue={today} />
               </Field>
             </>
           ) : null}
         </fieldset>
       ) : (
-        <p className="text-xs text-muted-foreground">You can&apos;t set prices or payments. An administrator can add them later.</p>
+        <p className="text-xs text-muted-foreground">{T("You can't set prices or payments. An administrator can add them later.")}</p>
       )}
 
       <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
-        <legend className="px-1 text-xs font-medium text-muted-foreground">Course access</legend>
+        <legend className="px-1 text-xs font-medium text-muted-foreground">{T("Course access")}</legend>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="grantAccess" defaultChecked className="mt-1" disabled={arrangement === "PAY_LATER"} />
-          Let the student open the course now
+          {T("Let the student open the course now")}
         </label>
         {permissions.manageAccess ? (
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" name="restrictWhenOverdue" className="mt-1" />
-            Pause access automatically if the payment is overdue
+            {T("Pause access automatically if the payment is overdue")}
           </label>
         ) : null}
         {arrangement === "PAY_LATER" ? (
-          <Field id="enroll-approval" label="Pay Later approval note" hint="Why this student may study before paying.">
+          <Field id="enroll-approval" label={T("Pay Later approval note")} hint={T("Why this student may study before paying.")}>
             <Input id="enroll-approval" name="accessNote" maxLength={500} />
           </Field>
         ) : null}
       </fieldset>
 
-      <Field id="enroll-note" label="Internal note" hint="Visible to staff only, never to the student.">
+      <Field id="enroll-note" label={T("Internal note")} hint={T("Visible to staff only, never to the student.")}>
         <Textarea id="enroll-note" name="internalNote" rows={2} maxLength={2000} />
       </Field>
     </FormDialog>
@@ -277,6 +280,7 @@ export function EditEnrollmentButton({
   canChangePrice: boolean;
   instructors: InstructorOption[];
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
 
   async function submit(form: FormData) {
@@ -294,41 +298,41 @@ export function EditEnrollmentButton({
     if (canChangePrice) {
       const price = formAmount(form, "priceAmount");
       if (Number.isNaN(price)) {
-        toast({ title: "The price must be a whole number of won.", variant: "error" });
+        toast({ title: T("The price must be a whole number of won."), variant: "error" });
         return false;
       }
       if (price !== null) set("priceAmount", price, current.priceAmount);
     }
     Object.keys(body).forEach((key) => body[key] === undefined && delete body[key]);
     if (Object.keys(body).length <= 2) {
-      toast({ title: "Nothing changed." });
+      toast({ title: T("Nothing changed.") });
       return true;
     }
-    return Boolean(await run(`/api/management/enrollments/${enrollmentId}`, "PATCH", body, "Enrollment updated."));
+    return Boolean(await run(`/api/management/enrollments/${enrollmentId}`, "PATCH", body, T("Enrollment updated.")));
   }
 
   return (
-    <FormDialog triggerLabel="Edit" triggerIcon={<PencilLine />} title="Edit enrollment" submitLabel="Save changes" onSubmit={submit}>
+    <FormDialog triggerLabel={T("Edit")} triggerIcon={<PencilLine />} title={T("Edit enrollment")} submitLabel={T("Save changes")} onSubmit={submit}>
       <div className="grid gap-4 sm:grid-cols-2">
         {canManageEnrollments ? (
           <>
-            <Field id={`edit-start-${enrollmentId}`} label="Start date">
+            <Field id={`edit-start-${enrollmentId}`} label={T("Start date")}>
               <Input id={`edit-start-${enrollmentId}`} name="startDate" type="date" defaultValue={current.startDate ?? ""} />
             </Field>
-            <Field id={`edit-end-${enrollmentId}`} label="Expected end date">
+            <Field id={`edit-end-${enrollmentId}`} label={T("Expected end date")}>
               <Input id={`edit-end-${enrollmentId}`} name="endDate" type="date" defaultValue={current.endDate ?? ""} />
             </Field>
-            <Field id={`edit-status-${enrollmentId}`} label="Enrollment status">
+            <Field id={`edit-status-${enrollmentId}`} label={T("Enrollment status")}>
               <Select id={`edit-status-${enrollmentId}`} name="status" defaultValue={current.status}>
-                <option value="ACTIVE">Active</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CANCELLED">Cancelled</option>
-                <option value="EXPIRED">Expired</option>
-                <option value="TRANSFERRED">Transferred</option>
+                <option value="ACTIVE">{T("Active")}</option>
+                <option value="COMPLETED">{T("Completed")}</option>
+                <option value="CANCELLED">{T("Cancelled")}</option>
+                <option value="EXPIRED">{T("Expired")}</option>
+                <option value="TRANSFERRED">{T("Transferred")}</option>
               </Select>
             </Field>
             {workspace === "admin" ? (
-              <Field id={`edit-teacher-${enrollmentId}`} label="Assigned teacher">
+              <Field id={`edit-teacher-${enrollmentId}`} label={T("Assigned teacher")}>
                 <Select id={`edit-teacher-${enrollmentId}`} name="instructorId" defaultValue={current.instructorId ?? ""}>
                   {instructors.map((instructor) => (
                     <option key={instructor.id} value={instructor.id}>
@@ -340,16 +344,16 @@ export function EditEnrollmentButton({
             ) : null}
           </>
         ) : null}
-        <Field id={`edit-due-${enrollmentId}`} label="Payment due date">
+        <Field id={`edit-due-${enrollmentId}`} label={T("Payment due date")}>
           <Input id={`edit-due-${enrollmentId}`} name="paymentDueDate" type="date" defaultValue={current.paymentDueDate ?? ""} />
         </Field>
         {canChangePrice ? (
-          <Field id={`edit-price-${enrollmentId}`} label="Course price (₩)">
+          <Field id={`edit-price-${enrollmentId}`} label={T("Course price (₩)")}>
             <Input id={`edit-price-${enrollmentId}`} name="priceAmount" inputMode="numeric" defaultValue={current.priceAmount ?? ""} />
           </Field>
         ) : null}
       </div>
-      <Field id={`edit-reason-${enrollmentId}`} label="Reason (kept in the audit log)">
+      <Field id={`edit-reason-${enrollmentId}`} label={T("Reason (kept in the audit log)")}>
         <Input id={`edit-reason-${enrollmentId}`} name="reason" maxLength={500} />
       </Field>
     </FormDialog>
@@ -374,6 +378,7 @@ export function AccessButton({
   workspace: Workspace;
   current: { accessStatus: string; paymentDueDate: string | null; accessExpiresAt: string | null; restrictWhenOverdue: boolean };
 }) {
+  const T = useT();
   const { run } = useManagementMutation();
   const [action, setAction] = React.useState(current.accessStatus === "ACTIVE" ? "grant_pay_later" : "restore");
 
@@ -397,40 +402,40 @@ export function AccessButton({
 
   return (
     <FormDialog
-      triggerLabel="Access"
+      triggerLabel={T("Access")}
       triggerIcon={<KeyRound />}
-      title="Change course access"
-      description="Access is separate from payment: Pay Later lets an unpaid student study. Every change is logged."
-      submitLabel="Apply"
+      title={T("Change course access")}
+      description={T("Access is separate from payment: Pay Later lets an unpaid student study. Every change is logged.")}
+      submitLabel={T("Apply")}
       destructive={action === "revoke"}
       onSubmit={submit}
     >
-      <Field id={`access-action-${enrollmentId}`} label="Change">
+      <Field id={`access-action-${enrollmentId}`} label={T("Change")}>
         <Select id={`access-action-${enrollmentId}`} value={action} onChange={(event) => setAction(event.target.value)}>
           {ACCESS_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {T(option.label)}
             </option>
           ))}
         </Select>
       </Field>
       {action === "grant_pay_later" ? (
-        <Field id={`access-due-${enrollmentId}`} label="Payment due date" required>
+        <Field id={`access-due-${enrollmentId}`} label={T("Payment due date")} required>
           <Input id={`access-due-${enrollmentId}`} name="paymentDueDate" type="date" defaultValue={current.paymentDueDate ?? ""} required />
         </Field>
       ) : null}
       {action === "extend" ? (
-        <Field id={`access-expiry-${enrollmentId}`} label="New last day of access" required>
+        <Field id={`access-expiry-${enrollmentId}`} label={T("New last day of access")} required>
           <Input id={`access-expiry-${enrollmentId}`} name="accessExpiresAt" type="date" defaultValue={current.accessExpiresAt ?? ""} required />
         </Field>
       ) : null}
       {action === "set_overdue_rule" || action === "grant_pay_later" ? (
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="restrictWhenOverdue" defaultChecked={current.restrictWhenOverdue} className="mt-1" />
-          Pause access automatically if the payment becomes overdue
+          {T("Pause access automatically if the payment becomes overdue")}
         </label>
       ) : null}
-      <Field id={`access-reason-${enrollmentId}`} label="Reason / approval note" required>
+      <Field id={`access-reason-${enrollmentId}`} label={T("Reason / approval note")} required>
         <Input id={`access-reason-${enrollmentId}`} name="reason" required maxLength={500} />
       </Field>
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
