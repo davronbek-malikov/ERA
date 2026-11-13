@@ -79,9 +79,11 @@ type DataTableProps<T> = {
   emptyState?: React.ReactNode;
   /** Row actions (for example a ⋯ menu), shown last on desktop and top-right on cards. */
   rowActions?: (row: T) => React.ReactNode;
+  /** Screen-reader name of the actions column. */
+  actionsLabel?: string;
 };
 
-export function DataTable<T>({ columns, rows, getRowKey, caption, emptyState, rowActions }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, getRowKey, caption, emptyState, rowActions, actionsLabel = "Actions" }: DataTableProps<T>) {
   const titleColumn = columns.find((column) => column.mobile === "title") ?? columns[0];
   const detailColumns = columns.filter(
     (column) => column !== titleColumn && column.mobile !== "hidden"
@@ -101,7 +103,7 @@ export function DataTable<T>({ columns, rows, getRowKey, caption, emptyState, ro
               ))}
               {rowActions ? (
                 <TableHead className="w-12">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{actionsLabel}</span>
                 </TableHead>
               ) : null}
             </TableRow>

@@ -39,7 +39,7 @@ export async function AccessBadge({ status, allowed, payLater }: { status: strin
   const blockedAnyway = status === "ACTIVE" && allowed === false;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Badge variant={blockedAnyway ? "warning" : meta.variant}>{blockedAnyway ? T("Paused") : meta.label}</Badge>
+      <Badge variant={blockedAnyway ? "warning" : meta.variant}>{blockedAnyway ? T("Paused") : T(meta.label)}</Badge>
       {payLater ? <Badge variant="outline">{T("Pay Later")}</Badge> : null}
     </span>
   );

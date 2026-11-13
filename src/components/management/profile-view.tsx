@@ -11,7 +11,7 @@ import {
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
 import { PaymentReviewActions, RecordPaymentButton } from "@/components/management/payment-forms";
-import { HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
+import { CourseMembershipButton, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
 import { telegramUrl } from "@/lib/student-contact";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -46,8 +46,10 @@ async function EnrollmentCard({
   actor,
   workspace,
   instructors,
-  today
+  today,
+  studentName
 }: {
+  studentName: string;
   view: EnrollmentView;
   actor: ManagementActor;
   workspace: Workspace;
@@ -123,6 +125,15 @@ async function EnrollmentCard({
         ) : null}
         {can(actor, "recordPayments") && view.arrangement !== "WAIVED" ? (
           <RecordPaymentButton enrollmentId={view.id} workspace={workspace} today={today} currency={view.currency} />
+        ) : null}
+        {can(actor, "manageEnrollments") || can(actor, "manageAccess") ? (
+          <CourseMembershipButton
+            workspace={workspace}
+            enrollmentId={view.id}
+            studentName={studentName}
+            courseTitle={view.course.title}
+            action={view.status === "ACTIVE" ? "remove" : "restore"}
+          />
         ) : null}
       </div>
 
@@ -347,7 +358,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
           }
         />
         {profile.current.length ? (
-          profile.current.map((view) => <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} />)
+          profile.current.map((view) => <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />)
         ) : (
           <EmptyState title={T("No active enrollments")} description={T("Completed and earlier enrollments are listed under Course history.")} />
         )}
@@ -373,7 +384,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
                 ))}
             </ol>
             {profile.history.map((view) => (
-              <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} />
+              <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />
             ))}
           </>
         ) : (

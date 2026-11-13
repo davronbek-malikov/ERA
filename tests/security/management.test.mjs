@@ -230,6 +230,28 @@ describe("Access, Pay Later and course history", () => {
     assert.equal((await lessonContext(ali2Session, l.lessonA1.id)).status, 200);
   });
 
+  test("removing a student from a course cuts access at once, keeps history, and only staff can return them", async () => {
+    const membership = (session, json) => post(`/api/management/enrollments/${state.ali2A}/membership`, { session, json });
+    assert.equal((await membership(teacherA, { workspace: "teacher", action: "remove" })).status, 403, "teacher without permission");
+    assert.ok([403, 404].includes((await membership(teacherB, { workspace: "teacher", action: "remove" })).status), "another teacher's student");
+    assert.equal((await membership(ali2Session, { action: "remove" })).status, 403, "students can't use it");
+
+    const removed = await membership(admin, { action: "remove", reason: "Left the group" });
+    assert.equal(removed.status, 200, removed.text);
+    assert.equal((await lessonContext(ali2Session, l.lessonA1.id)).status, 403, "no lessons after removal");
+    const tutor = await post("/api/era/chat", { session: ali2Session, json: { courseId: c.courseA.id, lessonId: l.lessonA1.id, question: "hello" } });
+    assert.equal(tutor.status, 403, "no tutor after removal");
+    const view = enrollmentOf((await profile(admin, m.ali2.id)).profile, c.courseA.id);
+    assert.equal(view.status, "CANCELLED", "kept as history, not deleted");
+    assert.equal(view.accessStatus, "REVOKED");
+    assert.equal((await membership(admin, { action: "remove" })).status, 409, "already removed");
+
+    const restored = await membership(admin, { action: "restore" });
+    assert.equal(restored.status, 200, restored.text);
+    assert.equal((await lessonContext(ali2Session, l.lessonA1.id)).status, 200, "back in after the teacher returns them");
+    assert.equal(enrollmentOf((await profile(admin, m.ali2.id)).profile, c.courseA.id).status, "ACTIVE");
+  });
+
   test("19. due dates: with the overdue rule on, a passed due date with a balance pauses access", async () => {
     const patched = await call("PATCH", `/api/management/enrollments/${state.ali2A}`, { session: admin, json: { paymentDueDate: addDays(today, -1) } });
     assert.equal(patched.status, 200, patched.text);

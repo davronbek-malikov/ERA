@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, BookPlus, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, UserPlus } from "lucide-react";
+import { ArrowDown, ArrowUp, BookPlus, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, UserCheck, UserMinus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
 import { useManagementMutation, newIdempotencyKey } from "@/components/management/use-mutation";
 import type { Workspace } from "@/components/management/enrollment-forms";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -428,5 +429,48 @@ export function CourseOrderButtons({ workspace, order, index }: { workspace: Wor
         <ArrowDown />
       </Button>
     </span>
+  );
+}
+
+/** Remove a student from a course (access off immediately, history kept) or bring them back. Asks first. */
+export function CourseMembershipButton({
+  workspace,
+  enrollmentId,
+  studentName,
+  courseTitle,
+  action,
+  compact
+}: {
+  workspace: Workspace;
+  enrollmentId: string;
+  studentName: string;
+  courseTitle: string;
+  action: "remove" | "restore";
+  compact?: boolean;
+}) {
+  const T = useT();
+  const { run, pending } = useManagementMutation();
+  const removing = action === "remove";
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button size="sm" variant={removing ? "ghost" : "outline"} disabled={pending} className={removing ? "text-error hover:bg-error/10 hover:text-error" : undefined} aria-label={removing ? T("Remove from course") : T("Return to course")} title={removing ? T("Remove from course") : T("Return to course")}>
+          {removing ? <UserMinus /> : <UserCheck />}
+          {compact ? null : removing ? T("Remove from course") : T("Return to course")}
+        </Button>
+      }
+      title={removing ? T("Remove {name} from {course}?", { name: studentName, course: courseTitle }) : T("Return {name} to {course}?", { name: studentName, course: courseTitle })}
+      description={
+        removing
+          ? T("They lose access to this course right away. Their payments, homework results and history are kept, and you can return them later from their profile.")
+          : T("They can open the course again right away.")
+      }
+      confirmLabel={removing ? T("Remove from course") : T("Return to course")}
+      cancelLabel={T("Cancel")}
+      destructive={removing}
+      onConfirm={async () => {
+        await run(`/api/management/enrollments/${enrollmentId}/membership`, "POST", { workspace, action }, removing ? "Removed from the course." : "Returned to the course.");
+      }}
+    />
   );
 }
