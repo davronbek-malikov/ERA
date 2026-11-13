@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Users } from "lucide-react";
 
 import { AccessBadge, EnrollmentStatusBadge, PaymentStatusBadge } from "@/components/management/badges";
 import { CreateEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { RecordPaymentButton } from "@/components/management/payment-forms";
+import { AddStudentButton } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -110,6 +111,19 @@ export async function StudentManagementDashboard({
         <p className="text-sm text-muted-foreground">
           {actor.kind === "admin" ? "Every student and enrollment in ERA." : "Students assigned to you. Other teachers' students never appear here."}
         </p>
+        <span className="flex flex-wrap items-center gap-2">
+        <Link href={`${basePath}/courses`} className={cn(buttonVariants({ variant: "outline" }))}>
+          <BookOpen />
+          Courses &amp; lessons
+        </Link>
+        {can(actor, "manageEnrollments") ? (
+          <AddStudentButton
+            workspace={workspace}
+            today={today}
+            courses={courses.map((course) => ({ id: course.id, title: course.title }))}
+            canSetPrice={can(actor, "viewPayments")}
+          />
+        ) : null}
         {can(actor, "manageEnrollments") && courses.length ? (
           <CreateEnrollmentButton
             workspace={workspace}
@@ -119,6 +133,7 @@ export async function StudentManagementDashboard({
             permissions={actor.permissions}
           />
         ) : null}
+        </span>
       </div>
 
       <section className="flex flex-col gap-3" aria-label="Summary">
@@ -326,7 +341,9 @@ export async function StudentManagementDashboard({
                 </span>
               )
             },
-            { key: "teacher", header: "Teacher", mobile: "hidden", cell: (row) => row.teacher?.name ?? <span className="text-muted-foreground">—</span> },
+            ...(actor.kind === "admin"
+              ? [{ key: "teacher", header: "Teacher", mobile: "hidden" as const, cell: (row: EnrollmentRow) => row.teacher?.name ?? <span className="text-muted-foreground">—</span> }]
+              : []),
             {
               key: "course",
               header: "Course",
@@ -341,6 +358,20 @@ export async function StudentManagementDashboard({
                   ) : null}
                 </span>
               )
+            },
+            {
+              key: "homework",
+              header: "Homework",
+              cell: (row) =>
+                row.homework.total ? (
+                  <span className="flex flex-col gap-1">
+                    <span className="tabular-nums">{`${row.homework.done}/${row.homework.total} done`}</span>
+                    {row.homework.toCheck ? <Badge variant="warning" className="w-fit">{row.homework.toCheck} to check</Badge> : null}
+                    {row.homework.needsWork ? <Badge variant="error" className="w-fit">{row.homework.needsWork} needs work</Badge> : null}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">No lessons</span>
+                )
             },
             { key: "start", header: "Start", mobile: "hidden", cell: (row) => formatCalendarDate(row.startDate) },
             { key: "end", header: "End", cell: (row) => formatCalendarDate(row.endDate) },

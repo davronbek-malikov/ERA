@@ -8,6 +8,13 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 export function middleware(request: NextRequest) {
   if (request.cookies.has("era_session")) {
+    // The Teacher Workspace opens on My students (docs/ERA_TEACHER_HOMEWORK.md). A real redirect here, before
+    // the page streams; /teacher/my-students still checks the role itself.
+    if (request.nextUrl.pathname === "/teacher") {
+      const home = request.nextUrl.clone();
+      home.pathname = "/teacher/my-students";
+      return NextResponse.redirect(home, 307);
+    }
     return NextResponse.next();
   }
 

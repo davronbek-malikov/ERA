@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 
 import { requireId } from "@/lib/validation";
-import { handleManagementQuery } from "@/server/management/http";
+import { handleManagementMutation, handleManagementQuery } from "@/server/management/http";
+import { parseGithubUrl, updateStudentGithub } from "@/server/management/teaching";
 import { getStudentProfile } from "@/server/management/queries";
 
 type RouteProps = { params: Promise<{ studentId: string }> };
@@ -13,4 +14,12 @@ type RouteProps = { params: Promise<{ studentId: string }> };
 export async function GET(request: NextRequest, { params }: RouteProps) {
   const { studentId } = await params;
   return handleManagementQuery(request, async ({ actor }) => ({ profile: await getStudentProfile(actor, requireId(studentId, "studentId")) }));
+}
+
+/** Update the student's GitHub link (teachers of the student and admins). */
+export async function PATCH(request: NextRequest, { params }: RouteProps) {
+  const { studentId } = await params;
+  return handleManagementMutation(request, async ({ actor, body }) =>
+    updateStudentGithub(actor, requireId(studentId, "studentId"), parseGithubUrl(body.githubUrl), { source: "MANUAL" })
+  );
 }

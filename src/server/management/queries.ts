@@ -5,6 +5,7 @@ import { retryOnDatabaseFailure } from "@/lib/server-data";
 import { can, courseScope, enrollmentScope, examScope, requireStudentInScope, type ManagementActor } from "@/server/management/actor";
 import { evaluateEnrollmentAccess } from "@/server/management/access";
 import { isOverdue, summarizePayments, type PaymentStatus, type PaymentSummary } from "@/server/management/money";
+import { getEnrollmentHomework } from "@/server/management/teaching";
 import { addDays, fromDbDate, monthRange, toDbDate, todayInPlatform } from "@/server/management/time";
 
 /*
@@ -51,14 +52,17 @@ export type EnrollmentRow = {
   currency: string;
   money: (PaymentSummary & { overdue: boolean }) | null;
   hasUpcomingExam: boolean;
+  /** Homework checking progress: lessons in the course and this student's reviews. */
+  homework: { total: number; done: number; needsWork: number; toCheck: number };
   createdAt: string;
 };
 
 const ROW_INCLUDE = {
   user: { select: { id: true, name: true, email: true } },
-  course: { select: { id: true, title: true, slug: true } },
+  course: { select: { id: true, title: true, slug: true, _count: { select: { lessons: true } } } },
   instructor: { select: { id: true, name: true } },
-  payments: { select: { kind: true, amount: true, status: true } }
+  payments: { select: { kind: true, amount: true, status: true } },
+  homeworkReviews: { select: { status: true } }
 } satisfies Prisma.EnrollmentInclude;
 
 type LoadedEnrollment = Prisma.EnrollmentGetPayload<{ include: typeof ROW_INCLUDE }>;
@@ -94,7 +98,7 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
       return {
         id: enrollment.id,
         student: enrollment.user,
-        course: enrollment.course,
+        course: { id: enrollment.course.id, title: enrollment.course.title, slug: enrollment.course.slug },
         teacher: enrollment.instructor,
         status: enrollment.status,
         startDate: fromDbDate(enrollment.startDate),
@@ -106,6 +110,12 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
         currency: enrollment.currency,
         money: showMoney ? { ...summary, overdue: isOverdue(summary, fromDbDate(enrollment.paymentDueDate), today) } : null,
         hasUpcomingExam: exams.ids.has(enrollment.id) || (enrollment.status === "ACTIVE" && exams.wholeCourses.has(enrollment.courseId)),
+        homework: {
+          total: enrollment.course._count.lessons,
+          done: enrollment.homeworkReviews.filter((review) => review.status === "DONE").length,
+          needsWork: enrollment.homeworkReviews.filter((review) => review.status === "NEEDS_WORK").length,
+          toCheck: enrollment.homeworkReviews.filter((review) => review.status === "SUBMITTED").length
+        },
         createdAt: enrollment.createdAt.toISOString()
       };
     })
@@ -340,8 +350,9 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
   const enrollmentViews = await Promise.all(
     enrollments.map(async (enrollment) => {
       const summary = summarizePayments(enrollment, enrollment.payments);
-      const access = await evaluateEnrollmentAccess(enrollment, today);
+      const [access, homework] = await Promise.all([evaluateEnrollmentAccess(enrollment, today), getEnrollmentHomework(enrollment.id, enrollment.courseId)]);
       return {
+        homework,
         id: enrollment.id,
         course: enrollment.course,
         teacher: enrollment.instructor,

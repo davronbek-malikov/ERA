@@ -1,4 +1,4 @@
-import { CalendarDays, History, ShieldCheck, StickyNote } from "lucide-react";
+import { CalendarDays, ExternalLink, History, ShieldCheck, StickyNote } from "lucide-react";
 
 import {
   AccessBadge,
@@ -11,6 +11,7 @@ import {
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
 import { PaymentReviewActions, RecordPaymentButton } from "@/components/management/payment-forms";
+import { GithubLinkButton, HomeworkReviewButton } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/workspace/workspace-ui";
@@ -121,6 +122,8 @@ function EnrollmentCard({
         ) : null}
       </div>
 
+      <HomeworkSection view={view} workspace={workspace} />
+
       {view.money ? (
         <section aria-label={`Payments for ${view.course.title}`} className="flex flex-col gap-2">
           <h4 className="text-sm font-semibold">Payment history</h4>
@@ -194,6 +197,82 @@ function EnrollmentCard({
   );
 }
 
+const HOMEWORK_BADGE: Record<string, { label: string; variant: "success" | "warning" | "error" | "neutral" | "primary" }> = {
+  DONE: { label: "Done correctly", variant: "success" },
+  NEEDS_WORK: { label: "Needs work", variant: "error" },
+  SUBMITTED: { label: "To check", variant: "warning" },
+  NOT_SUBMITTED: { label: "Not submitted", variant: "neutral" }
+};
+
+/** One row per lesson: what was taught, the homework, the student's link and the check result. */
+function HomeworkSection({ view, workspace }: { view: EnrollmentView; workspace: Workspace }) {
+  if (!view.homework.length) {
+    return <p className="text-sm text-muted-foreground">This course has no lessons yet. Add them under Courses &amp; lessons.</p>;
+  }
+  const done = view.homework.filter((lesson) => lesson.review?.status === "DONE").length;
+  return (
+    <section aria-label={`Homework for ${view.course.title}`} className="flex flex-col gap-2">
+      <h4 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+        Homework
+        <Badge variant={done === view.homework.length ? "success" : "neutral"}>
+          {done}/{view.homework.length} done
+        </Badge>
+      </h4>
+      <ol className="flex flex-col gap-2">
+        {view.homework.map((lesson) => {
+          const badge = HOMEWORK_BADGE[lesson.review?.status ?? "NOT_SUBMITTED"];
+          return (
+            <li key={lesson.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <span className="font-medium">
+                  {lesson.position}. {lesson.title}
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={badge.variant}>{badge.label}</Badge>
+                  <HomeworkReviewButton
+                    workspace={workspace}
+                    enrollmentId={view.id}
+                    lessonId={lesson.id}
+                    lessonLabel={`${lesson.position}. ${lesson.title}`}
+                    current={lesson.review ? { status: lesson.review.status, githubUrl: lesson.review.githubUrl, note: lesson.review.note } : null}
+                  />
+                </span>
+              </div>
+              <div className="grid gap-2 text-sm md:grid-cols-2">
+                <div className="rounded-md bg-muted/60 p-2">
+                  <p className="text-xs font-medium text-muted-foreground">What I taught</p>
+                  <p className="whitespace-pre-wrap">{lesson.taughtSummary || <span className="text-muted-foreground">Not written yet</span>}</p>
+                </div>
+                <div className="rounded-md bg-muted/60 p-2">
+                  <p className="text-xs font-medium text-muted-foreground">Homework</p>
+                  <p className="whitespace-pre-wrap">{lesson.homework || <span className="text-muted-foreground">Not written yet</span>}</p>
+                </div>
+              </div>
+              {lesson.review?.githubUrl || lesson.review?.note || lesson.review?.checkedAt ? (
+                <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {lesson.review?.githubUrl ? (
+                    <a href={lesson.review.githubUrl} target="_blank" rel="noopener noreferrer" className="flex w-fit items-center gap-1 text-primary hover:underline">
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                      Student&apos;s work
+                    </a>
+                  ) : null}
+                  {lesson.review?.note ? <span className="whitespace-pre-wrap text-foreground">Note: {lesson.review.note}</span> : null}
+                  {lesson.review?.checkedAt ? (
+                    <span>
+                      Checked {lesson.review.checkedAt.slice(0, 10)}
+                      {lesson.review.checkedBy ? ` by ${lesson.review.checkedBy}` : ""}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 export async function StudentProfileView({ actor, studentId, workspace }: { actor: ManagementActor; studentId: string; workspace: Workspace }) {
   const today = todayInPlatform();
   const [profile, courses, instructors] = await Promise.all([getStudentProfile(actor, studentId), listScopedCourses(actor), listInstructorsForActor(actor)]);
@@ -209,6 +288,20 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
         </Detail>
         <Detail label="Assigned teacher">{profile.teachers.length ? profile.teachers.map((teacher) => teacher.name).join(", ") : "—"}</Detail>
         <Detail label="Registered">{formatCalendarDate(profile.student.createdAt.slice(0, 10))}</Detail>
+        <div className="flex flex-col gap-0.5 sm:col-span-2 lg:col-span-5">
+          <dt className="text-xs text-muted-foreground">GitHub</dt>
+          <dd className="flex flex-wrap items-center gap-2 text-sm">
+            {profile.student.githubUrl ? (
+              <a href={profile.student.githubUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-primary hover:underline">
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+                {profile.student.githubUrl.replace(/^https?:\/\//, "")}
+              </a>
+            ) : (
+              <span className="text-muted-foreground">Not added</span>
+            )}
+            <GithubLinkButton workspace={workspace} studentId={profile.student.id} current={profile.student.githubUrl} />
+          </dd>
+        </div>
       </section>
 
       <section className="flex flex-col gap-4" aria-label="Current enrollments">

@@ -39,11 +39,13 @@ export default async function TeacherAssistantPage({ searchParams }: PageProps) 
           intro="I'll help you plan and draft course content. Choose one of your courses below to give me its outline. Everything I write is a draft until you review it and add it in the course editor."
           courses={courses}
           suggestions={[
-            "Draft a lesson outline",
-            "Create a 5-question multiple-choice quiz",
-            "Suggest homework for this course",
-            "Write a practice exercise with a solution",
-            "Improve this explanation (paste your text)"
+            "Whose homework do I still need to check?",
+            "Who hasn't done lesson 3's homework?",
+            "Show Ali's homework and payments",
+            "Create course Machine Learning Foundation, 4 weeks, 11 lessons",
+            "Lesson 2: I taught linear regression with scikit-learn. Homework: train a model on the housing dataset and push the notebook to GitHub",
+            "Add student Ali Karimov, ali@gmail.com, GitHub github.com/alik, to Machine Learning Foundation starting today, 500,000 won",
+            "Ali did lesson 2's homework correctly: github.com/alik/ml/tree/main/lesson-2"
           ]}
         />
       </WorkspacePage>

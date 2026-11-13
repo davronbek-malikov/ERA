@@ -76,7 +76,7 @@ const ACTION_OVERRIDE: Partial<Record<AgentKind, string>> = {
   admin:
     "Exception to the paragraph above: you have ERA Student Management tools. You may read student, enrollment, payment and exam records with them, and you may PROPOSE changes with the propose_* tools. A proposal changes nothing; the administrator confirms it with a button. Other changes (courses, users, settings) still happen only in the admin workspace.",
   teacher:
-    "Exception to the paragraph above: you have ERA Student Management tools for this teacher's own students. You may read records with them and PROPOSE changes with the propose_* tools. A proposal changes nothing; the teacher confirms it with a button. Course content is still only drafted, never published by you."
+    "Exception to the paragraphs above: you have ERA Student Management tools for this teacher's own students and courses. You may read records with them and PROPOSE changes with the propose_* tools: adding students, creating courses and lessons (what was taught and the homework), recording homework checks, payments and dates. A proposal changes nothing; the teacher confirms it with a button. Never say something was created or changed before the teacher confirmed it."
 };
 
 export function buildSystemPrompt(context: Pick<ExecutionContext, "agent" | "contextBlocks" | "locale" | "user" | "tools">) {
