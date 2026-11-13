@@ -65,7 +65,7 @@ export function RecordPaymentButton({
 
   return (
     <FormDialog
-      triggerLabel={label}
+      triggerLabel={T(label)}
       triggerIcon={<HandCoins />}
       title={T("Record a payment")}
       description={T("For money received outside ERA (bank transfer, cash…). It is saved as pending and counts only after someone verifies and approves it.")}
@@ -137,8 +137,9 @@ export function PaymentReviewActions({
               </Button>
             }
             title={T("Approve this payment?")}
-            description={`Approve ${amount.toLocaleString("en-US")} only if you have verified the money was actually received. It will then count toward the balance.`}
+            description={T("Approve ₩{amount} only if you have checked that the money was actually received. It will then count toward the balance.", { amount: amount.toLocaleString("en-US") })}
             confirmLabel={T("Approve payment")}
+            cancelLabel={T("Cancel")}
             onConfirm={async () => {
               await run(url, "POST", { workspace, decision: "approve" }, T("Payment approved."));
             }}
@@ -192,7 +193,7 @@ export function PaymentReviewActions({
             );
           }}
         >
-          <Field id={`correct-amount-${transactionId}`} label={T("Correct amount (₩)")} hint={`Currently ${amount.toLocaleString("en-US")}`} required>
+          <Field id={`correct-amount-${transactionId}`} label={T("Correct amount (₩)")} hint={T("Currently ₩{amount}", { amount: amount.toLocaleString("en-US") })} required>
             <Input id={`correct-amount-${transactionId}`} name="amount" inputMode="numeric" required />
           </Field>
           <Field id={`correct-reason-${transactionId}`} label={T("Reason")} required>
