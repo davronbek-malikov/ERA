@@ -93,10 +93,12 @@ async function EnrollmentCard({
         {view.accessNote ? <Detail label={T("Approval note")}>{view.accessNote}</Detail> : null}
       </dl>
       {view.money?.pending ? (
-        <p className="text-xs text-muted-foreground">{formatMoney(view.money.pending, view.currency)} recorded and waiting for verification (not counted yet).</p>
+        <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+          {T("{amount} recorded and waiting for approval (not counted yet). Approve it in the payment history below.", { amount: formatMoney(view.money.pending, view.currency) })}
+        </p>
       ) : null}
-      {view.money?.credit ? <p className="text-xs text-muted-foreground">Paid {formatMoney(view.money.credit, view.currency)} more than the price.</p> : null}
-      {view.internalNote ? <p className="rounded-lg bg-muted px-3 py-2 text-xs">Internal note: {view.internalNote}</p> : null}
+      {view.money?.credit ? <p className="text-xs text-muted-foreground">{T("Paid {amount} more than the price.", { amount: formatMoney(view.money.credit, view.currency) })}</p> : null}
+      {view.internalNote ? <p className="rounded-lg bg-muted px-3 py-2 text-xs">{T("Internal note")}: {view.internalNote}</p> : null}
 
       <div className="flex flex-wrap gap-2">
         {canEdit ? (
@@ -137,10 +139,8 @@ async function EnrollmentCard({
         ) : null}
       </div>
 
-      <HomeworkSection view={view} workspace={workspace} />
-
       {view.money ? (
-        <section aria-label={`Payments for ${view.course.title}`} className="flex flex-col gap-2">
+        <section aria-label={T("Payment history")} className="flex flex-col gap-2">
           <h4 className="text-sm font-semibold">{T("Payment history")}</h4>
           {view.payments.length ? (
             <ol className="flex flex-col gap-2">
@@ -158,7 +158,7 @@ async function EnrollmentCard({
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {formatCalendarDate(payment.transactionDate)} · {T(METHOD_LABEL[payment.method]) ?? payment.method}
-                      {payment.reference ? ` · Ref ${payment.reference}` : ""} · {T("recorded by {name}", { name: payment.recordedBy ?? "—" })}
+                      {payment.reference ? ` · ${T("Ref")} ${payment.reference}` : ""} · {T("recorded by {name}", { name: payment.recordedBy ?? "—" })}
                     </span>
                     {payment.description ? <span className="text-xs">{payment.description}</span> : null}
                     {payment.reviewedBy ? (
@@ -192,9 +192,11 @@ async function EnrollmentCard({
         </section>
       ) : null}
 
+      <HomeworkSection view={view} workspace={workspace} />
+
       {view.accessLog.length ? (
         <details className="text-sm">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Access history ({view.accessLog.length})</summary>
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{T("Access history")} ({view.accessLog.length})</summary>
           <ol className="mt-2 flex flex-col gap-1">
             {view.accessLog.map((log) => (
               <li key={log.id} className="text-xs text-muted-foreground">
@@ -231,7 +233,7 @@ async function HomeworkSection({ view, workspace }: { view: EnrollmentView; work
       <h4 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
         {T("Homework")}
         <Badge variant={done === view.homework.length ? "success" : "neutral"}>
-          {done}/{view.homework.length} done
+          {T("{done}/{total} done", { done, total: view.homework.length })}
         </Badge>
       </h4>
       <ol className="flex flex-col gap-2">
@@ -321,7 +323,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
         </Detail>
         {profile.student.email ? <Detail label={T("Email")}>{profile.student.email}</Detail> : null}
         <Detail label={T("Account")}>
-          <Badge variant={profile.student.status === "ACTIVE" ? "success" : "warning"}>{profile.student.status.toLowerCase()}</Badge>
+          <Badge variant={profile.student.status === "ACTIVE" ? "success" : "warning"}>{profile.student.status === "ACTIVE" ? T("Active") : T("Suspended")}</Badge>
         </Detail>
         <Detail label={T("Assigned teacher")}>{profile.teachers.length ? profile.teachers.map((teacher) => teacher.name).join(", ") : "—"}</Detail>
         <Detail label={T("Registered")}>{formatCalendarDate(profile.student.createdAt.slice(0, 10))}</Detail>
