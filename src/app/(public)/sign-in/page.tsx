@@ -42,31 +42,31 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
   const message = errorKey ? t.signIn.errors[errorKey as keyof typeof t.signIn.errors] : null;
 
   return (
-    <Section className="py-8 sm:py-12 lg:py-16">
-      <Container className="grid items-start gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
-        <Card className="order-1 overflow-hidden border-white/70 bg-white/92 shadow-panel lg:order-2">
-          <CardHeader className="space-y-3 px-5 pb-4 pt-5 sm:px-8 sm:pt-8">
+    <Section className="py-6 sm:py-12 lg:py-14">
+      <Container className="grid items-start gap-5 sm:gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
+        <Card className="order-1 overflow-hidden border-white/70 bg-card/92 shadow-panel lg:order-2">
+          <CardHeader className="space-y-3 px-4 pb-4 pt-4 sm:px-7 sm:pt-7">
             <div className="inline-flex w-fit rounded-full bg-primary/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
               {t.signIn.welcome}
             </div>
-            <CardTitle className="text-2xl sm:text-3xl">{t.signIn.welcome}</CardTitle>
+            <CardTitle>{t.signIn.welcome}</CardTitle>
             <p className="text-sm leading-7 text-muted-foreground sm:text-base">
               {t.signIn.continueText}
             </p>
           </CardHeader>
-          <CardContent className="space-y-5 px-5 pb-5 sm:px-8 sm:pb-8">
+          <CardContent className="space-y-5 px-4 pb-4 sm:px-8 sm:pb-8">
             {message ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="status-error rounded-xl border px-4 py-3 text-sm">
                 {message}
               </div>
             ) : null}
             {params.signedOut === "1" ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="status-success rounded-xl border px-4 py-3 text-sm">
                 {t.signIn.signedOut}
               </div>
             ) : null}
             {params.reset === "1" ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="status-success rounded-xl border px-4 py-3 text-sm">
                 {t.signIn.reset}
               </div>
             ) : null}
@@ -85,7 +85,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
                   autoCapitalize="none"
                   autoCorrect="off"
                   inputMode="text"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -99,7 +99,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
                   type="password"
                   placeholder={t.signIn.passwordPlaceholder}
                   autoComplete="current-password"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -128,30 +128,26 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
           </CardContent>
         </Card>
 
-        <div className="order-2 space-y-5 lg:order-1 lg:space-y-6">
+        <div className="order-2 min-w-0 space-y-4 sm:space-y-5 lg:order-1 lg:space-y-6">
           <Badge>{t.signIn.badge}</Badge>
-          <h1 className="font-display text-3xl leading-tight sm:text-5xl lg:text-6xl">
-            {t.signIn.title}
-          </h1>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-            {t.signIn.description}
-          </p>
+          <h1 className="page-title">{t.signIn.title}</h1>
+          <p className="page-lead">{t.signIn.description}</p>
 
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <UserRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signIn.cards[0]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <LockKeyhole className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signIn.cards[1]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <Phone className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signIn.cards[2]}</p>
               </CardContent>

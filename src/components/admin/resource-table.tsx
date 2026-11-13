@@ -9,7 +9,8 @@ type ResourceTableProps = {
 
 export function ResourceTable({ title, columns, rows }: ResourceTableProps) {
   return (
-    <Card>
+    // min-w-0 lets the card shrink inside grid layouts so the table scrolls instead of widening the page.
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="text-3xl">{title}</CardTitle>
       </CardHeader>
@@ -20,7 +21,7 @@ export function ResourceTable({ title, columns, rows }: ResourceTableProps) {
             description="Once content is created, it will appear here for review and editing."
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="min-w-full border-separate border-spacing-y-3">
               <thead>
                 <tr>

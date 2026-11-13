@@ -14,27 +14,29 @@ export async function Footer() {
       links: [
         { label: t.navbar.subjects, href: "/subjects" },
         { label: t.navbar.courses, href: "/courses" },
-        { label: t.navbar.learningPaths, href: "/#paths" }
+        { label: t.navbar.learningPaths, href: "/learning-paths" }
       ]
     },
     {
       title: t.footer.platform,
       links: [
-        { label: t.footer.about, href: "/" },
-        { label: t.navbar.faq, href: "/#faq" },
-        { label: t.footer.contact, href: "/" }
+        { label: t.footer.about, href: "/about" },
+        { label: t.navbar.faq, href: "/faq" },
+        { label: t.footer.contact, href: "/faq#support-heading" }
       ]
     }
   ];
   return (
-    <footer className="border-t border-border/70 bg-white/72 backdrop-blur">
-      <Container className="grid gap-12 py-16 lg:grid-cols-[1.2fr,0.8fr]">
+    <footer className="border-t border-border/70 bg-card/72 backdrop-blur">
+      <Container className="grid gap-10 py-14 lg:grid-cols-[1.2fr,0.8fr]">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-accent p-1.5 shadow-soft">
               <EraLogo className="h-12 w-12" />
             </div>
-            <p className="font-display text-3xl">ERA Academy</p>
+            <p className="font-display text-[1.65rem] font-semibold leading-none tracking-[-0.03em]">
+              ERA Academy
+            </p>
           </div>
           <p className="max-w-xl text-sm leading-7 text-muted-foreground">
             {t.footer.description}
@@ -49,7 +51,11 @@ export async function Footer() {
               </p>
               <div className="space-y-3">
                 {column.links.map((link) => (
-                  <Link key={link.label} href={link.href} className="block text-sm hover:text-primary">
+                  <Link
+                    key={link.label}
+                    href={link.href}
+                    className="block text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
                     {link.label}
                   </Link>
                 ))}

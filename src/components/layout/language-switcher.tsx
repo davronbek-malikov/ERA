@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -10,15 +11,19 @@ type LanguageSwitcherProps = {
   label: string;
   englishLabel: string;
   uzbekLabel: string;
+  compact?: boolean;
 };
 
 export function LanguageSwitcher({
   locale,
   label,
   englishLabel,
-  uzbekLabel
+  uzbekLabel,
+  compact = false
 }: LanguageSwitcherProps) {
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+  const pathname = usePathname();
 
   function setLocale(nextLocale: Locale) {
     startTransition(() => {
@@ -31,14 +36,19 @@ export function LanguageSwitcher({
           body: JSON.stringify({ locale: nextLocale })
         });
 
-        window.location.reload();
+        router.prefetch(pathname);
+        router.refresh();
       })();
     });
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-2 rounded-full border border-border/80 bg-white/90 px-2 py-1 text-xs shadow-soft">
-      <span className="px-2 uppercase tracking-[0.14em] whitespace-nowrap text-muted-foreground">{label}</span>
+    <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/80 bg-card/90 px-2 py-1 text-xs shadow-soft">
+      {!compact ? (
+        <span className="px-2 whitespace-nowrap uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </span>
+      ) : null}
       <button
         type="button"
         disabled={isPending}

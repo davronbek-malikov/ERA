@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  /// pgvector stores Knowledge Base embeddings (Prompt 09). Available on Supabase and in `prisma dev`.
+  extensions = [vector]
 }
 
 enum CourseDifficulty {
@@ -25,6 +28,28 @@ enum UserRole {
   ADMIN
 }
 
+enum LearningGoal {
+  AI
+  MATHEMATICS
+  ENGLISH
+  EXAM_PREPARATION
+}
+
+enum TimeAvailability {
+  LIGHT
+  MODERATE
+  FOCUSED
+  INTENSIVE
+}
+
+enum OnboardingStage {
+  WELCOME
+  PROFILE
+  ASSESSMENT
+  PLAN
+  COMPLETED
+}
+
 enum ActivityType {
   SUBJECT_CREATED
   CATEGORY_CREATED
@@ -33,71 +58,185 @@ enum ActivityType {
   USER_CREATED
   ENROLLMENT_CREATED
   SETTINGS_UPDATED
+  STUDY_SESSION
+  LESSON_COMPLETED
+  PRACTICE_SUBMITTED
+}
+
+enum ChatMessageRole {
+  USER
+  ASSISTANT
+}
+
+/// Which ERA agent a conversation or usage record belongs to (Prompt 08).
+enum AiAgent {
+  STUDENT_TUTOR
+  TEACHER_ASSISTANT
+  ADMIN_ASSISTANT
+}
+
+/// Who a Knowledge Base document is for (Prompt 09, docs/ERA_KNOWLEDGE_BASE.md).
+enum KnowledgeScope {
+  PLATFORM
+  COURSE
+  LESSON
+  TEACHER_PRIVATE
+}
+
+/// STUDENTS: may be retrieved for enrolled students. TEACHERS_ONLY: answer keys, assessment material, teacher notes.
+enum KnowledgeVisibility {
+  STUDENTS
+  TEACHERS_ONLY
+}
+
+enum KnowledgeStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AiUsageStatus {
+  SUCCESS
+  FAILED
+  CANCELLED
+  BLOCKED
+}
+
+enum PracticeExerciseType {
+  CODING
+  MINI_PROJECT
+}
+
+enum SubmissionStatus {
+  PASSED
+  FAILED
 }
 
 model User {
-  id           String       @id @default(cuid())
+  id           String   @id @default(cuid())
   name         String
-  email        String       @unique
-  phone        String?      @unique
+  email        String   @unique
+  phone        String?  @unique
   passwordHash String?
   image        String?
-  role         UserRole     @default(STUDENT)
-  status       String       @default("ACTIVE")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  role         UserRole @default(STUDENT)
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  /// Student's GitHub profile or repository (homework checking). Shown to the student's teachers only.
+  githubUrl    String?  @map("github_url")
+  /// Telegram username or number, for teachers to contact the student.
+  telegram     String?
 
-  enrollments        Enrollment[]
-  instructorProfile  Instructor?
-  lessonCompletions  LessonCompletion[]
-  uploadedMaterials  CourseMaterial[]
-  activities         ActivityLog[]
-  passwordResetCodes PasswordResetCode[]
+  enrollments         Enrollment[]
+  instructorProfile   Instructor?
+  lessonCompletions   LessonCompletion[]
+  chatMessages        ChatMessage[]
+  aiConversations     AiConversation[]
+  aiUsageEvents       AiUsageEvent[]
+  knowledgeDocuments  KnowledgeDocument[]
+  uploadedMaterials   CourseMaterial[]
+  activities          ActivityLog[]
+  passwordResetCodes  PasswordResetCode[]
+  onboarding          UserOnboarding?
+  pathProgress        UserPathProgress[]
+  xpProfile           UserXp?
+  streakProfile       Streak?
+  badges              Badge[]
+  practiceSubmissions PracticeSubmission[]
+  courseReviews       CourseReview[]
+
+  // Student Management & Payments
+  enrollmentsCreated       Enrollment[]           @relation("EnrollmentCreatedBy")
+  accessGrants             Enrollment[]           @relation("EnrollmentAccessGrantedBy")
+  paymentsRecorded         PaymentTransaction[]   @relation("PaymentRecordedBy")
+  paymentsReviewed         PaymentTransaction[]   @relation("PaymentReviewedBy")
+  paymentsReversed         PaymentTransaction[]   @relation("PaymentReversedBy")
+  studentNotes             StudentNote[]          @relation("StudentNoteStudent")
+  studentNotesWritten      StudentNote[]          @relation("StudentNoteAuthor")
+  accessChanges            EnrollmentAccessLog[]
+  examsCreated             ExamSchedule[]
+  managementAuditLogs      ManagementAuditLog[]
+  aiPendingActions         AiPendingAction[]
+  instructorPermissionsSet InstructorPermission[]
+  homeworkReviewsChecked   HomeworkReview[]       @relation("HomeworkReviewedBy")
+}
+
+model UserOnboarding {
+  id                              String            @id @default(cuid())
+  userId                          String            @unique
+  goal                            LearningGoal?
+  level                           CourseDifficulty?
+  recommendedLevel                CourseDifficulty?
+  timeAvailability                TimeAvailability?
+  stage                           OnboardingStage   @default(WELCOME)
+  assessmentScore                 Int?
+  assessmentAnswers               Json?
+  recommendedSubjectSlug          String?
+  recommendedCourseId             String?
+  personalizedPlan                String[]
+  checklistProfileCompleted       Boolean           @default(false)
+  checklistFirstLessonCompleted   Boolean           @default(false)
+  checklistFirstPracticeCompleted Boolean           @default(false)
+  completedAt                     DateTime?
+  createdAt                       DateTime          @default(now())
+  updatedAt                       DateTime          @updatedAt
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendedCourse Course? @relation("OnboardingRecommendedCourse", fields: [recommendedCourseId], references: [id], onDelete: SetNull)
+
+  @@index([stage, updatedAt])
+  @@index([goal, recommendedLevel])
 }
 
 model PasswordResetCode {
-  id         String   @id @default(cuid())
-  userId     String
-  email      String
-  codeHash   String
-  expiresAt  DateTime
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([email, expiresAt])
 }
 
 model Instructor {
-  id          String       @id @default(cuid())
-  userId      String?      @unique
-  name        String
-  slug        String       @unique
-  title       String?
-  bio         String?
-  imageUrl    String?
-  email       String?      @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String   @id @default(cuid())
+  userId    String?  @unique
+  name      String
+  slug      String   @unique
+  title     String?
+  bio       String?
+  imageUrl  String?
+  email     String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  courses     Course[]
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  courses Course[]
+
+  assignedEnrollments Enrollment[]          @relation("EnrollmentInstructor")
+  exams               ExamSchedule[]
+  permissions         InstructorPermission?
 }
 
 model Subject {
-  id          String            @id @default(cuid())
-  name        String
-  slug        String            @unique
-  description String?
+  id           String            @id @default(cuid())
+  name         String
+  slug         String            @unique
+  description  String?
   thumbnailUrl String?
-  status      PublicationStatus @default(PUBLISHED)
-  position    Int               @default(0)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  status       PublicationStatus @default(PUBLISHED)
+  position     Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
-  categories  Category[]
+  categories Category[]
 
   @@index([status, position])
 }
@@ -113,66 +252,326 @@ model Category {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  subject     Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  courses     Course[]
+  subject Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  courses Course[]
 
   @@unique([subjectId, slug])
   @@index([subjectId, status, position])
 }
 
 model Course {
-  id               String             @id @default(cuid())
+  id               String            @id @default(cuid())
   categoryId       String
   instructorId     String
   title            String
   subtitle         String?
-  slug             String             @unique
+  slug             String            @unique
   shortDescription String?
   description      String?
   thumbnailUrl     String?
   promoVideoUrl    String?
-  difficulty       CourseDifficulty   @default(BEGINNER)
+  difficulty       CourseDifficulty  @default(BEGINNER)
   outcomes         String[]
-  isFeatured       Boolean            @default(false)
-  isPopular        Boolean            @default(false)
-  status           PublicationStatus  @default(PUBLISHED)
-  position         Int                @default(0)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  isFeatured       Boolean           @default(false)
+  isPopular        Boolean           @default(false)
+  homepagePriority Int               @default(0)
+  viewCount        Int               @default(0)
+  status           PublicationStatus @default(PUBLISHED)
+  position         Int               @default(0)
+  publishedAt      DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
-  category         Category           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  instructor       Instructor         @relation(fields: [instructorId], references: [id], onDelete: Restrict)
-  lessons          Lesson[]
-  materials        CourseMaterial[]
-  enrollments      Enrollment[]
+  category                 Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  instructor               Instructor          @relation(fields: [instructorId], references: [id], onDelete: Restrict)
+  modules                  CourseModule[]
+  lessons                  Lesson[]
+  materials                CourseMaterial[]
+  enrollments              Enrollment[]
+  exams                    ExamSchedule[]
+  chatMessages             ChatMessage[]
+  aiConversations          AiConversation[]
+  knowledgeDocuments       KnowledgeDocument[]
+  viewEvents               CourseViewEvent[]
+  reviews                  CourseReview[]
+  recommendedForOnboarding UserOnboarding[]    @relation("OnboardingRecommendedCourse")
+  learningPathEntries      PathCourse[]
+  currentForPathProgress   UserPathProgress[]  @relation("CurrentPathCourse")
+  nextForPathProgress      UserPathProgress[]  @relation("NextPathCourse")
 
   @@index([categoryId, status, position])
   @@index([instructorId])
   @@index([difficulty])
   @@index([isFeatured])
   @@index([isPopular])
+  @@index([status, publishedAt])
+  @@index([status, viewCount])
+  @@index([homepagePriority])
 }
 
-model Lesson {
+model CourseReview {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId, createdAt])
+  @@index([userId, createdAt])
+  @@map("course_reviews")
+}
+
+model LearningPath {
+  id          String            @id @default(cuid())
+  title       String
+  slug        String            @unique
+  description String?
+  subjectSlug String?
+  difficulty  CourseDifficulty?
+  status      PublicationStatus @default(PUBLISHED)
+  position    Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  courses      PathCourse[]
+  userProgress UserPathProgress[]
+
+  @@index([status, position])
+  @@map("learning_paths")
+}
+
+model PathCourse {
+  id         String   @id @default(cuid())
+  pathId     String
+  courseId   String
+  position   Int
+  stageLabel String?
+  createdAt  DateTime @default(now())
+
+  path   LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([pathId, courseId])
+  @@unique([pathId, position])
+  @@index([courseId])
+  @@map("path_courses")
+}
+
+model UserPathProgress {
+  id                   String   @id @default(cuid())
+  userId               String
+  pathId               String
+  progressPercent      Int      @default(0)
+  completedCourseCount Int      @default(0)
+  currentCourseId      String?
+  nextCourseId         String?
+  lastSyncedAt         DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  path          LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  currentCourse Course?      @relation("CurrentPathCourse", fields: [currentCourseId], references: [id], onDelete: SetNull)
+  nextCourse    Course?      @relation("NextPathCourse", fields: [nextCourseId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, pathId])
+  @@index([pathId, progressPercent])
+  @@index([currentCourseId])
+  @@index([nextCourseId])
+  @@map("user_path_progress")
+}
+
+model CourseViewEvent {
+  id        String   @id @default(cuid())
+  courseId  String
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, createdAt])
+  @@index([createdAt])
+}
+
+model CourseModule {
   id          String            @id @default(cuid())
   courseId    String
   title       String
   slug        String
   description String?
-  videoUrl    String?
-  duration    String?
   position    Int
   status      PublicationStatus @default(PUBLISHED)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  materials   CourseMaterial[]
-  completions LessonCompletion[]
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
 
   @@unique([courseId, slug])
   @@unique([courseId, position])
   @@index([courseId, status, position])
+}
+
+model Lesson {
+  id            String            @id @default(cuid())
+  courseId      String
+  moduleId      String?
+  title         String
+  slug          String
+  description   String?
+  videoUrl      String?
+  duration      String?
+  position      Int
+  status        PublicationStatus @default(PUBLISHED)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  /// Teacher's own record of what was taught in this lesson (homework checking, docs/ERA_TEACHER_HOMEWORK.md).
+  taughtSummary String?           @map("taught_summary")
+  /// The homework given in this lesson, as the teacher wrote it.
+  homework      String?
+
+  course             Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module             CourseModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  materials          CourseMaterial[]
+  completions        LessonCompletion[]
+  content            LessonContent?
+  chatMessages       ChatMessage[]
+  knowledgeDocuments KnowledgeDocument[]
+  subskills          LessonSubskill[]
+  quizQuestions      LessonQuizQuestion[]
+  practiceExercises  PracticeExercise[]
+  currentEnrollments Enrollment[]         @relation("EnrollmentCurrentLesson")
+  homeworkReviews    HomeworkReview[]
+
+  @@unique([courseId, slug])
+  @@unique([courseId, position])
+  @@index([moduleId, status, position])
+  @@index([courseId, status, position])
+}
+
+model LessonContent {
+  id                 String   @id @default(cuid())
+  lessonId           String   @unique @map("lesson_id")
+  overview           String?
+  content            String
+  practicePrompt     String?  @map("practice_prompt")
+  practiceChecklist  String[] @map("practice_checklist")
+  learningObjectives String[] @map("learning_objectives")
+  keyPoints          String[] @map("key_points")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+  @@map("lesson_content")
+}
+
+model LessonSubskill {
+  id          String   @id @default(cuid())
+  lessonId    String
+  title       String
+  description String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, position])
+}
+
+model LessonQuizQuestion {
+  id            String   @id @default(cuid())
+  lessonId      String
+  prompt        String
+  options       String[]
+  correctOption Int
+  explanation   String?
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, position])
+}
+
+/// Messages of every ERA agent. Student Tutor messages are threaded by (user, lesson) as before and keep
+/// course/lesson set; Teacher and Admin messages belong to an AiConversation. Prompt 08 made courseId and
+/// lessonId optional and added agent/conversationId: additive, existing rows are unchanged.
+model ChatMessage {
+  id             String          @id @default(cuid())
+  userId         String          @map("user_id")
+  courseId       String?         @map("course_id")
+  lessonId       String?         @map("lesson_id")
+  conversationId String?         @map("conversation_id")
+  agent          AiAgent         @default(STUDENT_TUTOR)
+  role           ChatMessageRole
+  content        String
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course       Course?           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson       Lesson?           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  conversation AiConversation?   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// Knowledge Base sources the answer was grounded in (assistant messages only; Prompt 09).
+  sources      Json?
+  actions      AiPendingAction[]
+
+  @@index([userId, lessonId, createdAt])
+  @@index([courseId, lessonId, createdAt])
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
+}
+
+/// A Teacher or Admin assistant conversation. Owned by exactly one user; never shared.
+model AiConversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  agent     AiAgent
+  title     String
+  courseId  String?  @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+  actions  AiPendingAction[]
+
+  @@index([userId, agent, updatedAt])
+  @@map("ai_conversations")
+}
+
+/// One AI request, recorded by the server. Token counts are provider-reported when `usageSource` is
+/// "provider"; cost is null when no price is configured for the model (never invented).
+model AiUsageEvent {
+  id               String        @id @default(cuid())
+  userId           String        @map("user_id")
+  agent            AiAgent
+  provider         String
+  model            String
+  conversationId   String?       @map("conversation_id")
+  inputTokens      Int?          @map("input_tokens")
+  outputTokens     Int?          @map("output_tokens")
+  usageSource      String        @map("usage_source")
+  estimatedCostUsd Decimal?      @map("estimated_cost_usd") @db.Decimal(12, 6)
+  durationMs       Int           @map("duration_ms")
+  status           AiUsageStatus
+  errorCode        String?       @map("error_code")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([agent, createdAt])
+  @@map("ai_usage_events")
 }
 
 model CourseMaterial {
@@ -189,9 +588,9 @@ model CourseMaterial {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson          Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  createdBy       User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  course    Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson    Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  createdBy User    @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
 
   @@index([courseId, position])
   @@index([lessonId, position])
@@ -204,37 +603,78 @@ model LessonCompletion {
   lessonId    String
   completedAt DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
   @@unique([userId, lessonId])
   @@index([lessonId])
 }
 
 model Enrollment {
-  id          String    @id @default(cuid())
-  userId      String
-  courseId    String
-  progress    Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  courseId        String
+  progress        Int      @default(0)
+  currentLessonId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  // Student Management & Payments (docs/ERA_STUDENT_MANAGEMENT.md). Dates are calendar dates in the
+  // platform timezone (ERA_TIMEZONE, default Asia/Seoul). Money is an integer amount of the currency's
+  // smallest unit (KRW won). Legacy self-enrollments keep price and arrangement null ("no fee recorded").
+  /// Assigned teacher (instructor profile). Defaults to the course's teacher.
+  instructorId        String?                @map("instructor_id")
+  status              EnrollmentStatus       @default(ACTIVE)
+  startDate           DateTime?              @map("start_date") @db.Date
+  endDate             DateTime?              @map("end_date") @db.Date
+  completedAt         DateTime?              @map("completed_at")
+  priceAmount         Int?                   @map("price_amount")
+  currency            String                 @default("KRW")
+  paymentArrangement  PaymentArrangement?    @map("payment_arrangement")
+  paymentDueDate      DateTime?              @map("payment_due_date") @db.Date
+  /// Course access, independent of the payment status (Pay Later keeps ACTIVE while UNPAID).
+  accessStatus        EnrollmentAccessStatus @default(ACTIVE) @map("access_status")
+  /// Last day of access (inclusive). Null = no expiry.
+  accessExpiresAt     DateTime?              @map("access_expires_at") @db.Date
+  /// When true, access stops automatically once the payment due date has passed with a balance left.
+  restrictWhenOverdue Boolean                @default(false) @map("restrict_when_overdue")
+  accessGrantedById   String?                @map("access_granted_by_id")
+  accessNote          String?                @map("access_note")
+  internalNote        String?                @map("internal_note")
+  createdById         String?                @map("created_by_id")
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course          Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentLesson   Lesson?               @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  instructor      Instructor?           @relation("EnrollmentInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
+  accessGrantedBy User?                 @relation("EnrollmentAccessGrantedBy", fields: [accessGrantedById], references: [id], onDelete: SetNull)
+  createdBy       User?                 @relation("EnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payments        PaymentTransaction[]
+  accessLogs      EnrollmentAccessLog[]
+  notes           StudentNote[]
+  examEntries     ExamParticipant[]
+  homeworkReviews HomeworkReview[]
 
   @@unique([userId, courseId])
   @@index([userId])
   @@index([courseId])
+  @@index([currentLessonId])
+  @@index([instructorId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([paymentDueDate])
 }
 
 model ActivityLog {
-  id          String       @id @default(cuid())
-  type        ActivityType
-  message     String
-  userId      String?
-  createdAt   DateTime     @default(now())
+  id        String       @id @default(cuid())
+  type      ActivityType
+  message   String
+  userId    String?
+  context   Json?
+  createdAt DateTime     @default(now())
 
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([type])
@@ -248,4 +688,439 @@ model SiteSetting {
   description          String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+model UserXp {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  totalXp        Int      @default(0)
+  level          Int      @default(1)
+  currentLevelXp Int      @default(0)
+  nextLevelXp    Int      @default(100)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([level, totalXp])
+  @@map("user_xp")
+}
+
+model Streak {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastActiveDate DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([currentStreak, longestStreak])
+  @@map("streak")
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  userId      String
+  code        String
+  title       String
+  description String?
+  icon        String?
+  earnedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, code])
+  @@index([userId, earnedAt])
+  @@map("badges")
+}
+
+model PracticeExercise {
+  id            String               @id @default(cuid())
+  lessonId      String
+  type          PracticeExerciseType @default(CODING)
+  title         String
+  slug          String
+  instructions  String
+  language      String               @default("javascript")
+  starterCode   String
+  solutionCode  String
+  hints         String[]
+  solutionNotes String?
+  testCases     Json
+  position      Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  lesson      Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  submissions PracticeSubmission[]
+
+  @@unique([lessonId, slug])
+  @@index([lessonId, position])
+  @@map("practice_exercises")
+}
+
+model PracticeSubmission {
+  id          String           @id @default(cuid())
+  exerciseId  String
+  userId      String
+  language    String           @default("javascript")
+  code        String
+  status      SubmissionStatus
+  passedCount Int              @default(0)
+  totalTests  Int              @default(0)
+  feedback    Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  exercise PracticeExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([exerciseId, createdAt])
+  @@index([userId, createdAt])
+  @@map("practice_submissions")
+}
+
+/// An uploaded educational document (Prompt 09). The file lives in the private storage bucket; its text is split
+/// into KnowledgeChunk rows with embeddings. Access is decided by scope + visibility + course/lesson ownership.
+model KnowledgeDocument {
+  id                  String              @id @default(cuid())
+  title               String
+  originalFilename    String              @map("original_filename")
+  fileType            String              @map("file_type")
+  mimeType            String              @map("mime_type")
+  fileSize            Int                 @map("file_size")
+  storagePath         String              @map("storage_path")
+  contentHash         String              @map("content_hash")
+  scope               KnowledgeScope
+  visibility          KnowledgeVisibility @default(STUDENTS)
+  courseId            String?             @map("course_id")
+  lessonId            String?             @map("lesson_id")
+  uploadedById        String              @map("uploaded_by_id")
+  status              KnowledgeStatus     @default(PENDING)
+  errorCode           String?             @map("error_code")
+  errorMessage        String?             @map("error_message")
+  pageCount           Int?                @map("page_count")
+  sectionCount        Int?                @map("section_count")
+  chunkCount          Int                 @default(0) @map("chunk_count")
+  embeddingModel      String?             @map("embedding_model")
+  embeddingDimensions Int?                @map("embedding_dimensions")
+  attempts            Int                 @default(0)
+  processingStartedAt DateTime?           @map("processing_started_at")
+  processedAt         DateTime?           @map("processed_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  course     Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson     Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  uploadedBy User             @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  chunks     KnowledgeChunk[]
+
+  @@index([scope, courseId])
+  @@index([lessonId])
+  @@index([uploadedById])
+  @@index([contentHash])
+  @@map("knowledge_documents")
+}
+
+/// One retrievable passage. `embedding` is a pgvector column written and searched with parameterized SQL only.
+model KnowledgeChunk {
+  id             String                 @id @default(cuid())
+  documentId     String                 @map("document_id")
+  chunkIndex     Int                    @map("chunk_index")
+  content        String
+  heading        String?
+  pageStart      Int?                   @map("page_start")
+  pageEnd        Int?                   @map("page_end")
+  charCount      Int                    @map("char_count")
+  embeddingModel String                 @map("embedding_model")
+  embedding      Unsupported("vector")?
+  createdAt      DateTime               @default(now()) @map("created_at")
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@index([embeddingModel])
+  @@map("knowledge_chunks")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Student Management & Payments (docs/ERA_STUDENT_MANAGEMENT.md)
+// ---------------------------------------------------------------------------------------------
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  TRANSFERRED
+}
+
+enum EnrollmentAccessStatus {
+  ACTIVE
+  RESTRICTED
+  REVOKED
+}
+
+enum PaymentArrangement {
+  PAY_IN_FULL
+  PARTIAL
+  PAY_LATER
+  WAIVED
+}
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CASH
+  ONLINE
+  OTHER
+}
+
+/// Manual verification: only APPROVED transactions count. REVERSED = approved earlier, then reversed.
+enum PaymentTransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVERSED
+}
+
+enum ManagementSource {
+  MANUAL
+  AI
+  SYSTEM
+}
+
+enum ExamStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum AiActionStatus {
+  PENDING
+  EXECUTING
+  EXECUTED
+  CANCELLED
+  FAILED
+  EXPIRED
+}
+
+/// One payment or refund for one enrollment. Never deleted: corrections are reversals plus new records.
+model PaymentTransaction {
+  id              String                   @id @default(cuid())
+  enrollmentId    String                   @map("enrollment_id")
+  kind            PaymentKind              @default(PAYMENT)
+  amount          Int
+  currency        String                   @default("KRW")
+  method          PaymentMethod
+  transactionDate DateTime                 @map("transaction_date") @db.Date
+  status          PaymentTransactionStatus @default(PENDING)
+  reference       String?
+  description     String?
+  source          ManagementSource         @default(MANUAL)
+  recordedById    String?                  @map("recorded_by_id")
+  reviewedById    String?                  @map("reviewed_by_id")
+  reviewedAt      DateTime?                @map("reviewed_at")
+  rejectionReason String?                  @map("rejection_reason")
+  reversedById    String?                  @map("reversed_by_id")
+  reversedAt      DateTime?                @map("reversed_at")
+  reversalReason  String?                  @map("reversal_reason")
+  /// The transaction this one corrects (the original stays, reversed or rejected).
+  correctionOfId  String?                  @map("correction_of_id")
+  /// Same key = same request: retries never create a second transaction.
+  idempotencyKey  String?                  @unique @map("idempotency_key")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  enrollment   Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Restrict)
+  recordedBy   User?                @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  reviewedBy   User?                @relation("PaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reversedBy   User?                @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: SetNull)
+  correctionOf PaymentTransaction?  @relation("PaymentCorrection", fields: [correctionOfId], references: [id], onDelete: SetNull)
+  corrections  PaymentTransaction[] @relation("PaymentCorrection")
+
+  @@index([enrollmentId, status])
+  @@index([status, transactionDate])
+  @@index([transactionDate])
+  @@map("payment_transactions")
+}
+
+model EnrollmentAccessLog {
+  id                String                  @id @default(cuid())
+  enrollmentId      String                  @map("enrollment_id")
+  previousStatus    EnrollmentAccessStatus? @map("previous_status")
+  newStatus         EnrollmentAccessStatus  @map("new_status")
+  previousExpiresAt DateTime?               @map("previous_expires_at") @db.Date
+  newExpiresAt      DateTime?               @map("new_expires_at") @db.Date
+  arrangement       PaymentArrangement?
+  reason            String?
+  source            ManagementSource        @default(MANUAL)
+  changedById       String?                 @map("changed_by_id")
+  createdAt         DateTime                @default(now()) @map("created_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  changedBy  User?      @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([enrollmentId, createdAt])
+  @@map("enrollment_access_logs")
+}
+
+model StudentNote {
+  id           String   @id @default(cuid())
+  studentId    String   @map("student_id")
+  enrollmentId String?  @map("enrollment_id")
+  note         String
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  student    User        @relation("StudentNoteStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  createdBy  User?       @relation("StudentNoteAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@map("student_notes")
+}
+
+model ExamSchedule {
+  id           String     @id @default(cuid())
+  courseId     String     @map("course_id")
+  instructorId String?    @map("instructor_id")
+  title        String
+  description  String?
+  /// Calendar date and local times (HH:MM) in the platform timezone.
+  examDate     DateTime   @map("exam_date") @db.Date
+  startTime    String     @map("start_time")
+  endTime      String?    @map("end_time")
+  status       ExamStatus @default(SCHEDULED)
+  createdById  String?    @map("created_by_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  course       Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  instructor   Instructor?       @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  participants ExamParticipant[]
+
+  @@index([examDate])
+  @@index([courseId, examDate])
+  @@index([instructorId, examDate])
+  @@map("exam_schedules")
+}
+
+/// Students taking an exam. An exam without participants applies to every active enrollment of its course.
+model ExamParticipant {
+  examId       String @map("exam_id")
+  enrollmentId String @map("enrollment_id")
+
+  exam       ExamSchedule @relation(fields: [examId], references: [id], onDelete: Cascade)
+  enrollment Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@id([examId, enrollmentId])
+  @@index([enrollmentId])
+  @@map("exam_participants")
+}
+
+/// What a teacher may do in Student Management beyond the defaults (own students, notes, exams).
+/// No row = defaults only. Set by administrators.
+model InstructorPermission {
+  instructorId         String   @id @map("instructor_id")
+  canViewPayments      Boolean  @default(false) @map("can_view_payments")
+  canRecordPayments    Boolean  @default(false) @map("can_record_payments")
+  canApprovePayments   Boolean  @default(false) @map("can_approve_payments")
+  canManageEnrollments Boolean  @default(false) @map("can_manage_enrollments")
+  canManageAccess      Boolean  @default(false) @map("can_manage_access")
+  updatedById          String?  @map("updated_by_id")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  instructor Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  updatedBy  User?      @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("instructor_permissions")
+}
+
+model ManagementAuditLog {
+  id         String           @id @default(cuid())
+  actorId    String?          @map("actor_id")
+  action     String
+  entityType String           @map("entity_type")
+  entityId   String           @map("entity_id")
+  beforeData Json?            @map("before_data")
+  afterData  Json?            @map("after_data")
+  source     ManagementSource @default(MANUAL)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("management_audit_logs")
+}
+
+/// A database change the AI proposed. It runs only when its owner confirms it, at most once.
+model AiPendingAction {
+  id             String         @id @default(cuid())
+  userId         String         @map("user_id")
+  agent          AiAgent
+  conversationId String?        @map("conversation_id")
+  messageId      String?        @map("message_id")
+  kind           String
+  payload        Json
+  preview        Json
+  status         AiActionStatus @default(PENDING)
+  result         Json?
+  error          String?
+  expiresAt      DateTime       @map("expires_at")
+  decidedAt      DateTime?      @map("decided_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      ChatMessage?    @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, createdAt])
+  @@index([conversationId, createdAt])
+  @@map("ai_pending_actions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Homework checking (docs/ERA_TEACHER_HOMEWORK.md)
+// ---------------------------------------------------------------------------------------------
+
+enum HomeworkStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  NEEDS_WORK
+  DONE
+}
+
+/// The teacher's check of one student's homework for one lesson (one row per enrollment and lesson).
+model HomeworkReview {
+  id           String         @id @default(cuid())
+  enrollmentId String         @map("enrollment_id")
+  lessonId     String         @map("lesson_id")
+  status       HomeworkStatus @default(NOT_SUBMITTED)
+  /// Link to the student's work for this homework (repository, folder, commit or notebook).
+  githubUrl    String?        @map("github_url")
+  note         String?
+  checkedAt    DateTime?      @map("checked_at")
+  checkedById  String?        @map("checked_by_id")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  checkedBy  User?      @relation("HomeworkReviewedBy", fields: [checkedById], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, lessonId])
+  @@index([lessonId, status])
+  @@map("homework_reviews")
 }

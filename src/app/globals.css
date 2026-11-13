@@ -2,23 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * ERA design tokens. Components must use these (through Tailwind classes such as
+ * bg-primary or text-muted-foreground) instead of hard-coded colours.
+ * Specification: docs/ERA_DESIGN_SYSTEM.md
+ */
 :root {
-  --background: 220 33% 98%;
-  --foreground: 224 28% 12%;
+  /* Neutrals */
+  --background: 220 20% 98%;
+  --foreground: 222 22% 15%;
+  --surface: 0 0% 100%;
+  --surface-muted: 220 16% 96%;
+  --surface-elevated: 0 0% 100%;
   --card: 0 0% 100%;
-  --card-foreground: 224 28% 12%;
-  --primary: 244 74% 59%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 230 33% 95%;
-  --secondary-foreground: 228 20% 24%;
-  --muted: 220 28% 95%;
-  --muted-foreground: 220 12% 45%;
-  --accent: 249 79% 96%;
-  --accent-foreground: 244 54% 34%;
-  --border: 226 26% 88%;
-  --input: 226 26% 88%;
-  --ring: 244 74% 59%;
-  --radius: 1.5rem;
+  --card-foreground: 222 22% 15%;
+  --muted: 220 16% 96%;
+  --muted-foreground: 220 9% 40%;
+  --secondary: 220 16% 94%;
+  --secondary-foreground: 222 18% 22%;
+  --border: 220 13% 90%;
+  --input: 220 10% 56%; /* 3:1 against surfaces, for form-field boundaries (WCAG 1.4.11) */
+
+  /* Brand: deep blue primary, restrained teal accent */
+  --primary: 221 70% 40%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 172 42% 94%;
+  --accent-foreground: 175 70% 22%;
+  --accent-strong: 174 62% 32%;
+  --ring: 221 70% 40%;
+
+  /* Semantic */
+  --success: 152 60% 30%;
+  --success-foreground: 0 0% 100%;
+  --warning: 36 92% 46%;
+  --warning-foreground: 28 80% 20%;
+  --error: 0 70% 45%;
+  --error-foreground: 0 0% 100%;
+  --info: 221 70% 40%;
+
+  /* Radius: controls 8px, cards 12px, sheets and dialogs 16px */
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-pill: 999px;
+
+  /* Spacing: 4px base */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* Typography (mobile values; desktop overrides below) */
+  --text-display: 1.875rem;
+  --text-page: 1.5rem;
+  --text-section: 1.125rem;
+  --text-title: 1rem;
+  --text-body: 0.875rem;
+  --text-small: 0.75rem;
+  --leading-tight: 1.25;
+  --leading-body: 1.6;
+
+  /* Elevation: subtle by default */
+  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-panel: 0 8px 24px rgba(16, 24, 40, 0.08);
+
+  /* Layout */
+  --card-padding: 1rem;
+  --section-padding: 2rem;
+  --header-height: 3.5rem;
+  --sidebar-width: 15rem;
+  --sidebar-rail: 4rem;
+  --assistant-width: 23.75rem;
+  --assistant-rail: 3.5rem;
+  --content-max: 75rem;
+  --content-narrow: 45rem;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Card padding is a variable, so a caller's own p-* class replaces it cleanly. */
+@media (min-width: 640px) {
+  :root {
+    --card-padding: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --section-padding: 3rem;
+    --text-display: 2.5rem;
+    --text-page: 1.75rem;
+    --text-section: 1.25rem;
+  }
 }
 
 * {
@@ -27,23 +108,93 @@
 
 html {
   scroll-behavior: smooth;
+  text-size-adjust: 100%;
 }
 
 body {
-  @apply bg-background text-foreground font-sans antialiased;
-  background-image:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.09), transparent 24%),
-    linear-gradient(180deg, rgba(249, 250, 251, 1) 0%, rgba(244, 247, 252, 1) 100%);
+  /* Headings use the same family as body text; the alias keeps font-display classes working. */
+  --font-display: var(--font-sans);
+  @apply bg-background font-sans text-foreground antialiased;
   min-height: 100vh;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 a {
   @apply transition-colors duration-200;
 }
 
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), sans-serif;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+}
+
+h1 {
+  font-size: var(--text-page);
+}
+
+h2 {
+  font-size: var(--text-section);
+}
+
+h3,
+h4 {
+  font-size: var(--text-title);
+}
+
+p {
+  max-width: 70ch;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+[id] {
+  scroll-margin-top: calc(var(--header-height) + 1rem);
+}
+
+/* Keep form text at 16px on phones so iOS doesn't zoom into focused fields. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 ::selection {
-  background: rgba(79, 70, 229, 0.18);
+  background: hsl(var(--primary) / 0.16);
 }
 
 .text-balance {
@@ -52,7 +203,171 @@ a {
 
 .surface-grid {
   background-image:
-    linear-gradient(rgba(79, 70, 229, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 70, 229, 0.045) 1px, transparent 1px);
+    linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+.text-caption {
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+
+@layer components {
+  /* Surfaces */
+  .surface-card {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--surface));
+    border-radius: var(--radius-lg);
+  }
+
+  .surface-subtle {
+    border-radius: var(--radius-lg);
+    background: hsl(var(--surface-muted));
+  }
+
+  .surface-panel {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-lg);
+    background: hsl(var(--surface));
+  }
+
+  /* Status tints */
+  .status-success {
+    background: hsl(var(--success) / 0.08);
+    color: hsl(var(--success));
+    border-color: hsl(var(--success) / 0.2);
+  }
+
+  .status-warning {
+    background: hsl(var(--warning) / 0.1);
+    color: hsl(var(--warning-foreground));
+    border-color: hsl(var(--warning) / 0.25);
+  }
+
+  .status-error {
+    background: hsl(var(--error) / 0.08);
+    color: hsl(var(--error));
+    border-color: hsl(var(--error) / 0.2);
+  }
+
+  /* Type roles */
+  .display-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: var(--text-display);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .page-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: var(--text-page);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .section-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: var(--text-section);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+  }
+
+  .card-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: var(--text-title);
+    font-weight: 600;
+    line-height: 1.4;
+    text-wrap: balance;
+  }
+
+  .page-lead {
+    max-width: 42rem;
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    color: hsl(var(--muted-foreground));
+  }
+
+  .section-copy {
+    max-width: 42rem;
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+    color: hsl(var(--muted-foreground));
+  }
+
+  .eyebrow-label {
+    font-size: var(--text-small);
+    line-height: 1.4;
+    font-weight: 500;
+  }
+
+  .metric-value {
+    font-family: var(--font-display), sans-serif;
+    font-size: var(--text-page);
+    font-weight: 600;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Form controls: 40px tall, 8px radius */
+  .form-control {
+    height: 2.5rem;
+    width: 100%;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--input));
+    background: hsl(var(--surface));
+    padding-inline: 0.75rem;
+    font-size: var(--text-body);
+    color: hsl(var(--foreground));
+    outline: none;
+    transition:
+      border-color var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
+  }
+
+  .form-control:hover {
+    border-color: hsl(var(--foreground) / 0.65);
+  }
+
+  .form-control:focus-visible {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.18);
+  }
+
+  .form-control[aria-invalid="true"] {
+    border-color: hsl(var(--error));
+  }
+
+  .form-control[aria-invalid="true"]:focus-visible {
+    box-shadow: 0 0 0 3px hsl(var(--error) / 0.18);
+  }
+
+  .form-control:disabled {
+    cursor: not-allowed;
+    background: hsl(var(--surface-muted));
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* 16px on phones so iOS doesn't zoom into focused fields. */
+  @media (max-width: 767px) {
+    .form-control {
+      font-size: 16px;
+    }
+  }
+
+  .form-control::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .section-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
 }

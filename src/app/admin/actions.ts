@@ -12,14 +12,19 @@ import {
   verifyPassword
 } from "@/lib/auth";
 import { getActionErrorRedirectPath } from "@/lib/app-errors";
-import {
-  assertCourseManagementAccess,
-  getInstructorRecordForUser,
-  isAdmin
-} from "@/lib/permissions";
+import { getInstructorRecordForUser, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { isDatabaseOfflineError } from "@/lib/server-data";
-import { getSupabaseStorageConfig } from "@/lib/storage";
+import {
+  getUserStoragePrefix,
+  isSafeStoragePath,
+  MATERIAL_FOLDERS,
+  parseStorageObjectUrl,
+  storagePathFolder
+} from "@/lib/storage";
+import { isSafeHttpUrl } from "@/lib/validation";
+import { AuthzError, requireTeacherCourseOwnership, type AuthUser } from "@/server/authz";
+import { bucketForStoragePath, deleteStorageObject } from "@/server/storage";
 import { normalizeList, slugify } from "@/lib/slugs";
 
 async function createUniqueCourseSlug(title: string) {
@@ -178,29 +183,81 @@ async function revalidateCourseById(courseId: string) {
   }
 }
 
-async function deleteStoredObject(storagePath?: string | null) {
-  if (!storagePath) {
+/**
+ * Blocks unless the user may manage this course (admin: any course; instructor: own courses only;
+ * instructor without a teacher profile: none). Redirects with ?error=forbidden otherwise.
+ */
+async function requireManagedCourse(currentUser: AuthUser, courseId: string, path: string) {
+  try {
+    return await requireTeacherCourseOwnership(currentUser, courseId);
+  } catch (error) {
+    if (error instanceof AuthzError) {
+      redirect(`${path}?error=forbidden`);
+    }
+    handleDatabaseError(error, path);
+    throw error;
+  }
+}
+
+/** Optional URL fields: empty, or an absolute http(s) URL. Anything else (javascript:, data:) is refused. */
+function readOptionalUrl(formData: FormData, key: string, path: string) {
+  const value = asString(formData, key);
+  if (value && !isSafeHttpUrl(value)) {
+    redirect(`${path}?error=invalid-url`);
+  }
+  return value;
+}
+
+/**
+ * The storage object behind a material, derived on the server from its URL (the client-supplied
+ * `storagePath` field is never trusted). Instructors may only attach objects they uploaded themselves.
+ */
+function resolveMaterialStoragePath(currentUser: AuthUser, fileUrl: string, path: string, existingPath?: string | null) {
+  const object = parseStorageObjectUrl(fileUrl);
+  if (!object) {
+    return null;
+  }
+
+  // Keeping the file that is already attached (e.g. a teacher editing a title) is always allowed.
+  if (existingPath && object.path === existingPath) {
+    return object.path;
+  }
+
+  const allowed =
+    isSafeStoragePath(object.path) &&
+    MATERIAL_FOLDERS.has(storagePathFolder(object.path) ?? "") &&
+    (isAdmin(currentUser.role) || object.path.startsWith(getUserStoragePrefix(currentUser.id)));
+
+  if (!allowed) {
+    redirect(`${path}?error=forbidden`);
+  }
+
+  return object.path;
+}
+
+/**
+ * Removes a material's stored file after the material was deleted or replaced. Only server-generated
+ * material paths are touched, only by their uploader or an admin, and never while another material
+ * still references the same object.
+ */
+async function deleteMaterialObject(currentUser: AuthUser, storagePath: string | null | undefined) {
+  if (!storagePath || !isSafeStoragePath(storagePath) || !MATERIAL_FOLDERS.has(storagePathFolder(storagePath) ?? "")) {
+    return;
+  }
+  if (!isAdmin(currentUser.role) && !storagePath.startsWith(getUserStoragePrefix(currentUser.id))) {
     return;
   }
 
-  const { supabaseUrl, serviceRoleKey, bucket } = getSupabaseStorageConfig();
-  const deleteResponse = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      prefixes: [storagePath]
-    })
-  });
+  const stillReferenced = await prisma.courseMaterial.count({ where: { storagePath } });
+  if (stillReferenced > 0) {
+    return;
+  }
 
-  if (!deleteResponse.ok) {
-    const payload = await deleteResponse.json().catch(() => null);
-    const errorMessage =
-      typeof payload?.message === "string" ? payload.message : "Could not delete the uploaded file.";
-    throw new Error(errorMessage);
+  try {
+    await deleteStorageObject(bucketForStoragePath(storagePath), storagePath);
+  } catch (error) {
+    // The record change already succeeded; an orphaned object is logged, not surfaced.
+    console.error(`[materials] could not delete stored object: ${error instanceof Error ? error.message : "unknown"}`);
   }
 }
 
@@ -212,13 +269,14 @@ export async function createCourseAction(formData: FormData) {
   const description = asString(formData, "description");
   const categoryId = asString(formData, "categoryId");
   const requestedInstructorId = asString(formData, "instructorId");
-  const thumbnailUrl = asString(formData, "thumbnailUrl");
-  const promoVideoUrl = asString(formData, "promoVideoUrl");
+  const thumbnailUrl = readOptionalUrl(formData, "thumbnailUrl", "/admin/courses");
+  const promoVideoUrl = readOptionalUrl(formData, "promoVideoUrl", "/admin/courses");
   const outcomesInput = asString(formData, "outcomes");
   const difficultyValue = asString(formData, "difficulty");
   const statusValue = asString(formData, "status");
-  const isFeatured = formData.get("isFeatured") === "on";
-  const isPopular = formData.get("isPopular") === "on";
+  // Homepage merchandising is an admin decision.
+  const isFeatured = isAdmin(currentUser.role) && formData.get("isFeatured") === "on";
+  const isPopular = isAdmin(currentUser.role) && formData.get("isPopular") === "on";
 
   if (!title || !categoryId) {
     redirect("/admin/courses?error=missing-course-fields");
@@ -284,23 +342,21 @@ export async function updateCourseAction(formData: FormData) {
   const description = asString(formData, "description");
   const categoryId = asString(formData, "categoryId");
   const requestedInstructorId = asString(formData, "instructorId");
-  const thumbnailUrl = asString(formData, "thumbnailUrl");
-  const promoVideoUrl = asString(formData, "promoVideoUrl");
+  const thumbnailUrl = readOptionalUrl(formData, "thumbnailUrl", "/admin/courses");
+  const promoVideoUrl = readOptionalUrl(formData, "promoVideoUrl", "/admin/courses");
   const outcomesInput = asString(formData, "outcomes");
   const difficultyValue = asString(formData, "difficulty");
   const statusValue = asString(formData, "status");
-  const isFeatured = formData.get("isFeatured") === "on";
-  const isPopular = formData.get("isPopular") === "on";
+  // Instructors cannot change homepage merchandising flags; their values are left as they are.
+  const merchandising = isAdmin(currentUser.role)
+    ? { isFeatured: formData.get("isFeatured") === "on", isPopular: formData.get("isPopular") === "on" }
+    : {};
 
   if (!id || !title || !categoryId) {
     redirect("/admin/courses?error=missing-course-fields");
   }
 
-  try {
-    await assertCourseManagementAccess(id, currentUser);
-  } catch {
-    redirect("/admin/courses?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, id, "/admin/courses");
 
   const instructorId = await resolveManagedInstructorId(
     currentUser,
@@ -339,8 +395,7 @@ export async function updateCourseAction(formData: FormData) {
                 "Apply the lesson structure to independent study.",
                 "Build confidence through guided video learning."
               ],
-        isFeatured,
-        isPopular,
+        ...merchandising,
         status,
         categoryId,
         instructorId
@@ -365,7 +420,7 @@ export async function createLessonAction(formData: FormData) {
   const courseId = asString(formData, "courseId");
   const title = asString(formData, "title");
   const description = asString(formData, "description");
-  const videoUrl = asString(formData, "videoUrl");
+  const videoUrl = readOptionalUrl(formData, "videoUrl", "/admin/lessons");
   const duration = asString(formData, "duration");
   const orderValue = asString(formData, "position");
 
@@ -373,11 +428,7 @@ export async function createLessonAction(formData: FormData) {
     redirect("/admin/lessons?error=missing-lesson-fields");
   }
 
-  try {
-    await assertCourseManagementAccess(courseId, currentUser);
-  } catch {
-    redirect("/admin/lessons?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, courseId, "/admin/lessons");
 
   try {
     const parsedPosition = Number(orderValue);
@@ -414,7 +465,7 @@ export async function updateLessonAction(formData: FormData) {
   const courseId = asString(formData, "courseId");
   const title = asString(formData, "title");
   const description = asString(formData, "description");
-  const videoUrl = asString(formData, "videoUrl");
+  const videoUrl = readOptionalUrl(formData, "videoUrl", "/admin/lessons");
   const duration = asString(formData, "duration");
   const orderValue = asString(formData, "position");
 
@@ -431,12 +482,8 @@ export async function updateLessonAction(formData: FormData) {
     redirect("/admin/lessons?error=delete-failed");
   }
 
-  try {
-    await assertCourseManagementAccess(existingLesson.courseId, currentUser);
-    await assertCourseManagementAccess(courseId, currentUser);
-  } catch {
-    redirect("/admin/lessons?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, existingLesson.courseId, "/admin/lessons");
+  await requireManagedCourse(currentUser, courseId, "/admin/lessons");
 
   try {
     const parsedPosition = Number(orderValue);
@@ -473,19 +520,19 @@ export async function createMaterialAction(formData: FormData) {
   const title = asString(formData, "title");
   const description = asString(formData, "description");
   const fileUrl = asString(formData, "fileUrl");
-  const storagePath = asString(formData, "storagePath");
-  const mimeType = asString(formData, "mimeType");
+  const mimeType = asString(formData, "mimeType").slice(0, 120);
   const positionValue = asString(formData, "position");
 
   if (!courseId || !title || !fileUrl) {
     redirect("/admin/materials?error=missing-material-fields");
   }
 
-  try {
-    await assertCourseManagementAccess(courseId, currentUser);
-  } catch {
-    redirect("/admin/materials?error=forbidden");
+  if (!isSafeHttpUrl(fileUrl)) {
+    redirect("/admin/materials?error=invalid-url");
   }
+
+  await requireManagedCourse(currentUser, courseId, "/admin/materials");
+  const storagePath = resolveMaterialStoragePath(currentUser, fileUrl, "/admin/materials");
 
   if (lessonId) {
     const lesson = await prisma.lesson.findUnique({
@@ -514,7 +561,7 @@ export async function createMaterialAction(formData: FormData) {
         title,
         description: description || null,
         fileUrl,
-        storagePath: storagePath || null,
+        storagePath,
         mimeType: mimeType || null,
         position: asPositiveNumber(positionValue, existingCount + 1)
       }
@@ -536,12 +583,15 @@ export async function updateMaterialAction(formData: FormData) {
   const title = asString(formData, "title");
   const description = asString(formData, "description");
   const fileUrl = asString(formData, "fileUrl");
-  const storagePath = asString(formData, "storagePath");
-  const mimeType = asString(formData, "mimeType");
+  const mimeType = asString(formData, "mimeType").slice(0, 120);
   const position = asPositiveNumber(asString(formData, "position"), 1);
 
   if (!id || !courseId || !title || !fileUrl) {
     redirect("/admin/materials?error=missing-material-fields");
+  }
+
+  if (!isSafeHttpUrl(fileUrl)) {
+    redirect("/admin/materials?error=invalid-url");
   }
 
   const material = await prisma.courseMaterial.findUnique({
@@ -556,12 +606,9 @@ export async function updateMaterialAction(formData: FormData) {
     redirect("/admin/materials?error=delete-failed");
   }
 
-  try {
-    await assertCourseManagementAccess(material.courseId, currentUser);
-    await assertCourseManagementAccess(courseId, currentUser);
-  } catch {
-    redirect("/admin/materials?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, material.courseId, "/admin/materials");
+  await requireManagedCourse(currentUser, courseId, "/admin/materials");
+  const storagePath = resolveMaterialStoragePath(currentUser, fileUrl, "/admin/materials", material.storagePath);
 
   if (lessonId) {
     const lesson = await prisma.lesson.findUnique({
@@ -583,17 +630,18 @@ export async function updateMaterialAction(formData: FormData) {
         title,
         description: description || null,
         fileUrl,
-        storagePath: storagePath || null,
+        storagePath,
         mimeType: mimeType || null,
         position
       }
     });
 
-    if (material.storagePath && material.storagePath !== storagePath) {
-      await deleteStoredObject(material.storagePath);
-    }
   } catch (error) {
     handleDatabaseError(error, "/admin/materials");
+  }
+
+  if (material.storagePath && material.storagePath !== storagePath) {
+    await deleteMaterialObject(currentUser, material.storagePath);
   }
 
   await revalidateCourseById(material.courseId);
@@ -624,18 +672,15 @@ export async function deleteMaterialAction(formData: FormData) {
     redirect("/admin/materials?error=delete-failed");
   }
 
-  try {
-    await assertCourseManagementAccess(material.courseId, currentUser);
-  } catch {
-    redirect("/admin/materials?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, material.courseId, "/admin/materials");
 
   try {
     await prisma.courseMaterial.delete({ where: { id } });
-    await deleteStoredObject(material.storagePath);
   } catch (error) {
     handleDatabaseError(error, "/admin/materials");
   }
+
+  await deleteMaterialObject(currentUser, material.storagePath);
 
   await revalidateCourseById(material.courseId);
   revalidatePath("/admin/materials");
@@ -759,9 +804,10 @@ export async function createUserAction(formData: FormData) {
   const email = asString(formData, "email");
   const phone = normalizePhone(asString(formData, "phone"));
   const password = asString(formData, "password");
-  const image = asString(formData, "image");
+  const image = readOptionalUrl(formData, "image", "/admin/users");
   const roleValue = asString(formData, "role");
-  const status = asString(formData, "status") || "ACTIVE";
+  const statusValue = asString(formData, "status") || "ACTIVE";
+  const status = ["ACTIVE", "INVITED", "SUSPENDED"].includes(statusValue) ? statusValue : "ACTIVE";
   const instructorId = asString(formData, "instructorId");
 
   if (!name || !email || !password) {
@@ -1012,11 +1058,7 @@ export async function deleteCourseAction(formData: FormData) {
     redirect("/admin/courses?error=delete-failed");
   }
 
-  try {
-    await assertCourseManagementAccess(id, currentUser);
-  } catch {
-    redirect("/admin/courses?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, id, "/admin/courses");
 
   const course = await prisma.course.findUnique({
     where: { id },
@@ -1062,11 +1104,7 @@ export async function deleteLessonAction(formData: FormData) {
     redirect("/admin/lessons?error=delete-failed");
   }
 
-  try {
-    await assertCourseManagementAccess(lesson.courseId, currentUser);
-  } catch {
-    redirect("/admin/lessons?error=forbidden");
-  }
+  await requireManagedCourse(currentUser, lesson.courseId, "/admin/lessons");
   try {
     await prisma.lesson.delete({ where: { id } });
   } catch (error) {
@@ -1102,11 +1140,24 @@ export async function deleteInstructorAction(formData: FormData) {
 }
 
 export async function deleteUserAction(formData: FormData) {
-  await requireAdminUser("/admin/users");
+  const currentUser = await requireAdminUser("/admin/users");
   const id = asString(formData, "id");
   if (!id) {
     redirect("/admin/users?error=delete-failed");
   }
+
+  // Admins cannot delete their own account, and the last administrator can never be removed.
+  if (id === currentUser.id) {
+    redirect("/admin/users?error=cannot-delete-self");
+  }
+  const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  if (target?.role === UserRole.ADMIN) {
+    const adminCount = await prisma.user.count({ where: { role: UserRole.ADMIN } });
+    if (adminCount <= 1) {
+      redirect("/admin/users?error=last-admin");
+    }
+  }
+
   try {
     await prisma.user.delete({ where: { id } });
   } catch (error) {

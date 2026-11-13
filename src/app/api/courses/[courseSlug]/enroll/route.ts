@@ -1,10 +1,12 @@
 import { UserRole } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { createApiErrorResponse, createApiSuccessResponse } from "@/lib/app-errors";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
+import { syncLearningPathProgressForUser } from "@/server/learning-paths";
 
 type RouteProps = {
   params: Promise<{
@@ -94,7 +96,8 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
           status: "PUBLISHED"
         },
         select: {
-          id: true
+          id: true,
+          instructorId: true
         }
       })
     );
@@ -103,6 +106,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       return createApiErrorResponse(404, "course-not-found", "Course not found.");
     }
 
+    // An existing enrollment is left untouched (update: {}): re-enrolling never restores restricted access.
     await retryOnDatabaseFailure(() =>
       prisma.enrollment.upsert({
         where: {
@@ -115,10 +119,15 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
         create: {
           userId: currentUser.id,
           courseId: course.id,
+          instructorId: course.instructorId,
           progress: 0
         }
       })
     );
+
+    await syncLearningPathProgressForUser(currentUser.id);
+    revalidatePath("/");
+    revalidatePath("/learning-paths");
 
     return createApiSuccessResponse({
       authenticated: true,

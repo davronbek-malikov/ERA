@@ -1,482 +1,250 @@
-import { PublicationStatus, UserRole } from "@prisma/client";
+import { Prisma, PublicationStatus, UserRole } from "@prisma/client";
 
-import {
-  demoActivityLog,
-  demoCategories,
-  demoCourses,
-  demoEnrollments,
-  demoInstructors,
-  demoLessons,
-  demoSubjects,
-  demoUsers
-} from "@/lib/demo-data";
 import { getCurrentUser } from "@/lib/auth";
-import { getInstructorRecordForUser, isAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { withDatabaseFallback } from "@/lib/server-data";
+import { getStudioScope, studioCourseWhere, type StudioScope } from "@/server/authz";
 
-async function getStudioContext() {
+/*
+ * Authoring-studio loaders (/admin editors). Every loader is scoped by `getStudioScope` and FAILS CLOSED:
+ * admins see everything, instructors only their own courses, and anyone else — including an instructor
+ * whose account is not linked to a teacher profile — sees nothing.
+ */
+
+async function getStudioContext(): Promise<{ scope: StudioScope; courseWhere: Prisma.CourseWhereInput | null }> {
   const currentUser = await getCurrentUser();
-  const instructor =
-    currentUser && currentUser.role === UserRole.INSTRUCTOR
-      ? await getInstructorRecordForUser(currentUser)
-      : null;
-
-  return { currentUser, instructor };
+  const scope = await getStudioScope(currentUser);
+  return { scope, courseWhere: studioCourseWhere(scope) };
 }
 
+async function requireAdminScope() {
+  const { scope } = await getStudioContext();
+  return scope.kind === "admin";
+}
+
+/** Legacy overview numbers. Admin only (the instructor variant leaked platform-wide activity). */
 export async function getAdminDashboardData() {
-  const { currentUser, instructor } = await getStudioContext();
+  if (!(await requireAdminScope())) {
+    return { totalUsers: 0, totalCourses: 0, totalEnrollments: 0, recentActivity: [] };
+  }
 
-  return withDatabaseFallback(
-    async () => {
-      if (currentUser?.role === UserRole.INSTRUCTOR && instructor) {
-        const [totalStudents, totalCourses, totalEnrollments, recentActivity] = await Promise.all([
-          prisma.user.count({
-            where: {
-              enrollments: {
-                some: {
-                  course: {
-                    instructorId: instructor.id
-                  }
-                }
-              }
-            }
-          }),
-          prisma.course.count({
-            where: { instructorId: instructor.id }
-          }),
-          prisma.enrollment.count({
-            where: {
-              course: {
-                instructorId: instructor.id
-              }
-            }
-          }),
-          prisma.activityLog.findMany({
-            take: 6,
-            orderBy: { createdAt: "desc" },
-            include: {
-              user: true
-            }
-          })
-        ]);
-
-        return {
-          totalUsers: totalStudents,
-          totalCourses,
-          totalEnrollments,
-          recentActivity
-        };
+  const [totalUsers, totalCourses, totalEnrollments, recentActivity] = await Promise.all([
+    prisma.user.count(),
+    prisma.course.count(),
+    prisma.enrollment.count(),
+    prisma.activityLog.findMany({
+      take: 6,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } }
       }
+    })
+  ]);
 
-      const [totalUsers, totalCourses, totalEnrollments, recentActivity] = await Promise.all([
-        prisma.user.count(),
-        prisma.course.count(),
-        prisma.enrollment.count(),
-        prisma.activityLog.findMany({
-          take: 6,
-          orderBy: { createdAt: "desc" },
-          include: {
-            user: true
-          }
-        })
-      ]);
-
-      return { totalUsers, totalCourses, totalEnrollments, recentActivity };
-    },
-    () => ({
-      totalUsers:
-        currentUser?.role === UserRole.INSTRUCTOR
-          ? new Set(
-              demoEnrollments
-                .filter((enrollment) => {
-                  const course = demoCourses.find((item) => item.id === enrollment.courseId);
-                  return course?.instructorId === instructor?.id;
-                })
-                .map((enrollment) => enrollment.userId)
-            ).size
-          : demoUsers.length,
-      totalCourses:
-        currentUser?.role === UserRole.INSTRUCTOR && instructor
-          ? demoCourses.filter((course) => course.instructorId === instructor.id).length
-          : demoCourses.length,
-      totalEnrollments:
-        currentUser?.role === UserRole.INSTRUCTOR && instructor
-          ? demoEnrollments.filter((enrollment) => {
-              const course = demoCourses.find((item) => item.id === enrollment.courseId);
-              return course?.instructorId === instructor.id;
-            }).length
-          : demoEnrollments.length,
-      recentActivity: demoActivityLog.map((activity) => ({
-        ...activity,
-        user: demoUsers.find((user) => user.id === activity.userId) ?? null
-      }))
-    }),
-    { allowFallback: false, context: "admin-dashboard" }
-  );
+  return { totalUsers, totalCourses, totalEnrollments, recentActivity };
 }
 
 export async function getAdminSubjects() {
-  return withDatabaseFallback(
-    () =>
-      prisma.subject.findMany({
-        orderBy: [{ position: "asc" }, { name: "asc" }],
-        include: {
-          _count: {
-            select: {
-              categories: true
-            }
-          }
+  return prisma.subject.findMany({
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+    include: {
+      _count: {
+        select: {
+          categories: true
         }
-      }),
-    () =>
-      demoSubjects.map((subject) => ({
-        ...subject,
-        _count: {
-          categories: demoCategories.filter((category) => category.subjectId === subject.id).length
-        }
-      })),
-    { allowFallback: false, context: "admin-subjects" }
-  );
+      }
+    }
+  });
 }
 
 export async function getAdminCategories() {
-  return withDatabaseFallback(
-    () =>
-      prisma.category.findMany({
-        orderBy: [{ subject: { position: "asc" } }, { position: "asc" }, { name: "asc" }],
-        include: {
-          subject: true,
-          _count: {
-            select: {
-              courses: true
-            }
-          }
+  return prisma.category.findMany({
+    orderBy: [{ subject: { position: "asc" } }, { position: "asc" }, { name: "asc" }],
+    include: {
+      subject: true,
+      _count: {
+        select: {
+          courses: true
         }
-      }),
-    () =>
-      demoCategories.map((category) => ({
-        ...category,
-        subject: demoSubjects.find((subject) => subject.id === category.subjectId)!,
-        _count: {
-          courses: demoCourses.filter((course) => course.categoryId === category.id).length
-        }
-      })),
-    { allowFallback: false, context: "admin-categories" }
-  );
+      }
+    }
+  });
 }
 
 export async function getAdminCourses() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
-  return withDatabaseFallback(
-    () =>
-      prisma.course.findMany({
-        where:
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? { instructorId: instructor.id }
-            : undefined,
-        orderBy: [{ updatedAt: "desc" }],
+  return prisma.course.findMany({
+    where: courseWhere,
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      instructor: true,
+      category: {
         include: {
-          instructor: true,
+          subject: true
+        }
+      },
+      _count: {
+        select: {
+          lessons: true,
+          enrollments: true
+        }
+      }
+    }
+  });
+}
+
+export async function getAdminLessons() {
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
+
+  return prisma.lesson.findMany({
+    where: { course: courseWhere },
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      course: {
+        include: {
           category: {
             include: {
               subject: true
             }
-          },
-          _count: {
-            select: {
-              lessons: true,
-              enrollments: true
-            }
           }
         }
-      }),
-    () =>
-      demoCourses.map((course) => ({
-        ...course,
-        instructor: demoInstructors.find((instructor) => instructor.id === course.instructorId)!,
-        category: {
-          ...demoCategories.find((category) => category.id === course.categoryId)!,
-          subject: demoSubjects.find(
-            (subject) =>
-              subject.id === demoCategories.find((category) => category.id === course.categoryId)!.subjectId
-          )!
-        },
-        _count: {
-          lessons: demoLessons.filter((lesson) => lesson.courseId === course.id).length,
-          enrollments: demoEnrollments.filter((enrollment) => enrollment.courseId === course.id).length
-        }
-      })).filter((course) =>
-        currentUser?.role === UserRole.INSTRUCTOR && instructor
-          ? course.instructorId === instructor.id
-          : true
-      ),
-    { allowFallback: false, context: "admin-courses" }
-  );
-}
-
-export async function getAdminLessons() {
-  const { currentUser, instructor } = await getStudioContext();
-
-  return withDatabaseFallback(
-    () =>
-      prisma.lesson.findMany({
-        where:
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? {
-                course: {
-                  instructorId: instructor.id
-                }
-              }
-            : undefined,
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          course: {
-            include: {
-              category: {
-                include: {
-                  subject: true
-                }
-              }
-            }
-          }
-        }
-      }),
-    () =>
-      demoLessons.map((lesson) => {
-        const course = demoCourses.find((item) => item.id === lesson.courseId)!;
-        const category = demoCategories.find((item) => item.id === course.categoryId)!;
-
-        return {
-          ...lesson,
-          course: {
-            ...course,
-            category: {
-              ...category,
-              subject: demoSubjects.find((subject) => subject.id === category.subjectId)!
-            }
-          }
-        };
-      }).filter((lesson) =>
-        currentUser?.role === UserRole.INSTRUCTOR && instructor
-          ? lesson.course.instructorId === instructor.id
-          : true
-      ),
-    { allowFallback: false, context: "admin-lessons" }
-  );
+      }
+    }
+  });
 }
 
 export async function getAdminInstructors() {
-  return withDatabaseFallback(
-    () =>
-      prisma.instructor.findMany({
-        orderBy: [{ name: "asc" }],
-        include: {
-          _count: {
-            select: {
-              courses: true
-            }
-          }
+  return prisma.instructor.findMany({
+    orderBy: [{ name: "asc" }],
+    include: {
+      _count: {
+        select: {
+          courses: true
         }
-      }),
-    () =>
-      demoInstructors.map((instructor) => ({
-        ...instructor,
-        _count: {
-          courses: demoCourses.filter((course) => course.instructorId === instructor.id).length
-        }
-      })),
-    { allowFallback: false, context: "admin-instructors" }
-  );
+      }
+    }
+  });
 }
 
+/** Legacy user list. Admin only, and never selects password hashes. */
 export async function getAdminUsers() {
-  return withDatabaseFallback(
-    () =>
-      prisma.user.findMany({
-        orderBy: [{ createdAt: "desc" }],
-        include: {
-          _count: {
-            select: {
-              enrollments: true,
-              activities: true
-            }
-          }
+  if (!(await requireAdminScope())) return [];
+
+  return prisma.user.findMany({
+    orderBy: [{ createdAt: "desc" }],
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      _count: {
+        select: {
+          enrollments: true,
+          activities: true
         }
-      }),
-    () =>
-      demoUsers.map((user) => ({
-        ...user,
-        _count: {
-          enrollments: demoEnrollments.filter((enrollment) => enrollment.userId === user.id).length,
-          activities: demoActivityLog.filter((activity) => activity.userId === user.id).length
-        }
-      })),
-    { allowFallback: false, context: "admin-users" }
-  );
+      }
+    }
+  });
 }
 
 export async function getAdminFormOptions() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { scope } = await getStudioContext();
 
-  return withDatabaseFallback(
-    async () => {
-      const [subjects, categories, instructors] = await Promise.all([
-        prisma.subject.findMany({
-          orderBy: [{ position: "asc" }, { name: "asc" }],
-          select: { id: true, name: true, slug: true }
-        }),
-        prisma.category.findMany({
-          orderBy: [{ position: "asc" }, { name: "asc" }],
-          include: { subject: true }
-        }),
-        prisma.instructor.findMany({
-          orderBy: [{ name: "asc" }],
-          select: { id: true, name: true }
-        })
-      ]);
-
-      return {
-        subjects,
-        categories,
-        instructors:
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? instructors.filter((item) => item.id === instructor.id)
-            : instructors,
-        roles: isAdmin(currentUser?.role) ? Object.values(UserRole) : [UserRole.INSTRUCTOR, UserRole.STUDENT],
-        statuses: Object.values(PublicationStatus)
-      };
-    },
-    () => ({
-      subjects: demoSubjects.map((subject) => ({
-        id: subject.id,
-        name: subject.name,
-        slug: subject.slug
-      })),
-      categories: demoCategories.map((category) => ({
-        ...category,
-        subject: demoSubjects.find((subject) => subject.id === category.subjectId)!
-      })),
-      instructors: demoInstructors
-        .map((instructorItem) => ({
-          id: instructorItem.id,
-          name: instructorItem.name
-        }))
-        .filter((instructorItem) =>
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? instructorItem.id === instructor.id
-            : true
-        ),
-      roles: isAdmin(currentUser?.role) ? Object.values(UserRole) : [UserRole.INSTRUCTOR, UserRole.STUDENT],
-      statuses: Object.values(PublicationStatus)
+  const [subjects, categories, instructors] = await Promise.all([
+    prisma.subject.findMany({
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, slug: true }
     }),
-    { allowFallback: false, context: "admin-form-options" }
-  );
+    prisma.category.findMany({
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      include: { subject: true }
+    }),
+    prisma.instructor.findMany({
+      orderBy: [{ name: "asc" }],
+      select: { id: true, name: true }
+    })
+  ]);
+
+  return {
+    subjects,
+    categories,
+    // Instructors may only assign courses to themselves; without a profile, to nobody.
+    instructors:
+      scope.kind === "admin"
+        ? instructors
+        : scope.kind === "instructor"
+          ? instructors.filter((item) => item.id === scope.instructorId)
+          : [],
+    roles: scope.kind === "admin" ? Object.values(UserRole) : [UserRole.INSTRUCTOR, UserRole.STUDENT],
+    statuses: Object.values(PublicationStatus)
+  };
 }
 
 export async function getAdminMaterials() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
-  return withDatabaseFallback(
-    () =>
-      prisma.courseMaterial.findMany({
-        where:
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? { course: { instructorId: instructor.id } }
-            : undefined,
-        orderBy: [{ updatedAt: "desc" }],
-        include: {
-          course: true,
-          lesson: true,
-          createdBy: {
-            select: {
-              name: true
-            }
-          }
+  return prisma.courseMaterial.findMany({
+    where: { course: courseWhere },
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      course: true,
+      lesson: true,
+      createdBy: {
+        select: {
+          name: true
         }
-      }),
-    () => [],
-    { allowFallback: false, context: "admin-materials" }
-  );
+      }
+    }
+  });
 }
 
 export async function getAdminProgressData() {
-  const { currentUser, instructor } = await getStudioContext();
+  const { courseWhere } = await getStudioContext();
+  if (!courseWhere) return [];
 
-  return withDatabaseFallback(
-    () =>
-      prisma.enrollment.findMany({
-        where:
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? {
-                course: {
-                  instructorId: instructor.id
-                }
-              }
-            : undefined,
-        orderBy: [{ updatedAt: "desc" }],
+  return prisma.enrollment.findMany({
+    where: { course: courseWhere },
+    orderBy: [{ updatedAt: "desc" }],
+    include: {
+      user: {
+        select: {
+          name: true,
+          email: true
+        }
+      },
+      course: {
         include: {
-          user: {
-            select: {
-              name: true,
-              email: true
-            }
-          },
-          course: {
+          instructor: true,
+          lessons: {
+            where: { status: PublicationStatus.PUBLISHED },
             include: {
-              instructor: true,
-              lessons: {
-                where: { status: PublicationStatus.PUBLISHED },
-                include: {
-                  completions: {
-                    select: {
-                      userId: true
-                    }
-                  }
+              completions: {
+                select: {
+                  userId: true
                 }
               }
             }
           }
         }
-      }),
-    () =>
-      demoEnrollments
-        .map((enrollment) => ({
-          ...enrollment,
-          user: demoUsers.find((user) => user.id === enrollment.userId)!,
-          course: {
-            ...demoCourses.find((course) => course.id === enrollment.courseId)!,
-            instructor: demoInstructors.find(
-              (instructorItem) =>
-                instructorItem.id ===
-                demoCourses.find((course) => course.id === enrollment.courseId)!.instructorId
-            )!,
-            lessons: demoLessons
-              .filter((lesson) => lesson.courseId === enrollment.courseId)
-              .map((lesson) => ({
-                ...lesson,
-                completions: []
-              }))
-          }
-        }))
-        .filter((enrollment) =>
-          currentUser?.role === UserRole.INSTRUCTOR && instructor
-            ? enrollment.course.instructorId === instructor.id
-            : true
-      ),
-    { allowFallback: false, context: "admin-progress" }
-  );
+      }
+    }
+  });
 }
 
 export async function getSiteSettings() {
-  return withDatabaseFallback(
-    () =>
-      prisma.siteSetting.findUnique({
-        where: { id: "default" }
-      }),
-    () => null,
-    { allowFallback: false, context: "site-settings" }
-  );
+  return prisma.siteSetting.findUnique({
+    where: { id: "default" }
+  });
+}
+
+export async function getPublicSiteSettings() {
+  return prisma.siteSetting.findUnique({
+    where: { id: "default" }
+  });
 }

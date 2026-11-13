@@ -102,7 +102,7 @@ export default async function SubjectDetailPage({ params }: SubjectDetailPagePro
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {subject.topOutcomes.map((outcome) => (
-                  <div key={outcome} className="rounded-[1.5rem] bg-secondary/35 px-4 py-4">
+                  <div key={outcome} className="rounded-xl bg-secondary/35 px-4 py-4">
                     <p className="text-sm leading-7 text-muted-foreground">{outcome}</p>
                   </div>
                 ))}

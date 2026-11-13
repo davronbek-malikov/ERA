@@ -90,7 +90,7 @@ export function SubjectCourseGroups({ locale, categories }: SubjectCourseGroupsP
                 <Link
                   key={course.id}
                   href={`/courses/${course.slug}`}
-                  className="rounded-[1.5rem] border border-border/70 bg-secondary/30 p-5 transition hover:border-primary/20 hover:bg-white"
+                  className="rounded-xl border border-border/70 bg-secondary/30 p-5 transition hover:border-primary/20 hover:bg-card"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-3">
