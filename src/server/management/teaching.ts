@@ -375,7 +375,9 @@ export async function reviewHomework(actor: ManagementActor, input: HomeworkRevi
       ...(input.githubUrl !== undefined ? { githubUrl: input.githubUrl } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
       checkedAt: checked ? new Date() : null,
-      checkedById: checked ? actor.user.id : null
+      checkedById: checked ? actor.user.id : null,
+      // First hand-in date drives the weekly rule; going back to "not submitted" clears it.
+      submittedAt: input.status === "NOT_SUBMITTED" ? null : (current?.submittedAt ?? new Date())
     };
     const review = await tx.homeworkReview.upsert({
       where: { enrollmentId_lessonId: { enrollmentId: enrollment.id, lessonId: lesson.id } },
@@ -430,6 +432,7 @@ export async function getEnrollmentHomework(enrollmentId: string, courseId: stri
             githubUrl: review.githubUrl,
             note: review.note,
             checkedAt: review.checkedAt?.toISOString() ?? null,
+            submittedAt: review.submittedAt?.toISOString() ?? null,
             checkedBy: review.checkedBy?.name ?? null
           }
         : null
@@ -468,5 +471,44 @@ export async function reorderCourses(actor: ManagementActor, courseIds: string[]
       source: options.source
     });
     return { order: courseIds };
+  });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Weekly homework rule (per teacher)
+// ------------------------------------------------------------------------------------------------
+
+export type HomeworkRuleInput = { enabled: boolean; perWeek: number };
+
+export function parseHomeworkRule(raw: Raw): HomeworkRuleInput {
+  if (typeof raw.enabled !== "boolean") throw invalid("invalid-enabled", "Say whether the weekly rule is on or off.");
+  const perWeek = Number(raw.perWeek);
+  if (!Number.isInteger(perWeek) || perWeek < 1 || perWeek > 20) throw invalid("invalid-perWeek", "Homeworks per week must be a whole number from 1 to 20.");
+  return { enabled: raw.enabled, perWeek };
+}
+
+/** The teacher's own rule settings (an administrator without a teacher profile gets the defaults). */
+export async function getHomeworkRule(actor: ManagementActor): Promise<HomeworkRuleInput & { editable: boolean }> {
+  if (!actor.instructorId) return { enabled: true, perWeek: 3, editable: false };
+  const row = await retryOnDatabaseFailure(() =>
+    prisma.instructor.findUnique({ where: { id: actor.instructorId! }, select: { homeworkRuleEnabled: true, homeworkPerWeek: true } })
+  );
+  return { enabled: row?.homeworkRuleEnabled ?? true, perWeek: row?.homeworkPerWeek ?? 3, editable: Boolean(row) };
+}
+
+/** Each teacher switches the rule on/off and sets the weekly number for their own students. */
+export async function updateHomeworkRule(actor: ManagementActor, input: HomeworkRuleInput, options: Options) {
+  if (!actor.instructorId) throw authErrors.forbidden("Only teachers have a weekly homework rule.");
+  const instructorId = actor.instructorId;
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.instructor.findUnique({ where: { id: instructorId }, select: { homeworkRuleEnabled: true, homeworkPerWeek: true } });
+    if (!before) throw authErrors.notFound("Teacher profile not found.");
+    const after = await tx.instructor.update({
+      where: { id: instructorId },
+      data: { homeworkRuleEnabled: input.enabled, homeworkPerWeek: input.perWeek },
+      select: { homeworkRuleEnabled: true, homeworkPerWeek: true }
+    });
+    await writeAudit(tx, { actorId: actor.user.id, action: "homework.rule", entityType: "homework", entityId: instructorId, before, after, source: options.source });
+    return { enabled: after.homeworkRuleEnabled, perWeek: after.homeworkPerWeek };
   });
 }

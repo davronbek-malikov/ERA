@@ -214,6 +214,9 @@ model Instructor {
   bio       String?
   imageUrl  String?
   email     String?  @unique
+  /// Weekly homework rule: each student hands in at least `homeworkPerWeek` homeworks every 7 days of their course.
+  homeworkRuleEnabled Boolean @default(true) @map("homework_rule_enabled")
+  homeworkPerWeek     Int     @default(3) @map("homework_per_week")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1113,6 +1116,8 @@ model HomeworkReview {
   note         String?
   checkedAt    DateTime?      @map("checked_at")
   checkedById  String?        @map("checked_by_id")
+  /// When the student first handed this homework in (any status other than NOT_SUBMITTED). Drives the weekly rule.
+  submittedAt  DateTime?      @map("submitted_at")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 

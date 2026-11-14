@@ -1,5 +1,8 @@
+import { GraduationCap, TriangleAlert } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { getT } from "@/lib/i18n-server";
+import type { HomeworkPace } from "@/server/management/homework-rule";
 
 /*
  * Status badges for Student Management (ERA Design System: color carries meaning, text always says it too).
@@ -80,3 +83,33 @@ export const ARRANGEMENT_LABEL: Record<string, string> = {
 };
 
 export const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Bank transfer", CASH: "Cash", ONLINE: "Online", OTHER: "Other" };
+
+/** Weekly homework rule: red when last week fell short, green "exam ready" when all homework is done. */
+export async function HomeworkPaceBadge({ pace, showProgress = true }: { pace: HomeworkPace; showProgress?: boolean }) {
+  const T = await getT();
+  if (pace.state === "exam-ready") {
+    return (
+      <Badge variant="success" className="w-fit gap-1">
+        <GraduationCap className="size-3.5" aria-hidden="true" />
+        {T("Exam ready")}
+      </Badge>
+    );
+  }
+  if (pace.state === "behind" && pace.lastWeek) {
+    return (
+      <Badge variant="error" className="w-fit gap-1" title={T("Week {week}: {from} – {to}", { week: pace.lastWeek.number, from: pace.lastWeek.from, to: pace.lastWeek.to })}>
+        <TriangleAlert className="size-3.5" aria-hidden="true" />
+        {T("Week {week}: {count}/{required} homework", { week: pace.lastWeek.number, count: pace.lastWeek.count, required: pace.lastWeek.required })}
+      </Badge>
+    );
+  }
+  if (showProgress && pace.state === "on-track" && pace.thisWeek && pace.thisWeek.required > 0) {
+    const met = pace.thisWeek.count >= pace.thisWeek.required;
+    return (
+      <span className={met ? "text-xs text-success" : "text-xs text-muted-foreground"}>
+        {T("This week: {count}/{required}", { count: pace.thisWeek.count, required: pace.thisWeek.required })}
+      </span>
+    );
+  }
+  return null;
+}

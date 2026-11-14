@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronRight, ExternalLink, History, ShieldCheck, StickyNote } from "lucide-react";
+import { CalendarDays, ChevronRight, ExternalLink, GraduationCap, History, ShieldCheck, StickyNote, TriangleAlert } from "lucide-react";
 
 import {
   AccessBadge,
@@ -6,7 +6,8 @@ import {
   EnrollmentStatusBadge,
   METHOD_LABEL,
   PaymentStatusBadge,
-  TransactionStatusBadge
+  TransactionStatusBadge,
+  HomeworkPaceBadge
 } from "@/components/management/badges";
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
@@ -245,7 +246,37 @@ async function HomeworkSection({ view, workspace }: { view: EnrollmentView; work
         <Badge variant={done === view.homework.length ? "success" : "neutral"}>
           {T("{done}/{total} done", { done, total: view.homework.length })}
         </Badge>
+        <HomeworkPaceBadge pace={view.pace} showProgress={false} />
       </h4>
+      {view.pace.state === "behind" && view.pace.lastWeek ? (
+        <p className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+          <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden="true" />
+          {T("Week {week} ({from} – {to}): handed in {count} of the required {required} homeworks.", {
+            week: view.pace.lastWeek.number,
+            from: formatCalendarDate(view.pace.lastWeek.from),
+            to: formatCalendarDate(view.pace.lastWeek.to),
+            count: view.pace.lastWeek.count,
+            required: view.pace.lastWeek.required
+          })}
+        </p>
+      ) : null}
+      {view.pace.state === "exam-ready" ? (
+        <p className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+          <GraduationCap className="mt-px size-4 shrink-0" aria-hidden="true" />
+          {T("Every homework is done. This student is ready for the exam! 🎓")}
+        </p>
+      ) : null}
+      {view.pace.thisWeek && view.pace.thisWeek.required > 0 && view.pace.state !== "exam-ready" ? (
+        <p className="text-xs text-muted-foreground">
+          {T("Week {week} ({from} – {to}): {count}/{required} handed in so far.", {
+            week: view.pace.thisWeek.number,
+            from: formatCalendarDate(view.pace.thisWeek.from),
+            to: formatCalendarDate(view.pace.thisWeek.to),
+            count: view.pace.thisWeek.count,
+            required: view.pace.thisWeek.required
+          })}
+        </p>
+      ) : null}
       <ol className="flex flex-col gap-2">
         {view.homework.map((lesson) => {
           const badge = HOMEWORK_BADGE[lesson.review?.status ?? "NOT_SUBMITTED"];

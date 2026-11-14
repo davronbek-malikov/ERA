@@ -496,6 +496,7 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.deepEqual(lessons.map((lesson) => lesson.position), [1, 2, 3]);
     hw.lesson1 = lessons[0].id;
     hw.lesson3 = lessons[2].id;
+    hw.lesson2 = lessons[1].id;
     assert.equal((await post(`/api/management/courses/${hw.courseId}/lessons`, { session: teacherB, json: { workspace: "teacher", title: "x" } })).status, 404);
     assert.equal((await call("PATCH", `/api/management/lessons/${hw.lesson3}`, { session: teacherB, json: { workspace: "teacher", homework: "x" } })).status, 404);
     const added = await post(`/api/management/courses/${hw.courseId}/lessons`, { session: teacherA, json: { workspace: "teacher", title: "Trees", homework: "Fit a tree" } });
@@ -588,6 +589,41 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     const createdCourse = await prisma.course.findFirst({ where: { title: "Deep Learning HW" }, include: { lessons: true } });
     assert.equal(createdCourse.instructorId, ins.instructorA, "created for the teacher who asked");
     assert.equal(createdCourse.lessons[0].homework, "Build a CNN");
+  });
+
+  test("hand-in dates are saved; the profile shows the weekly pace; going back to not-submitted clears the date", async () => {
+    const reviewed = await prisma.homeworkReview.findFirst({ where: { enrollmentId: hw.enrollmentId, lessonId: hw.lesson1 } });
+    assert.ok(reviewed.submittedAt, "a handed-in homework has a submission date");
+    const { profile: p } = await profile(teacherA, hw.studentId, "teacher");
+    const view = p.current.find((item) => item.id === hw.enrollmentId);
+    assert.ok(["on-track", "behind", "off", "exam-ready"].includes(view.pace.state), JSON.stringify(view.pace));
+    assert.equal(view.pace.perWeek, 3);
+
+    const reset = await call("PUT", "/api/management/homework", { session: teacherA, json: { workspace: "teacher", enrollmentId: hw.enrollmentId, lessonId: hw.lesson2, status: "SUBMITTED" } });
+    assert.equal(reset.status, 200, reset.text);
+    assert.ok((await prisma.homeworkReview.findFirst({ where: { enrollmentId: hw.enrollmentId, lessonId: hw.lesson2 } })).submittedAt);
+    await call("PUT", "/api/management/homework", { session: teacherA, json: { workspace: "teacher", enrollmentId: hw.enrollmentId, lessonId: hw.lesson2, status: "NOT_SUBMITTED" } });
+    assert.equal((await prisma.homeworkReview.findFirst({ where: { enrollmentId: hw.enrollmentId, lessonId: hw.lesson2 } })).submittedAt, null);
+  });
+
+  test("each teacher turns their own rule on/off; students and bad values are refused", async () => {
+    const rule = (session, json) => call("PUT", "/api/management/homework/rule", { session, json });
+    assert.equal((await rule(teacherA, { workspace: "teacher", enabled: true, perWeek: 0 })).status, 400);
+    assert.equal((await rule(teacherA, { workspace: "teacher", enabled: "yes", perWeek: 3 })).status, 400);
+    assert.equal((await rule(studentA, { enabled: false, perWeek: 3 })).status, 403);
+
+    const off = await rule(teacherA, { workspace: "teacher", enabled: false, perWeek: 4 });
+    assert.equal(off.status, 200, off.text);
+    const teacherAInstructor = await prisma.instructor.findFirst({ where: { userId: u.teacherA.id } });
+    assert.equal(teacherAInstructor.homeworkRuleEnabled, false);
+    assert.equal(teacherAInstructor.homeworkPerWeek, 4);
+    const teacherBInstructor = await prisma.instructor.findFirst({ where: { userId: u.teacherB.id } });
+    assert.equal(teacherBInstructor.homeworkRuleEnabled, true, "another teacher's rule is untouched");
+
+    const { profile: p } = await profile(teacherA, hw.studentId, "teacher");
+    assert.equal(p.current.find((item) => item.id === hw.enrollmentId).pace.state, "off");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "homework.rule", actorId: u.teacherA.id } }), "audited");
+    assert.equal((await rule(teacherA, { workspace: "teacher", enabled: true, perWeek: 3 })).status, 200);
   });
 });
 
