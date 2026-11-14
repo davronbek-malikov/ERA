@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Search, Users } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, GraduationCap, Search, TriangleAlert, Users } from "lucide-react";
 
-import { AccessBadge, EnrollmentStatusBadge, PaymentStatusBadge } from "@/components/management/badges";
+import { AccessBadge, EnrollmentStatusBadge, HomeworkPaceBadge, PaymentStatusBadge } from "@/components/management/badges";
 import { CreateEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { RecordPaymentButton } from "@/components/management/payment-forms";
-import { AddStudentButton, CourseMembershipButton, TeacherStudentSearch } from "@/components/management/teaching-forms";
+import { AddStudentButton, CourseMembershipButton, HomeworkRuleButton, TeacherStudentSearch } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   type EnrollmentFilters,
   type EnrollmentRow
 } from "@/server/management/queries";
+import { getHomeworkRule } from "@/server/management/teaching";
 import { formatCalendarDate, isDateString, todayInPlatform } from "@/server/management/time";
 import { getT } from "@/lib/i18n-server";
 
@@ -91,12 +92,15 @@ export async function StudentManagementDashboard({
   const rangeFrom = one(params, "rfrom");
   const rangeTo = one(params, "rto");
   const today = todayInPlatform();
-  const [summary, list, courses, instructors] = await Promise.all([
+  const [summary, list, courses, instructors, homeworkRule] = await Promise.all([
     getManagementSummary(actor, { from: rangeFrom && isDateString(rangeFrom) ? rangeFrom : undefined, to: rangeTo && isDateString(rangeTo) ? rangeTo : undefined }),
     listEnrollmentRows(actor, filters),
     listScopedCourses(actor),
-    listInstructorsForActor(actor)
+    listInstructorsForActor(actor),
+    getHomeworkRule(actor)
   ]);
+  const behindRows = list.rows.filter((row) => row.pace.state === "behind");
+  const examReadyRows = list.rows.filter((row) => row.pace.state === "exam-ready" && row.status === "ACTIVE");
   const showMoney = can(actor, "viewPayments");
   const filtered = Object.entries(params).some(([key, value]) => key !== "page" && key !== "rfrom" && key !== "rto" && value);
 
@@ -118,6 +122,7 @@ export async function StudentManagementDashboard({
           <BookOpen />
           {T("Courses & lessons")}
         </Link>
+        {homeworkRule.editable ? <HomeworkRuleButton workspace={workspace} enabled={homeworkRule.enabled} perWeek={homeworkRule.perWeek} /> : null}
         {can(actor, "manageEnrollments") ? (
           <AddStudentButton
             workspace={workspace}
@@ -319,6 +324,46 @@ export async function StudentManagementDashboard({
         </form>
         )}
 
+        {behindRows.length ? (
+          <div role="alert" className="flex gap-3 rounded-xl border border-error/30 bg-error/10 p-4 text-sm">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-error" aria-hidden="true" />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <p className="font-semibold text-error">
+                {T("{count} students are behind the weekly homework rule", { count: behindRows.length })}
+              </p>
+              <p className="text-muted-foreground">{T("Last week they handed in fewer than {count} homeworks.", { count: behindRows[0].pace.perWeek })}</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {behindRows.map((row) => (
+                  <li key={row.id}>
+                    <Link href={`${profilePath}/${row.student.id}`} className="inline-flex items-center gap-1 rounded-full border border-error/30 bg-card px-2.5 py-1 text-xs font-medium hover:bg-error/10">
+                      {row.student.name}
+                      <span className="text-muted-foreground">· {row.pace.lastWeek ? `${row.pace.lastWeek.count}/${row.pace.lastWeek.required}` : ""}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+        {examReadyRows.length ? (
+          <div role="status" className="flex gap-3 rounded-xl border border-success/30 bg-success/10 p-4 text-sm">
+            <GraduationCap className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <p className="font-semibold text-success">{T("Exam ready! These students finished every homework")}</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {examReadyRows.map((row) => (
+                  <li key={row.id}>
+                    <Link href={`${profilePath}/${row.student.id}`} className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-card px-2.5 py-1 text-xs font-medium hover:bg-success/10">
+                      🎓 {row.student.name}
+                      <span className="text-muted-foreground">· {row.course.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+
         <DataTable
           caption={T("Students and enrollments")}
           actionsLabel={T("Actions")}
@@ -378,6 +423,7 @@ export async function StudentManagementDashboard({
                     <span className="tabular-nums">{T("{done}/{total} done", { done: row.homework.done, total: row.homework.total })}</span>
                     {row.homework.toCheck ? <Badge variant="warning" className="w-fit">{T("{count} to check", { count: row.homework.toCheck })}</Badge> : null}
                     {row.homework.needsWork ? <Badge variant="error" className="w-fit">{T("{count} needs work", { count: row.homework.needsWork })}</Badge> : null}
+                    <HomeworkPaceBadge pace={row.pace} />
                   </span>
                 ) : (
                   <span className="text-muted-foreground">{T("No lessons")}</span>

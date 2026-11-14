@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, BookPlus, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, Search, UserCheck, UserMinus, UserPlus } from "lucide-react";
+import { ArrowDown, ArrowUp, BookPlus, CalendarCheck, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, Search, UserCheck, UserMinus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
@@ -533,5 +533,37 @@ export function TeacherStudentSearch({
         </Button>
       ) : null}
     </form>
+  );
+}
+
+/** The teacher's weekly homework rule: on/off and how many homeworks every 7 days. */
+export function HomeworkRuleButton({ workspace, enabled, perWeek }: { workspace: Workspace; enabled: boolean; perWeek: number }) {
+  const T = useT();
+  const { run } = useManagementMutation();
+  return (
+    <FormDialog
+      triggerLabel={enabled ? T("Weekly rule: {count}", { count: perWeek }) : T("Weekly rule: off")}
+      triggerIcon={<CalendarCheck />}
+      title={T("Weekly homework rule")}
+      description={T("Every 7 days from each student's start date, they must hand in at least this many homeworks. Students who fall short are shown in red. Students who finish all homework are marked exam ready.")}
+      submitLabel={T("Save")}
+      onSubmit={async (form) => {
+        const result = await run(
+          "/api/management/homework/rule",
+          "PUT",
+          { workspace, enabled: form.get("enabled") === "on", perWeek: Number(formString(form, "perWeek")) },
+          "Weekly rule saved."
+        );
+        return Boolean(result);
+      }}
+    >
+      <label className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm">
+        <input type="checkbox" name="enabled" defaultChecked={enabled} className="size-4" />
+        <span className="font-medium">{T("Use the weekly homework rule")}</span>
+      </label>
+      <Field id="homework-per-week" label={T("Homeworks every 7 days")}>
+        <Input id="homework-per-week" name="perWeek" type="number" min={1} max={20} defaultValue={perWeek} required />
+      </Field>
+    </FormDialog>
   );
 }

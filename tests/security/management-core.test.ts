@@ -12,6 +12,7 @@ import { evaluateEnrollmentAccess } from "@/server/management/access";
 import { normalizePermissions, NO_PERMISSIONS } from "@/server/management/actor";
 import { parseCreateEnrollment, parseExam, parsePaymentDecision, parseRecordPayment, requireAmount } from "@/server/management/inputs";
 import { approvedTotal, formatMoney, isOverdue, summarizePayments } from "@/server/management/money";
+import { computeHomeworkPace } from "@/server/management/homework-rule";
 import { addDays, fromDbDate, isDateString, monthRange, toDbDate, todayInPlatform, weekRange } from "@/server/management/time";
 
 after(() => prisma.$disconnect());
@@ -169,5 +170,46 @@ describe("Sign-in identifiers", () => {
     assert.equal(normalizePhone("student2026@school.kr"), "");
     assert.equal(normalizePhone("+82 10-1234-5678"), "+821012345678");
     assert.equal(normalizePhone("010-1234-5678"), "01012345678");
+  });
+});
+
+describe("Weekly homework rule (calendar weeks from each student's start date)", () => {
+  const base = { startDate: "2026-11-02", endDate: "2026-12-27", status: "ACTIVE", ruleEnabled: true, perWeek: 3, totalLessons: 10, doneLessons: 0 };
+  const at = (date: string) => `${date}T03:00:00Z`;
+
+  test("week 1 is never judged; this week's progress is shown", () => {
+    const pace = computeHomeworkPace({ ...base, today: "2026-11-05", submittedAt: [at("2026-11-03")] });
+    assert.equal(pace.state, "on-track");
+    assert.equal(pace.week, 1);
+    assert.deepEqual([pace.thisWeek?.count, pace.thisWeek?.required], [1, 3]);
+    assert.equal(pace.lastWeek, null);
+  });
+
+  test("fewer than 3 in the last finished week = behind; 3 or more = on track", () => {
+    const behind = computeHomeworkPace({ ...base, today: "2026-11-10", submittedAt: [at("2026-11-03"), at("2026-11-08")] });
+    assert.equal(behind.state, "behind");
+    assert.deepEqual([behind.lastWeek?.number, behind.lastWeek?.from, behind.lastWeek?.to, behind.lastWeek?.count], [1, "2026-11-02", "2026-11-08", 2]);
+    const ok = computeHomeworkPace({ ...base, today: "2026-11-10", submittedAt: [at("2026-11-03"), at("2026-11-04"), at("2026-11-08"), at("2026-11-09")] });
+    assert.equal(ok.state, "on-track");
+    assert.equal(ok.thisWeek?.count, 1, "the 9th belongs to week 2");
+  });
+
+  test("the requirement shrinks when fewer homeworks are left", () => {
+    const pace = computeHomeworkPace({ ...base, totalLessons: 4, today: "2026-11-17", submittedAt: [at("2026-11-02"), at("2026-11-03"), at("2026-11-04"), at("2026-11-10")] });
+    assert.equal(pace.lastWeek?.required, 1);
+    assert.equal(pace.state, "on-track");
+  });
+
+  test("all homework done = exam ready (even with the rule off); rule off or not active = no warning", () => {
+    assert.equal(computeHomeworkPace({ ...base, ruleEnabled: false, doneLessons: 10, today: "2026-11-20", submittedAt: [] }).state, "exam-ready");
+    assert.equal(computeHomeworkPace({ ...base, ruleEnabled: false, today: "2026-11-20", submittedAt: [] }).state, "off");
+    assert.equal(computeHomeworkPace({ ...base, status: "CANCELLED", today: "2026-11-20", submittedAt: [] }).state, "off");
+    assert.equal(computeHomeworkPace({ ...base, today: "2026-10-30", submittedAt: [] }).state, "on-track", "before the start");
+  });
+
+  test("dates follow the platform time zone (Seoul): 23:30 UTC Sunday is Monday in Seoul", () => {
+    const pace = computeHomeworkPace({ ...base, today: "2026-11-10", submittedAt: ["2026-11-08T23:30:00Z"] });
+    assert.equal(pace.lastWeek?.count, 0);
+    assert.equal(pace.thisWeek?.count, 1);
   });
 });

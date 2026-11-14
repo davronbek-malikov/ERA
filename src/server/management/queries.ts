@@ -1,5 +1,7 @@
 import { UserRole, type EnrollmentStatus, type Prisma } from "@prisma/client";
 
+import { computeHomeworkPace, type HomeworkPace } from "@/server/management/homework-rule";
+
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
 import { can, courseScope, enrollmentScope, examScope, requireStudentInScope, type ManagementActor } from "@/server/management/actor";
@@ -56,15 +58,17 @@ export type EnrollmentRow = {
   hasUpcomingExam: boolean;
   /** Homework checking progress: lessons in the course and this student's reviews. */
   homework: { total: number; done: number; needsWork: number; toCheck: number };
+  /** Weekly homework rule / exam-ready state (see homework-rule.ts). */
+  pace: HomeworkPace;
   createdAt: string;
 };
 
 const ROW_INCLUDE = {
   user: { select: { id: true, name: true, email: true, telegram: true } },
   course: { select: { id: true, title: true, slug: true, _count: { select: { lessons: true } } } },
-  instructor: { select: { id: true, name: true } },
+  instructor: { select: { id: true, name: true, homeworkRuleEnabled: true, homeworkPerWeek: true } },
   payments: { select: { kind: true, amount: true, status: true } },
-  homeworkReviews: { select: { status: true } }
+  homeworkReviews: { select: { status: true, submittedAt: true } }
 } satisfies Prisma.EnrollmentInclude;
 
 type LoadedEnrollment = Prisma.EnrollmentGetPayload<{ include: typeof ROW_INCLUDE }>;
@@ -101,7 +105,7 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
         id: enrollment.id,
         student: { ...enrollment.user, email: visibleEmail(enrollment.user.email) },
         course: { id: enrollment.course.id, title: enrollment.course.title, slug: enrollment.course.slug },
-        teacher: enrollment.instructor,
+        teacher: enrollment.instructor ? { id: enrollment.instructor.id, name: enrollment.instructor.name } : null,
         status: enrollment.status,
         startDate: fromDbDate(enrollment.startDate),
         endDate: fromDbDate(enrollment.endDate),
@@ -118,6 +122,17 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
           needsWork: enrollment.homeworkReviews.filter((review) => review.status === "NEEDS_WORK").length,
           toCheck: enrollment.homeworkReviews.filter((review) => review.status === "SUBMITTED").length
         },
+        pace: computeHomeworkPace({
+          startDate: fromDbDate(enrollment.startDate),
+          endDate: fromDbDate(enrollment.endDate),
+          status: enrollment.status,
+          today,
+          ruleEnabled: enrollment.instructor?.homeworkRuleEnabled ?? true,
+          perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
+          totalLessons: enrollment.course._count.lessons,
+          doneLessons: enrollment.homeworkReviews.filter((review) => review.status === "DONE").length,
+          submittedAt: enrollment.homeworkReviews.map((review) => review.submittedAt)
+        }),
         createdAt: enrollment.createdAt.toISOString()
       };
     })
@@ -313,7 +328,7 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
         orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
         include: {
           course: { select: { id: true, title: true, slug: true } },
-          instructor: { select: { id: true, name: true } },
+          instructor: { select: { id: true, name: true, homeworkRuleEnabled: true, homeworkPerWeek: true } },
           accessGrantedBy: { select: { name: true } },
           payments: {
             orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
@@ -357,9 +372,20 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
       const [access, homework] = await Promise.all([evaluateEnrollmentAccess(enrollment, today), getEnrollmentHomework(enrollment.id, enrollment.courseId)]);
       return {
         homework,
+        pace: computeHomeworkPace({
+          startDate: fromDbDate(enrollment.startDate),
+          endDate: fromDbDate(enrollment.endDate),
+          status: enrollment.status,
+          today,
+          ruleEnabled: enrollment.instructor?.homeworkRuleEnabled ?? true,
+          perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
+          totalLessons: homework.length,
+          doneLessons: homework.filter((lesson) => lesson.review?.status === "DONE").length,
+          submittedAt: homework.map((lesson) => lesson.review?.submittedAt ?? null)
+        }),
         id: enrollment.id,
         course: enrollment.course,
-        teacher: enrollment.instructor,
+        teacher: enrollment.instructor ? { id: enrollment.instructor.id, name: enrollment.instructor.name } : null,
         status: enrollment.status,
         startDate: fromDbDate(enrollment.startDate),
         endDate: fromDbDate(enrollment.endDate),
