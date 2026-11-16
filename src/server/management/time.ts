@@ -112,3 +112,44 @@ export function formatCalendarDate(date: string | null | undefined, options: { w
     ...(options.weekday ? { weekday: "short" } : {})
   }).format(toDbDate(date));
 }
+
+/** Local "YYYY-MM-DD" + "HH:MM" in the platform timezone → the UTC instant. */
+export function platformDateTimeToUtc(date: string, time: string): Date {
+  const [hours, minutes] = time.split(":").map(Number);
+  const [year, month, day] = date.split("-").map(Number);
+  const guess = Date.UTC(year, month - 1, day, hours, minutes);
+  // Offset of the zone at that moment (handles zones with daylight saving, too).
+  const offsetAt = (instant: number) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: platformTimezone(),
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).formatToParts(new Date(instant));
+    const get = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+    return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")) - instant;
+  };
+  const first = guess - offsetAt(guess);
+  return new Date(guess - offsetAt(first));
+}
+
+/** A UTC instant → local { date, time } in the platform timezone. */
+export function utcToPlatform(instant: Date): { date: string; time: string } {
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: platformTimezone(), hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(instant);
+  return { date: todayInPlatform(instant), time };
+}
+
+/** The next instant strictly after `after` that falls on `day` (0 = Sunday) at local `time`. */
+export function nextWeekly(day: number, time: string, after: Date = new Date()): Date {
+  const today = todayInPlatform(after);
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const date = addDays(today, offset);
+    if (weekday(date) !== day) continue;
+    const at = platformDateTimeToUtc(date, time);
+    if (at.getTime() > after.getTime()) return at;
+  }
+  return platformDateTimeToUtc(addDays(today, 7), time);
+}

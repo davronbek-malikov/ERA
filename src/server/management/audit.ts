@@ -9,7 +9,7 @@ import type { ManagementSource, Prisma } from "@prisma/client";
 export type AuditEntry = {
   actorId: string | null;
   action: string;
-  entityType: "enrollment" | "payment" | "exam" | "note" | "permission" | "student" | "course" | "lesson" | "homework";
+  entityType: "enrollment" | "payment" | "exam" | "note" | "permission" | "student" | "course" | "lesson" | "homework" | "message";
   entityId: string;
   before?: unknown;
   after?: unknown;

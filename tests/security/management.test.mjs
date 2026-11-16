@@ -653,70 +653,99 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.ok(replies.some((entry) => entry.body.text.includes("ulandingiz")), "the student gets a confirmation");
   });
 
-  test("Telegram reminders: settings are the teacher's own; the Saturday job messages a student who is behind once per week", async () => {
-    const settings = (session, json) => call("PUT", "/api/management/homework/reminders", { session, json });
-    assert.equal((await settings(studentA, { enabled: true, text: "x" })).status, 403);
-    assert.equal((await settings(teacherA, { workspace: "teacher", enabled: "yes", text: "x" })).status, 400);
-    assert.equal((await settings(teacherA, { workspace: "teacher", enabled: true, text: "" })).status, 400);
-    const saved = await settings(teacherA, { workspace: "teacher", enabled: true, text: "Salom {name}, 3 ta vazifa kerak edi." });
-    assert.equal(saved.status, 200, saved.text);
-    assert.equal((await prisma.instructor.findFirst({ where: { userId: u.teacherB.id } })).reminderEnabled, false, "another teacher is untouched");
-    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "homework.reminder.settings", actorId: u.teacherA.id } }));
+  test("Telegram messages: the teacher chooses who, what and when; scope, validation and once-per-run delivery", async () => {
+    const create = (session, json) => post("/api/management/telegram/messages", { session, json: { workspace: "teacher", ...json } });
+    const cron = (headers = { authorization: "Bearer test-cron-secret" }) => call("GET", "/api/cron/telegram", { headers });
+    const sentTo555 = async (prefix) => (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "555" && String(entry.body?.text ?? "").startsWith(prefix)).length;
+    const tomorrow = addDays(today, 1);
 
-    // Week 1 (10 days ago … 4 days ago) had no hand-ins: the student is behind.
+    // Validation and permissions.
+    assert.equal((await create(studentA, { text: "x", audience: "ALL", when: "NOW" })).status, 403);
+    assert.equal((await create(teacherA, { text: "  ", audience: "ALL", when: "NOW" })).status, 400);
+    assert.equal((await create(teacherA, { text: "x", audience: "EVERYONE", when: "NOW" })).status, 400);
+    assert.equal((await create(teacherA, { text: "x", audience: "SELECTED", studentIds: [], when: "NOW" })).status, 400);
+    assert.equal((await create(teacherA, { text: "x", audience: "ALL", when: "ONCE", date: addDays(today, -1), time: "10:00" })).status, 400, "past time");
+    assert.equal((await create(teacherA, { text: "x", audience: "ALL", when: "WEEKLY", weekday: 9, time: "10:00" })).status, 400);
+    assert.equal((await create(teacherA, { text: "x", audience: "ALL", when: "WEEKLY", weekday: 6, time: "25:00" })).status, 400);
+    assert.equal((await create(teacherB, { text: "x", audience: "SELECTED", studentIds: [hw.studentId], when: "NOW" })).status, 404, "another teacher's student");
+
+    // NOW to chosen students; {name} is filled in.
+    await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: "555" } });
+    const before = await sentTo555("Salom Homework Student");
+    const now = await create(teacherA, { text: "Salom {name}, dars 19:00 da", audience: "SELECTED", studentIds: [hw.studentId], when: "NOW" });
+    assert.equal(now.status, 201, now.text);
+    assert.equal(now.data.summary.sent, 1, now.text);
+    assert.equal((await sentTo555("Salom Homework Student")) - before, 1);
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "telegram.send", entityId: now.data.messageId, actorId: u.teacherA.id } }));
+
+    // BEHIND: only students behind the weekly rule right now.
     await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${addDays(today, -10)}T00:00:00.000Z`) } });
-    const isMine = (entry) => entry.path.endsWith("/sendMessage") && typeof entry.body?.text === "string" && entry.body.text.startsWith("Salom Homework Student");
     try {
-      const cron = (headers, query = "?anyday=1") => call("GET", `/api/cron/homework-reminders${query}`, { headers });
+      const behind = await create(teacherA, { text: "Ortda {name}", audience: "BEHIND", when: "NOW" });
+      assert.equal(behind.status, 201, behind.text);
+      assert.equal(await sentTo555("Ortda Homework Student"), 1, "the behind student got it");
+
+      // ONCE at an exact time: nothing before it is due, exactly once after.
+      const once = await create(teacherA, { text: "Bir martalik {name}", audience: "ALL", when: "ONCE", date: tomorrow, time: "09:30" });
+      assert.equal(once.status, 201, once.text);
+      assert.equal(new Date(once.data.nextRunAt).toISOString(), new Date(`${tomorrow}T00:30:00.000Z`).toISOString(), "09:30 Seoul = 00:30 UTC");
       assert.equal((await cron({})).status, 401);
       assert.equal((await cron({ authorization: "Bearer wrong" })).status, 401);
-      if (new Date(`${today}T00:00:00Z`).getUTCDay() !== 6) {
-        const normal = await cron({ authorization: "Bearer test-cron-secret" }, "");
-        assert.equal(normal.status, 200, normal.text);
-        assert.equal(normal.data.skipped, "not-saturday");
-      }
+      assert.equal((await cron()).status, 200);
+      assert.equal(await sentTo555("Bir martalik"), 0, "not before its time");
+      await prisma.telegramMessage.update({ where: { id: once.data.messageId }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+      const ran = await cron();
+      assert.ok(ran.data.processed >= 1 && ran.data.sent >= 1, ran.text);
+      await cron();
+      assert.equal(await sentTo555("Bir martalik Homework Student"), 1, "a one-time message is sent once");
+      assert.equal((await prisma.telegramMessage.findUnique({ where: { id: once.data.messageId } })).active, false);
 
-      const sentBefore = (await storageLog()).filter(isMine).length;
-      const first = await cron({ authorization: "Bearer test-cron-secret" });
-      assert.equal(first.status, 200, first.text);
-      assert.ok(first.data.sent >= 1, first.text);
-      const again = await cron({ authorization: "Bearer test-cron-secret" });
-      assert.ok(again.data.alreadySent >= 1, again.text);
-      const messages = (await storageLog()).filter(isMine);
-      assert.equal(messages.length - sentBefore, 1, "exactly one message for that week, even after two runs");
-      assert.equal(String(messages.at(-1).body.chat_id), "555");
-      const row = await prisma.homeworkReminder.findFirst({ where: { enrollmentId: hw.enrollmentId } });
-      assert.equal(row.status, "SENT");
-      assert.equal(row.handedIn, 0);
-      assert.equal(row.required, 3);
+      // WEEKLY on Saturday 10:00 Seoul; two scheduler calls at the same moment still send once.
+      const weekly = await create(teacherA, { text: "Haftalik {name}", audience: "BEHIND", when: "WEEKLY", weekday: 6, time: "10:00" });
+      assert.equal(weekly.status, 201, weekly.text);
+      const next = new Date(weekly.data.nextRunAt);
+      assert.equal(next.getUTCDay(), 6);
+      assert.equal(next.getUTCHours(), 1, "10:00 Seoul = 01:00 UTC");
+      assert.ok(next.getTime() > Date.now());
+      await prisma.telegramMessage.update({ where: { id: weekly.data.messageId }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+      await Promise.all([cron(), cron()]);
+      assert.equal(await sentTo555("Haftalik Homework Student"), 1, "exactly one delivery per weekly run");
+      const afterRun = await prisma.telegramMessage.findUnique({ where: { id: weekly.data.messageId } });
+      assert.equal(afterRun.active, true);
+      assert.ok(afterRun.nextRunAt.getTime() > Date.now(), "moved to next week");
 
-      // "Send now" respects the same once-per-week rule and the teacher's scope.
-      const now = await post("/api/management/homework/reminders/send", { session: teacherA, json: { workspace: "teacher" } });
-      assert.equal(now.status, 200, now.text);
-      assert.equal(now.data.summary.sent, 0);
-      assert.equal((await post("/api/management/homework/reminders/send", { session: studentA, json: {} })).status, 403);
-      const otherTeacher = await post("/api/management/homework/reminders/send", { session: teacherB, json: { workspace: "teacher" } });
-      assert.equal(otherTeacher.status, 200, otherTeacher.text);
-      assert.equal((await storageLog()).filter(isMine).length, messages.length, "another teacher can't message my student");
+      // Pause / resume / delete: own messages only.
+      const url = `/api/management/telegram/messages/${weekly.data.messageId}`;
+      assert.equal((await call("PATCH", url, { session: teacherB, json: { workspace: "teacher", active: false } })).status, 404);
+      assert.equal((await call("PATCH", url, { session: teacherA, json: { workspace: "teacher", active: false } })).status, 200);
+      await prisma.telegramMessage.update({ where: { id: weekly.data.messageId }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+      await cron();
+      assert.equal(await sentTo555("Haftalik Homework Student"), 1, "a paused message is not sent");
+      const resumed = await call("PATCH", url, { session: teacherA, json: { workspace: "teacher", active: true } });
+      assert.equal(resumed.status, 200, resumed.text);
+      assert.ok(new Date(resumed.data.nextRunAt).getTime() > Date.now(), "resumes from the next future Saturday, no catch-up burst");
+      assert.equal((await call("DELETE", `${url}?workspace=teacher`, { session: teacherB })).status, 404);
+      assert.equal((await call("DELETE", `${url}?workspace=teacher`, { session: teacherA })).status, 200);
+      assert.equal(await prisma.telegramMessage.findUnique({ where: { id: weekly.data.messageId } }), null);
 
-      // A student who blocked the bot: recorded as failed and shown as not connected again.
-      await prisma.homeworkReminder.deleteMany({ where: { enrollmentId: hw.enrollmentId } });
+      // A student who blocked the bot: failed, and shown as not connected again.
       await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: "blocked" } });
-      const blocked = await post("/api/management/homework/reminders/send", { session: teacherA, json: { workspace: "teacher" } });
+      const blocked = await create(teacherA, { text: "Blok {name}", audience: "SELECTED", studentIds: [hw.studentId], when: "NOW" });
       assert.equal(blocked.data.summary.failed, 1, blocked.text);
       assert.equal((await prisma.user.findUnique({ where: { id: hw.studentId } })).telegramChatId, null);
-      assert.equal((await prisma.homeworkReminder.findFirst({ where: { enrollmentId: hw.enrollmentId } })).status, "FAILED");
 
-      const page = await get("/teacher/assistant?tab=auto", { session: teacherA });
+      // The Messages page: in the sidebar, lists my students with invite links, never secrets; other teachers don't see them.
+      const page = await get("/teacher/assistant/messages", { session: teacherA });
       assert.equal(page.status, 200);
-      assert.ok(page.text.includes("Homework Student"), "the tab lists the student");
-      assert.ok(page.text.includes("t.me/era_test_bot?start="), "with an invite link");
+      assert.ok(page.text.includes('href="/teacher/assistant/messages"') && page.text.includes('href="/teacher/assistant"'), "sidebar: Chatbot and Messages");
+      assert.ok(page.text.includes("Homework Student"));
+      assert.ok(page.text.includes("t.me/era_test_bot?start="));
       assert.ok(!page.text.includes("test-bot-token-123") && !page.text.includes("test-cron-secret") && !page.text.includes("test-webhook-secret"), "no secrets in the page");
-      const otherPage = await get("/teacher/assistant?tab=auto", { session: teacherB });
-      assert.ok(!otherPage.text.includes("Homework Student"), "another teacher doesn't see my students");
+      assert.ok(!(await get("/teacher/assistant/messages", { session: teacherB })).text.includes("Homework Student"));
+      assert.ok([303, 307, 308].includes((await get("/teacher/assistant/messages", { session: studentA })).status), "students are sent away");
     } finally {
       await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${today}T00:00:00.000Z`) } });
-      await prisma.instructor.updateMany({ where: { userId: u.teacherA.id }, data: { reminderEnabled: false } });
+      await prisma.telegramMessage.deleteMany({ where: { instructorId: ins.instructorA } });
     }
   });
 });

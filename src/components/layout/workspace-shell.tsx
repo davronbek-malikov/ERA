@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, BookOpenCheck, CalendarDays, Compass, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
+import { BarChart3, BookOpen, Bot, MessageSquareText, BookOpenCheck, CalendarDays, Compass, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
 
 import { signOutAction } from "@/app/(public)/sign-in/actions";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -32,6 +32,8 @@ const copy = {
     studentsGroup: "Students",
     teacherPermissions: "Teacher permissions",
     assistant: "ERA Assistant",
+    chatbot: "Chatbot",
+    messages: "Messages",
     contentTools: "Content tools",
     courseEditor: "Course editor",
     lessonEditor: "Lesson editor",
@@ -72,6 +74,8 @@ const copy = {
     studentsGroup: "O'quvchilar",
     teacherPermissions: "O'qituvchi ruxsatlari",
     assistant: "ERA Assistant",
+    chatbot: "Chatbot",
+    messages: "Xabarlar",
     contentTools: "Kontent vositalari",
     courseEditor: "Kurs muharriri",
     lessonEditor: "Dars muharriri",
@@ -113,12 +117,16 @@ function buildNav(workspace: WorkspaceKind, locale: Locale, options: { teacherPa
   if (workspace === "teacher") {
     // Focused Teacher Workspace (docs/ERA_TEACHER_HOMEWORK.md): students + homework checking, and the assistant.
     // The other teacher pages still exist (and keep their own access checks); they're just not in the menu.
-    const items: NavItem[] = [
-      { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> },
-      { href: "/teacher/assistant", label: t.assistant, icon: <Sparkles /> }
-    ];
+    // ERA Assistant has two parts: the chatbot and the Telegram message sender.
+    const students: NavItem = { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> };
+    const chatbot: NavItem = { href: "/teacher/assistant", label: t.chatbot, icon: <Bot />, matchNested: false };
+    const messages: NavItem = { href: "/teacher/assistant/messages", label: t.messages, icon: <MessageSquareText /> };
     void options;
-    return { home: "/teacher/my-students", nav: [{ items }], tabs: items };
+    return {
+      home: "/teacher/my-students",
+      nav: [{ items: [students] }, { label: t.assistant, items: [chatbot, messages] }],
+      tabs: [students, chatbot, messages]
+    };
   }
 
   return {
