@@ -59,6 +59,12 @@ const env = {
   OPENAI_API_KEY: "",
   // Never call real providers from tests (.env may hold real keys; process env wins over .env).
   GROQ_API_KEY: "",
+  // Telegram homework reminders talk to the fake storage server, never to api.telegram.org.
+  TELEGRAM_BOT_TOKEN: "test-bot-token-123",
+  TELEGRAM_BOT_USERNAME: "era_test_bot",
+  TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
+  TELEGRAM_API_BASE: `http://127.0.0.1:${STORAGE_PORT}`,
+  CRON_SECRET: "test-cron-secret",
   SECURITY_BASE_URL: `http://localhost:${APP_PORT}`,
   SECURITY_STORAGE_URL: `http://127.0.0.1:${STORAGE_PORT}`,
   SECURITY_AUTH_SECRET: AUTH_SECRET

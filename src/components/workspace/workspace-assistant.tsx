@@ -26,6 +26,8 @@ type Message = AgentStreamMessage;
 export type Suggestion = { label: string; prompt: string; icon?: React.ReactNode };
 
 type WorkspaceAssistantProps = {
+  /** Leave room for a tab bar above the chat. */
+  compact?: boolean;
   kind: Extract<AssistantKind, "teacher-assistant" | "admin-assistant">;
   name: string;
   greeting: string;
@@ -37,7 +39,7 @@ type WorkspaceAssistantProps = {
 const NEW = "new";
 type TalkState = "off" | "listening" | "transcribing" | "thinking" | "speaking";
 
-export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialConversationId }: WorkspaceAssistantProps) {
+export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialConversationId, compact = false }: WorkspaceAssistantProps) {
   const T = useT();
   const agent = kind === "teacher-assistant" ? "teacher" : "admin";
   const [conversations, setConversations] = React.useState<ConversationSummary[]>([]);
@@ -377,7 +379,7 @@ export function WorkspaceAssistant({ kind, name, greeting, suggestions, initialC
   );
 
   return (
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[26rem] gap-4">
+    <div className={cn("flex min-h-[26rem] gap-4", compact ? "h-[calc(100dvh-12rem)]" : "h-[calc(100dvh-8.5rem)]")}>
       <aside aria-label={T("Chat history")} className="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto lg:flex">
         <button type="button" onClick={newConversation} className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">
           <Plus className="size-4" />

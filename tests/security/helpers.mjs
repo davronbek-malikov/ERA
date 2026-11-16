@@ -8,6 +8,11 @@ const SECRET = process.env.SECURITY_AUTH_SECRET ?? "security-test-secret-0123456
 
 export const fx = JSON.parse(readFileSync(path.join(process.cwd(), "tests", "security", ".state", "fixtures.json"), "utf8"));
 
+/** The student's personal Telegram invite token, exactly like src/server/telegram/bot.ts. */
+export function telegramLinkToken(userId, secret = SECRET) {
+  return `${userId}_${createHmac("sha256", secret).update(`telegram-link:${userId}`).digest("base64url").slice(0, 22)}`;
+}
+
 /** Mints an `era_session` cookie exactly like src/lib/auth.ts does. */
 export function mintSession(user, { expiresInSeconds = 3600, secret = SECRET, role } = {}) {
   const payload = Buffer.from(

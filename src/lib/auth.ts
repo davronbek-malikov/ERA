@@ -42,6 +42,11 @@ function signValue(value: string) {
   return createHmac("sha256", getAuthSecret()).update(value).digest("base64url");
 }
 
+/** HMAC with the app secret, separated by purpose so a signature for one feature is never valid for another. */
+export function signForPurpose(purpose: string, value: string) {
+  return createHmac("sha256", getAuthSecret()).update(`${purpose}:${value}`).digest("base64url");
+}
+
 function encodeSession(payload: SessionPayload) {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signature = signValue(encodedPayload);

@@ -44,6 +44,12 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
         return res.end();
       }
     }
+    // Telegram Bot API stand-in (homework reminders): chat "blocked" behaves like a user who blocked the bot.
+    if (/^\/bot[^/]+\/sendMessage$/.test(url.pathname) && req.method === "POST") {
+      const message = entry.body ?? {};
+      if (String(message.chat_id) === "blocked") return send(res, 403, { ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" });
+      return send(res, 200, { ok: true, result: { message_id: log.length } });
+    }
     // Browser upload to a signed URL (Prompt 09 Knowledge Base): store the real bytes.
     let upload = /^\/storage\/v1\/object\/upload\/sign\/([^/]+)\/(.+)$/.exec(url.pathname);
     if (upload && req.method === "PUT") {

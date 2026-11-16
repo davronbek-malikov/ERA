@@ -114,22 +114,26 @@ enum SubmissionStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  phone        String?  @unique
-  passwordHash String?
-  image        String?
-  role         UserRole @default(STUDENT)
-  status       String   @default("ACTIVE")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String    @id @default(cuid())
+  name             String
+  email            String    @unique
+  phone            String?   @unique
+  passwordHash     String?
+  image            String?
+  role             UserRole  @default(STUDENT)
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   /// Student's GitHub profile or repository (homework checking). Shown to the student's teachers only.
-  githubUrl    String?  @map("github_url")
+  githubUrl        String?   @map("github_url")
   /// Telegram username or number, for teachers to contact the student.
-  telegram     String?
+  telegram         String?
+  /// Chat with the ERA Telegram bot, set when the student presses Start on their personal invite link.
+  telegramChatId   String?   @map("telegram_chat_id")
+  telegramLinkedAt DateTime? @map("telegram_linked_at")
 
   enrollments         Enrollment[]
+  homeworkReminders   HomeworkReminder[]
   instructorProfile   Instructor?
   lessonCompletions   LessonCompletion[]
   chatMessages        ChatMessage[]
@@ -206,19 +210,22 @@ model PasswordResetCode {
 }
 
 model Instructor {
-  id        String   @id @default(cuid())
-  userId    String?  @unique
-  name      String
-  slug      String   @unique
-  title     String?
-  bio       String?
-  imageUrl  String?
-  email     String?  @unique
+  id                  String   @id @default(cuid())
+  userId              String?  @unique
+  name                String
+  slug                String   @unique
+  title               String?
+  bio                 String?
+  imageUrl            String?
+  email               String?  @unique
   /// Weekly homework rule: each student hands in at least `homeworkPerWeek` homeworks every 7 days of their course.
-  homeworkRuleEnabled Boolean @default(true) @map("homework_rule_enabled")
-  homeworkPerWeek     Int     @default(3) @map("homework_per_week")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  homeworkRuleEnabled Boolean  @default(true) @map("homework_rule_enabled")
+  homeworkPerWeek     Int      @default(3) @map("homework_per_week")
+  /// Automatic Telegram reminder every Saturday to students who fell behind the weekly rule.
+  reminderEnabled     Boolean  @default(false) @map("reminder_enabled")
+  reminderText        String?  @map("reminder_text")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   courses Course[]
@@ -226,6 +233,7 @@ model Instructor {
   assignedEnrollments Enrollment[]          @relation("EnrollmentInstructor")
   exams               ExamSchedule[]
   permissions         InstructorPermission?
+  homeworkReminders   HomeworkReminder[]
 }
 
 model Subject {
@@ -646,17 +654,18 @@ model Enrollment {
   internalNote        String?                @map("internal_note")
   createdById         String?                @map("created_by_id")
 
-  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course          Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  currentLesson   Lesson?               @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
-  instructor      Instructor?           @relation("EnrollmentInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
-  accessGrantedBy User?                 @relation("EnrollmentAccessGrantedBy", fields: [accessGrantedById], references: [id], onDelete: SetNull)
-  createdBy       User?                 @relation("EnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  payments        PaymentTransaction[]
-  accessLogs      EnrollmentAccessLog[]
-  notes           StudentNote[]
-  examEntries     ExamParticipant[]
-  homeworkReviews HomeworkReview[]
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course            Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  currentLesson     Lesson?               @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)
+  instructor        Instructor?           @relation("EnrollmentInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
+  accessGrantedBy   User?                 @relation("EnrollmentAccessGrantedBy", fields: [accessGrantedById], references: [id], onDelete: SetNull)
+  createdBy         User?                 @relation("EnrollmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payments          PaymentTransaction[]
+  accessLogs        EnrollmentAccessLog[]
+  notes             StudentNote[]
+  examEntries       ExamParticipant[]
+  homeworkReviews   HomeworkReview[]
+  homeworkReminders HomeworkReminder[]
 
   @@unique([userId, courseId])
   @@index([userId])
@@ -1128,4 +1137,33 @@ model HomeworkReview {
   @@unique([enrollmentId, lessonId])
   @@index([lessonId, status])
   @@map("homework_reviews")
+}
+
+/// One Telegram reminder per enrollment and judged week (so a student is never messaged twice for the same week).
+model HomeworkReminder {
+  id           String    @id @default(cuid())
+  enrollmentId String    @map("enrollment_id")
+  studentId    String    @map("student_id")
+  instructorId String?   @map("instructor_id")
+  /// First day of the judged week (the student's own 7-day week).
+  weekFrom     DateTime  @map("week_from") @db.Date
+  weekNumber   Int       @map("week_number")
+  handedIn     Int       @map("handed_in")
+  required     Int
+  /// SENT or FAILED (FAILED is retried on the next run).
+  status       String
+  error        String?
+  /// AUTO (Saturday schedule) or MANUAL (teacher pressed "send now").
+  source       String
+  sentAt       DateTime? @map("sent_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  enrollment Enrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  student    User        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  instructor Instructor? @relation(fields: [instructorId], references: [id], onDelete: SetNull)
+
+  @@unique([enrollmentId, weekFrom])
+  @@index([instructorId, createdAt])
+  @@map("homework_reminders")
 }

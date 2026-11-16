@@ -11,7 +11,7 @@ import { after, describe, test } from "node:test";
 
 import { PrismaClient } from "@prisma/client";
 
-import { anonymous, as, call, fx, get, post, storageLog } from "./helpers.mjs";
+import { anonymous, as, call, fx, get, post, storageLog, telegramLinkToken } from "./helpers.mjs";
 
 const prisma = new PrismaClient();
 after(() => prisma.$disconnect());
@@ -624,6 +624,100 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.equal(p.current.find((item) => item.id === hw.enrollmentId).pace.state, "off");
     assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "homework.rule", actorId: u.teacherA.id } }), "audited");
     assert.equal((await rule(teacherA, { workspace: "teacher", enabled: true, perWeek: 3 })).status, 200);
+  });
+
+  test("Telegram: the webhook needs the secret; only a valid personal invite link connects a student", async () => {
+    const hook = (secret, text, chatType = "private", chatId = 555) =>
+      call("POST", "/api/telegram/webhook", {
+        headers: secret ? { "x-telegram-bot-api-secret-token": secret } : {},
+        json: { update_id: 1, message: { text, chat: { id: chatId, type: chatType } } }
+      });
+    const token = telegramLinkToken(hw.studentId);
+    assert.equal((await hook(null, `/start ${token}`)).status, 401);
+    assert.equal((await hook("wrong-secret", `/start ${token}`)).status, 401);
+
+    const forged = await hook("test-webhook-secret", `/start ${u.studentA.id}_AAAAAAAAAAAAAAAAAAAAAA`);
+    assert.equal(forged.status, 200);
+    assert.equal((await prisma.user.findUnique({ where: { id: u.studentA.id } })).telegramChatId, null, "a forged token links nobody");
+    const borrowed = telegramLinkToken(u.studentA.id).replace(u.studentA.id, hw.studentId);
+    await hook("test-webhook-secret", `/start ${borrowed}`);
+    assert.equal((await prisma.user.findUnique({ where: { id: hw.studentId } })).telegramChatId, null, "one student's signature doesn't work for another");
+    await hook("test-webhook-secret", `/start ${token}`, "group", -100);
+    assert.equal((await prisma.user.findUnique({ where: { id: hw.studentId } })).telegramChatId, null, "groups are ignored");
+
+    assert.equal((await hook("test-webhook-secret", `/start ${token}`)).status, 200);
+    const linked = await prisma.user.findUnique({ where: { id: hw.studentId } });
+    assert.equal(linked.telegramChatId, "555");
+    assert.ok(linked.telegramLinkedAt);
+    const replies = (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "555");
+    assert.ok(replies.some((entry) => entry.body.text.includes("ulandingiz")), "the student gets a confirmation");
+  });
+
+  test("Telegram reminders: settings are the teacher's own; the Saturday job messages a student who is behind once per week", async () => {
+    const settings = (session, json) => call("PUT", "/api/management/homework/reminders", { session, json });
+    assert.equal((await settings(studentA, { enabled: true, text: "x" })).status, 403);
+    assert.equal((await settings(teacherA, { workspace: "teacher", enabled: "yes", text: "x" })).status, 400);
+    assert.equal((await settings(teacherA, { workspace: "teacher", enabled: true, text: "" })).status, 400);
+    const saved = await settings(teacherA, { workspace: "teacher", enabled: true, text: "Salom {name}, 3 ta vazifa kerak edi." });
+    assert.equal(saved.status, 200, saved.text);
+    assert.equal((await prisma.instructor.findFirst({ where: { userId: u.teacherB.id } })).reminderEnabled, false, "another teacher is untouched");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "homework.reminder.settings", actorId: u.teacherA.id } }));
+
+    // Week 1 (10 days ago … 4 days ago) had no hand-ins: the student is behind.
+    await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${addDays(today, -10)}T00:00:00.000Z`) } });
+    const isMine = (entry) => entry.path.endsWith("/sendMessage") && typeof entry.body?.text === "string" && entry.body.text.startsWith("Salom Homework Student");
+    try {
+      const cron = (headers, query = "?anyday=1") => call("GET", `/api/cron/homework-reminders${query}`, { headers });
+      assert.equal((await cron({})).status, 401);
+      assert.equal((await cron({ authorization: "Bearer wrong" })).status, 401);
+      if (new Date(`${today}T00:00:00Z`).getUTCDay() !== 6) {
+        const normal = await cron({ authorization: "Bearer test-cron-secret" }, "");
+        assert.equal(normal.status, 200, normal.text);
+        assert.equal(normal.data.skipped, "not-saturday");
+      }
+
+      const sentBefore = (await storageLog()).filter(isMine).length;
+      const first = await cron({ authorization: "Bearer test-cron-secret" });
+      assert.equal(first.status, 200, first.text);
+      assert.ok(first.data.sent >= 1, first.text);
+      const again = await cron({ authorization: "Bearer test-cron-secret" });
+      assert.ok(again.data.alreadySent >= 1, again.text);
+      const messages = (await storageLog()).filter(isMine);
+      assert.equal(messages.length - sentBefore, 1, "exactly one message for that week, even after two runs");
+      assert.equal(String(messages.at(-1).body.chat_id), "555");
+      const row = await prisma.homeworkReminder.findFirst({ where: { enrollmentId: hw.enrollmentId } });
+      assert.equal(row.status, "SENT");
+      assert.equal(row.handedIn, 0);
+      assert.equal(row.required, 3);
+
+      // "Send now" respects the same once-per-week rule and the teacher's scope.
+      const now = await post("/api/management/homework/reminders/send", { session: teacherA, json: { workspace: "teacher" } });
+      assert.equal(now.status, 200, now.text);
+      assert.equal(now.data.summary.sent, 0);
+      assert.equal((await post("/api/management/homework/reminders/send", { session: studentA, json: {} })).status, 403);
+      const otherTeacher = await post("/api/management/homework/reminders/send", { session: teacherB, json: { workspace: "teacher" } });
+      assert.equal(otherTeacher.status, 200, otherTeacher.text);
+      assert.equal((await storageLog()).filter(isMine).length, messages.length, "another teacher can't message my student");
+
+      // A student who blocked the bot: recorded as failed and shown as not connected again.
+      await prisma.homeworkReminder.deleteMany({ where: { enrollmentId: hw.enrollmentId } });
+      await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: "blocked" } });
+      const blocked = await post("/api/management/homework/reminders/send", { session: teacherA, json: { workspace: "teacher" } });
+      assert.equal(blocked.data.summary.failed, 1, blocked.text);
+      assert.equal((await prisma.user.findUnique({ where: { id: hw.studentId } })).telegramChatId, null);
+      assert.equal((await prisma.homeworkReminder.findFirst({ where: { enrollmentId: hw.enrollmentId } })).status, "FAILED");
+
+      const page = await get("/teacher/assistant?tab=auto", { session: teacherA });
+      assert.equal(page.status, 200);
+      assert.ok(page.text.includes("Homework Student"), "the tab lists the student");
+      assert.ok(page.text.includes("t.me/era_test_bot?start="), "with an invite link");
+      assert.ok(!page.text.includes("test-bot-token-123") && !page.text.includes("test-cron-secret") && !page.text.includes("test-webhook-secret"), "no secrets in the page");
+      const otherPage = await get("/teacher/assistant?tab=auto", { session: teacherB });
+      assert.ok(!otherPage.text.includes("Homework Student"), "another teacher doesn't see my students");
+    } finally {
+      await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${today}T00:00:00.000Z`) } });
+      await prisma.instructor.updateMany({ where: { userId: u.teacherA.id }, data: { reminderEnabled: false } });
+    }
   });
 });
 
