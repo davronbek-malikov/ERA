@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getT } from "@/lib/i18n-server";
 import { telegramUrl } from "@/lib/student-contact";
 import type { ManagementActor } from "@/server/management/actor";
-import { todayInPlatform } from "@/server/management/time";
+import { todayInPlatform, utcToPlatform } from "@/server/management/time";
 import { DEFAULT_HOMEWORK_TEXT, getMessagesOverview } from "@/server/telegram/messages";
 
 /** ERA Assistant → Messages: Telegram messages from the teacher to their students. */
@@ -54,6 +54,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
             <MessageComposer
               students={data.students.map((student) => ({ id: student.id, name: student.name, linked: student.linked, behind: student.behind }))}
               today={todayInPlatform()}
+              nowTime={utcToPlatform(new Date()).time}
               defaultText={DEFAULT_HOMEWORK_TEXT}
               perWeek={data.perWeek}
               ruleEnabled={data.ruleEnabled}

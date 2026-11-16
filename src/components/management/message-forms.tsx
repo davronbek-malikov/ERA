@@ -9,14 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { CalendarPicker, ScheduleSummary, TimePicker, WEEKDAYS, WeekdayPicker, useDateLabel } from "@/components/management/schedule-pickers";
 
 /* ERA Assistant → Messages: compose a Telegram message (who / what / when). Server: src/server/telegram/messages.ts */
 
-export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export { WEEKDAYS } from "@/components/management/schedule-pickers";
 
 type Student = { id: string; name: string; linked: boolean; behind: { week: number; count: number; required: number } | null };
 type Audience = "ALL" | "BEHIND" | "SELECTED";
@@ -44,7 +44,7 @@ function Choice<T extends string>({ value, current, onChange, icon, label, hint 
   );
 }
 
-export function MessageComposer({ students, today, defaultText, perWeek, ruleEnabled, disabled }: { students: Student[]; today: string; defaultText: string; perWeek: number; ruleEnabled: boolean; disabled?: boolean }) {
+export function MessageComposer({ students, today, nowTime, defaultText, perWeek, ruleEnabled, disabled }: { students: Student[]; today: string; nowTime: string; defaultText: string; perWeek: number; ruleEnabled: boolean; disabled?: boolean }) {
   const T = useT();
   const { run, pending } = useManagementMutation();
   const [text, setText] = React.useState("");
@@ -52,9 +52,11 @@ export function MessageComposer({ students, today, defaultText, perWeek, ruleEna
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [query, setQuery] = React.useState("");
   const [when, setWhen] = React.useState<When>("NOW");
-  const [date, setDate] = React.useState(today);
+  // Default to the next 10:00 that is still ahead (today, or tomorrow once 10:00 has passed).
+  const [date, setDate] = React.useState(() => (nowTime < "09:55" ? today : new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)));
   const [time, setTime] = React.useState("10:00");
-  const [weekday, setWeekday] = React.useState("6");
+  const [weekday, setWeekday] = React.useState(6);
+  const dateLabel = useDateLabel();
 
   const behindCount = students.filter((student) => student.behind).length;
   const recipients = audience === "ALL" ? students.length : audience === "BEHIND" ? behindCount : selected.size;
@@ -65,7 +67,7 @@ export function MessageComposer({ students, today, defaultText, perWeek, ruleEna
     setText(defaultText);
     setAudience("BEHIND");
     setWhen("WEEKLY");
-    setWeekday("6");
+    setWeekday(6);
     setTime("10:00");
   }
 
@@ -88,7 +90,11 @@ export function MessageComposer({ students, today, defaultText, perWeek, ruleEna
       toast({ title: T("Choose at least one student."), variant: "error" });
       return;
     }
-    const body = { workspace: "teacher", text, audience, studentIds: [...selected], when, date, time, weekday: Number(weekday) };
+    if (when === "ONCE" && date === today && time <= nowTime) {
+      toast({ title: T("This time has already passed today. Choose a later time."), variant: "error" });
+      return;
+    }
+    const body = { workspace: "teacher", text, audience, studentIds: [...selected], when, date, time, weekday };
     const result = (await run("/api/management/telegram/messages", "POST", body, when === "NOW" ? "Message processed." : "Message scheduled.")) as {
       summary?: { sent: number; failed: number; notConnected: number } | null;
     } | null;
@@ -185,23 +191,32 @@ export function MessageComposer({ students, today, defaultText, perWeek, ruleEna
           <Choice value="WEEKLY" current={when} onChange={setWhen} icon={<Repeat />} label={T("Every week")} />
         </div>
         {when === "ONCE" ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Input type="date" value={date} min={today} onChange={(event) => setDate(event.target.value)} className="w-auto" aria-label={T("Date")} required />
-            <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="w-auto" aria-label={T("Time")} required />
-            <span className="text-xs text-muted-foreground">{T("Seoul time")}</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="flex-1">
+                <CalendarPicker value={date} min={today} onChange={setDate} />
+              </div>
+              <TimePicker value={time} onChange={setTime} notBefore={date === today ? nowTime : null} />
+            </div>
+            <ScheduleSummary
+              text={T("Sends on {date} at {time}", { date: dateLabel(date), time })}
+              warning={date === today && time <= nowTime ? T("This time has already passed today. Choose a later time.") : null}
+              note={(() => {
+                const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+                return days === 0 ? T("Today") : days === 1 ? T("Tomorrow") : T("In {count} days", { count: days });
+              })()}
+            />
           </div>
         ) : null}
         {when === "WEEKLY" ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={weekday} onChange={(event) => setWeekday(event.target.value)} className="w-auto" aria-label={T("Day")}>
-              {WEEKDAYS.map((day, index) => (
-                <option key={day} value={String(index)}>
-                  {T(day)}
-                </option>
-              ))}
-            </Select>
-            <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="w-auto" aria-label={T("Time")} required />
-            <span className="text-xs text-muted-foreground">{T("Seoul time")}</span>
+          <div className="flex flex-col gap-3">
+            <WeekdayPicker value={weekday} onChange={setWeekday} />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <TimePicker value={time} onChange={setTime} />
+              <div className="flex-1">
+                <ScheduleSummary text={T("Every {day} at {time}", { day: T(WEEKDAYS[weekday]), time })} />
+              </div>
+            </div>
           </div>
         ) : null}
       </section>
