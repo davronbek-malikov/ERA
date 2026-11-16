@@ -25,6 +25,7 @@ import {
 import { isSafeHttpUrl } from "@/lib/validation";
 import { AuthzError, requireTeacherCourseOwnership, type AuthUser } from "@/server/authz";
 import { bucketForStoragePath, deleteStorageObject } from "@/server/storage";
+import { grantStarterPermissions } from "@/server/management/teacher-permissions";
 import { normalizeList, slugify } from "@/lib/slugs";
 
 async function createUniqueCourseSlug(title: string) {
@@ -799,7 +800,7 @@ export async function createInstructorAction(formData: FormData) {
 }
 
 export async function createUserAction(formData: FormData) {
-  await requireAdminUser("/admin/users");
+  const adminUser = await requireAdminUser("/admin/users");
   const name = asString(formData, "name");
   const email = asString(formData, "email");
   const phone = normalizePhone(asString(formData, "phone"));
@@ -853,6 +854,18 @@ export async function createUserAction(formData: FormData) {
           }
         });
       }
+
+      // Every teacher account gets its own teacher profile (their students, courses, homework and messages
+      // hang off it). Without one the Teacher Workspace would be empty and locked.
+      const linked = await prisma.instructor.findUnique({ where: { userId: user.id }, select: { id: true } });
+      const emailTaken = await prisma.instructor.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } });
+      const profile =
+        linked ??
+        (await prisma.instructor.create({
+          data: { name, slug: await createUniqueInstructorSlug(name), email: emailTaken ? null : email.toLowerCase(), userId: user.id },
+          select: { id: true }
+        }));
+      await grantStarterPermissions(profile.id, adminUser?.id ?? null);
     }
   } catch (error) {
     handleDatabaseError(error, "/admin/users");

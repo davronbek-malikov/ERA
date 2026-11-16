@@ -11,7 +11,7 @@ import { after, describe, test } from "node:test";
 
 import { PrismaClient } from "@prisma/client";
 
-import { anonymous, as, call, fx, get, post, storageLog, telegramLinkToken } from "./helpers.mjs";
+import { actionWithFields, anonymous, as, call, fx, get, invokeAction, post, storageLog, telegramLinkToken } from "./helpers.mjs";
 
 const prisma = new PrismaClient();
 after(() => prisma.$disconnect());
@@ -796,5 +796,50 @@ describe("Students without email, Telegram contact, course order", () => {
     assert.deepEqual(after.map((course) => course.id), reversed);
     assert.equal((await call("PUT", "/api/management/courses/order", { session: teacherA, json: { workspace: "teacher", courseIds: [...reversed, c.courseB.id] } })).status, 404);
     assert.equal((await call("PUT", "/api/management/courses/order", { session: studentA, json: { courseIds: reversed } })).status, 403);
+  });
+});
+
+describe("A new teacher works on their own right away (multi-teacher)", () => {
+  test("admin creates a teacher account → own profile, starter permissions, own students only, signed Telegram messages", async () => {
+    const usersHtml = (await get("/admin/users", { session: admin })).text;
+    const actionId = actionWithFields(usersHtml, ["name", "email", "password", "role"]);
+    assert.ok(actionId, "the create-user form exists");
+    const email = `new-teacher-${randomUUID().slice(0, 8)}@security.test`;
+    await invokeAction("/admin/users", actionId, { name: "Nodira Opa", email, password: "Password123!", role: "INSTRUCTOR", status: "ACTIVE" }, admin);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    assert.equal(user?.role, "INSTRUCTOR");
+    const profile = await prisma.instructor.findUnique({ where: { userId: user.id }, include: { permissions: true } });
+    assert.ok(profile, "a teacher profile is created and linked");
+    assert.equal(profile.permissions?.canManageEnrollments, true, "can add and enroll students");
+    assert.equal(profile.permissions?.canRecordPayments, true, "can record payments");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "permission.starter", entityId: profile.id } }));
+
+    const nodira = as({ id: user.id, role: "INSTRUCTOR", name: "Nodira Opa", email });
+    const course = await post("/api/management/courses", { session: nodira, json: { workspace: "teacher", title: "Nodira Python", durationWeeks: 4, lessons: [{ title: "Kirish", homework: "Hello world" }] } });
+    assert.equal(course.status, 201, course.text);
+    const student = await post("/api/management/students", {
+      session: nodira,
+      json: { workspace: "teacher", name: "Nodira Student", telegram: "@nodira_student", courseId: course.data.courseId, startDate: today, priceAmount: 300000 }
+    });
+    assert.equal(student.status, 201, student.text);
+    const enrollmentId = student.data.enrollment.enrollmentId;
+    const paid = await recordPayment(nodira, { workspace: "teacher", enrollmentId, kind: "PAYMENT", amount: 300000, currency: "KRW", method: "CASH", transactionDate: today, idempotencyKey: randomUUID() });
+    assert.equal(paid.status, 201, paid.text);
+    assert.equal((await decide(nodira, paid.data.transaction.id, { workspace: "teacher", decision: "approve" })).status, 200, "approves money for their own student");
+
+    // Isolation both ways.
+    const mine = await get("/teacher/my-students", { session: nodira });
+    assert.ok(mine.text.includes("Nodira Student") && !mine.text.includes("Homework Student"), "sees only their own students");
+    assert.ok(!(await get("/teacher/my-students", { session: teacherA })).text.includes("Nodira Student"), "others don't see theirs");
+    assert.equal((await post("/api/management/telegram/messages", { session: nodira, json: { workspace: "teacher", text: "x", audience: "SELECTED", studentIds: [u.studentA.id], when: "NOW" } })).status, 404);
+
+    // Telegram: one shared bot, every message signed with the teacher's name.
+    await prisma.user.update({ where: { id: student.data.student.id }, data: { telegramChatId: "777" } });
+    const sent = await post("/api/management/telegram/messages", { session: nodira, json: { workspace: "teacher", text: "Salom {name}", audience: "ALL", when: "NOW" } });
+    assert.equal(sent.status, 201, sent.text);
+    assert.equal(sent.data.summary.sent, 1);
+    const message = (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "777").at(-1);
+    assert.equal(message.body.text, "Salom Nodira Student\n\n— Nodira Opa, ERA Academy");
   });
 });

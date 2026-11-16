@@ -175,7 +175,12 @@ async function claimDelivery(messageId: string, studentId: string, runKey: strin
 }
 
 async function deliver(message: { id: string; instructorId: string; text: string; audience: string; studentIds: string[] }, runKey: string): Promise<DeliverySummary> {
-  const students = await scopedStudents(message.instructorId);
+  const [students, teacher] = await Promise.all([
+    scopedStudents(message.instructorId),
+    prisma.instructor.findUnique({ where: { id: message.instructorId }, select: { name: true } })
+  ]);
+  // One bot serves every teacher: sign each message so the student knows who wrote it.
+  const signature = teacher?.name ? `\n\n— ${teacher.name}, ERA Academy` : "";
   const recipients = recipientsFor(message.audience, message.studentIds, students);
   const summary: DeliverySummary = { recipients: recipients.length, sent: 0, failed: 0, notConnected: 0, skipped: 0 };
 
@@ -190,7 +195,7 @@ async function deliver(message: { id: string; instructorId: string; text: string
       summary.notConnected += 1;
       continue;
     }
-    const result = await sendTelegramMessage(student.chatId, renderText(message.text, student.name));
+    const result = await sendTelegramMessage(student.chatId, `${renderText(message.text, student.name)}${signature}`);
     await prisma.telegramDelivery.update({
       where: { id: deliveryId },
       data: result.ok ? { status: "SENT", sentAt: new Date(), error: null } : { status: "FAILED", error: result.error }

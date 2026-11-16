@@ -63,3 +63,36 @@ export async function setTeacherPermissions(actor: ManagementActor, instructorId
     return permissions;
   });
 }
+
+/**
+ * A brand-new teacher account can run their own class right away: add students and enroll them, record and
+ * approve payments, and manage access, always only for THEIR OWN students (Enrollment.instructorId).
+ * Administrators can narrow this at any time in Student management → Teacher permissions.
+ * Only creates the row when the teacher has none, so it never overrides an administrator's choice.
+ */
+export const STARTER_TEACHER_PERMISSIONS: TeacherPermissions = {
+  viewPayments: true,
+  recordPayments: true,
+  approvePayments: true,
+  manageEnrollments: true,
+  manageAccess: true
+};
+
+export async function grantStarterPermissions(instructorId: string, adminId: string | null) {
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.instructorPermission.findUnique({ where: { instructorId } });
+    if (existing) return;
+    const saved = await tx.instructorPermission.create({
+      data: {
+        instructorId,
+        canViewPayments: STARTER_TEACHER_PERMISSIONS.viewPayments,
+        canRecordPayments: STARTER_TEACHER_PERMISSIONS.recordPayments,
+        canApprovePayments: STARTER_TEACHER_PERMISSIONS.approvePayments,
+        canManageEnrollments: STARTER_TEACHER_PERMISSIONS.manageEnrollments,
+        canManageAccess: STARTER_TEACHER_PERMISSIONS.manageAccess,
+        updatedById: adminId
+      }
+    });
+    await writeAudit(tx, { actorId: adminId, action: "permission.starter", entityType: "permission", entityId: instructorId, after: saved, source: "MANUAL" });
+  });
+}
