@@ -65,6 +65,10 @@ const env = {
   TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
   TELEGRAM_API_BASE: `http://127.0.0.1:${STORAGE_PORT}`,
   CRON_SECRET: "test-cron-secret",
+  // Teachers' own Telegram numbers (MTProto) → the fake server too (only honoured with ERA_SECURITY_TEST=1).
+  TELEGRAM_API_ID: "1",
+  TELEGRAM_API_HASH: "test-api-hash",
+  TELEGRAM_ACCOUNT_FAKE_URL: `http://127.0.0.1:${STORAGE_PORT}`,
   SECURITY_BASE_URL: `http://localhost:${APP_PORT}`,
   SECURITY_STORAGE_URL: `http://127.0.0.1:${STORAGE_PORT}`,
   SECURITY_AUTH_SECRET: AUTH_SECRET

@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle2, CircleAlert, History, Link2, PenLine, Repeat } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleAlert, History, Link2, PenLine, Repeat, Smartphone, Sunrise } from "lucide-react";
 
 import { CopyInviteButton, MessageComposer, MessagePlanActions, WEEKDAYS } from "@/components/management/message-forms";
 import { Badge } from "@/components/ui/badge";
@@ -8,11 +8,13 @@ import { telegramUrl } from "@/lib/student-contact";
 import type { ManagementActor } from "@/server/management/actor";
 import { todayInPlatform, utcToPlatform } from "@/server/management/time";
 import { DEFAULT_HOMEWORK_TEXT, getMessagesOverview } from "@/server/telegram/messages";
+import { getAccountStatus } from "@/server/telegram/account";
+import { TelegramAccountCard } from "@/components/management/telegram-account-card";
 
 /** ERA Assistant → Messages: Telegram messages from the teacher to their students. */
 export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
   const T = await getT();
-  const data = await getMessagesOverview(actor);
+  const [data, account] = await Promise.all([getMessagesOverview(actor), getAccountStatus(actor)]);
   const connected = data.students.filter((student) => student.linked).length;
   const setupMissing = !data.setup.botConfigured || !data.setup.webhookConfigured || !data.setup.cronConfigured;
   const audienceLabel = (plan: (typeof data.plans)[number]) =>
@@ -41,6 +43,19 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
         </div>
       ) : null}
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Smartphone className="size-5 text-primary" aria-hidden="true" />
+            {T("Send from my own Telegram number")}
+          </CardTitle>
+          <CardDescription>{T("Students receive messages from you, in your normal chat. If your number can't reach a student, the ERA bot is used instead.")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TelegramAccountCard account={account} />
+        </CardContent>
+      </Card>
+
       <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_1fr]">
         <Card>
           <CardHeader>
@@ -58,6 +73,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
               defaultText={DEFAULT_HOMEWORK_TEXT}
               perWeek={data.perWeek}
               ruleEnabled={data.ruleEnabled}
+              accountConnected={account.status === "CONNECTED"}
               disabled={!data.editable}
             />
           </CardContent>
@@ -92,9 +108,22 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                               {plan.sendAt ? `${plan.sendAt.date} ${plan.sendAt.time}` : ""}
                             </Badge>
                           )}
-                          {finished ? (
-                            <Badge variant="success">{T("Sent ({count})", { count: plan.sentCount })}</Badge>
-                          ) : plan.active ? (
+                          {plan.pacing === "SPREAD" ? (
+                            <Badge variant="outline">
+                              <Sunrise className="size-3" aria-hidden="true" />
+                              {plan.windowStart}–{plan.windowEnd}
+                            </Badge>
+                          ) : null}
+                          {plan.progress && (plan.progress.waiting > 0 || plan.progress.paused > 0) ? (
+                            <Badge variant="warning">
+                              {plan.progress.next
+                                ? T("{sent} / {total} sent · next {time}", { sent: plan.progress.sent, total: plan.progress.total, time: plan.progress.next.time })
+                                : T("{sent} / {total} sent", { sent: plan.progress.sent, total: plan.progress.total })}
+                            </Badge>
+                          ) : null}
+                          {finished && !(plan.progress && (plan.progress.waiting > 0 || plan.progress.paused > 0)) ? (
+                            <Badge variant="success">{T("Sent ({count})", { count: plan.progress?.sent ?? 0 })}</Badge>
+                          ) : finished ? null : plan.active ? (
                             <Badge variant="warning">{plan.nextRunAt ? T("Next: {date} {time}", plan.nextRunAt) : T("Waiting")}</Badge>
                           ) : (
                             <Badge variant="neutral">{T("Paused")}</Badge>
@@ -102,7 +131,11 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                           <Badge variant="outline">{audienceLabel(plan)}</Badge>
                         </div>
                         <p className="line-clamp-2 text-muted-foreground">{plan.text}</p>
-                        <MessagePlanActions id={plan.id} active={plan.active} canResume={plan.schedule === "WEEKLY"} />
+                        <MessagePlanActions
+                          id={plan.id}
+                          active={plan.active || Boolean(plan.progress && plan.progress.waiting > 0)}
+                          canResume={plan.schedule === "WEEKLY" || Boolean(plan.progress && plan.progress.paused > 0)}
+                        />
                       </li>
                     );
                   })}
@@ -131,6 +164,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                       </span>
                       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                         {row.at.date} {row.at.time}
+                        {row.status === "SENT" ? <span title={row.via === "ACCOUNT" ? T("From your number") : T("Through the ERA bot")}>{row.via === "ACCOUNT" ? "📱" : "🤖"}</span> : null}
                         <Badge
                           variant={row.status === "SENT" ? "success" : row.status === "FAILED" ? "error" : "neutral"}
                           title={row.error ?? undefined}
@@ -154,7 +188,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
             {T("Telegram connection ({connected}/{total})", { connected, total: data.students.length })}
           </CardTitle>
           <CardDescription>
-            {T("A Telegram bot can only write to students who pressed Start once. Send each student their personal link; after they press Start they show as connected.")}
+            {T("Backup through the ERA bot: it can only write to students who pressed Start once. Not needed when your own number reaches the student; useful for students saved only by phone number.")}
           </CardDescription>
         </CardHeader>
         <CardContent>

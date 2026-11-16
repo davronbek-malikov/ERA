@@ -10,6 +10,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Lets the security test runner build into its own folder without touching the dev server's `.next`.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // GramJS (teachers' own Telegram accounts) runs on the server only, with Node sockets: never bundle it.
+  serverExternalPackages: ["telegram"],
   images: {
     remotePatterns: [
       {

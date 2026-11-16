@@ -800,6 +800,7 @@ describe("Students without email, Telegram contact, course order", () => {
 });
 
 describe("A new teacher works on their own right away (multi-teacher)", () => {
+  const nt = {};
   test("admin creates a teacher account → own profile, starter permissions, own students only, signed Telegram messages", async () => {
     const usersHtml = (await get("/admin/users", { session: admin })).text;
     const actionId = actionWithFields(usersHtml, ["name", "email", "password", "role"]);
@@ -816,6 +817,7 @@ describe("A new teacher works on their own right away (multi-teacher)", () => {
     assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "permission.starter", entityId: profile.id } }));
 
     const nodira = as({ id: user.id, role: "INSTRUCTOR", name: "Nodira Opa", email });
+    Object.assign(nt, { session: nodira, instructorId: profile.id });
     const course = await post("/api/management/courses", { session: nodira, json: { workspace: "teacher", title: "Nodira Python", durationWeeks: 4, lessons: [{ title: "Kirish", homework: "Hello world" }] } });
     assert.equal(course.status, 201, course.text);
     const student = await post("/api/management/students", {
@@ -824,6 +826,7 @@ describe("A new teacher works on their own right away (multi-teacher)", () => {
     });
     assert.equal(student.status, 201, student.text);
     const enrollmentId = student.data.enrollment.enrollmentId;
+    Object.assign(nt, { courseId: course.data.courseId, studentId: student.data.student.id });
     const paid = await recordPayment(nodira, { workspace: "teacher", enrollmentId, kind: "PAYMENT", amount: 300000, currency: "KRW", method: "CASH", transactionDate: today, idempotencyKey: randomUUID() });
     assert.equal(paid.status, 201, paid.text);
     assert.equal((await decide(nodira, paid.data.transaction.id, { workspace: "teacher", decision: "approve" })).status, 200, "approves money for their own student");
@@ -841,5 +844,113 @@ describe("A new teacher works on their own right away (multi-teacher)", () => {
     assert.equal(sent.data.summary.sent, 1);
     const message = (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "777").at(-1);
     assert.equal(message.body.text, "Salom Nodira Student\n\n— Nodira Opa, ERA Academy");
+  });
+
+  test("own Telegram number: connect step by step, send from it, fall back to the bot, pace and pause on FLOOD_WAIT", async () => {
+    assert.ok(nt.session, "previous test created the teacher");
+    const account = (session, json) => post("/api/management/telegram/account", { session, json: { workspace: "teacher", ...json } });
+    const create = (json) => post("/api/management/telegram/messages", { session: nt.session, json: { workspace: "teacher", ...json } });
+    const mtproto = async (op) => (await storageLog()).filter((entry) => entry.path === `/mtproto/${op}`);
+    const ready = () => prisma.telegramAccount.update({ where: { instructorId: nt.instructorId }, data: { lastSentAt: null, limitedUntil: null } });
+    const addStudent = async (name, telegram, chatId) => {
+      const created = await post("/api/management/students", { session: nt.session, json: { workspace: "teacher", name, telegram, courseId: nt.courseId, startDate: today, priceAmount: 100000 } });
+      assert.equal(created.status, 201, created.text);
+      if (chatId) await prisma.user.update({ where: { id: created.data.student.id }, data: { telegramChatId: chatId } });
+      return created.data.student.id;
+    };
+
+    // Connecting: only the teacher, validated, phone → code → two-step password.
+    assert.equal((await account(studentA, { step: "phone", phone: "+998901112233" })).status, 403);
+    assert.equal((await account(nt.session, { step: "phone", phone: "12" })).status, 400);
+    assert.equal((await account(nt.session, { step: "phone", phone: "+998900000000" })).status, 400, "Telegram rejects the number");
+    const started = await account(nt.session, { step: "phone", phone: "+998901112233" });
+    assert.equal(started.status, 200, started.text);
+    assert.equal(started.data.status, "CODE_SENT");
+    assert.equal((await account(nt.session, { step: "code", code: "99999" })).status, 400, "wrong code");
+    assert.equal((await account(nt.session, { step: "code", code: "22222" })).data.status, "PASSWORD_NEEDED");
+    assert.equal((await account(nt.session, { step: "password", password: "nope" })).status, 400, "wrong password");
+    const connected = await account(nt.session, { step: "password", password: "secret-pass" });
+    assert.equal(connected.data.status, "CONNECTED", connected.text);
+    const row = await prisma.telegramAccount.findUnique({ where: { instructorId: nt.instructorId } });
+    assert.equal(row.status, "CONNECTED");
+    assert.ok(row.sessionEnc && !row.sessionEnc.includes("live-session-SECRET"), "the login is stored encrypted");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "telegram.account.connect", actorId: (await prisma.instructor.findUnique({ where: { id: nt.instructorId } })).userId } }));
+    const page = await get("/teacher/assistant/messages", { session: nt.session });
+    assert.ok(page.text.includes("nodira_opa") && !page.text.includes("live-session-SECRET") && !page.text.includes(row.sessionEnc), "status shown, login never");
+    assert.equal(await prisma.telegramAccount.count({ where: { instructorId: ins.instructorA } }), 0, "other teachers are unaffected");
+
+    // From the teacher's own number: no bot, no signature.
+    await ready();
+    const own = await create({ text: "Salom {name}", audience: "SELECTED", studentIds: [nt.studentId], when: "NOW", pacing: "FAST" });
+    assert.equal(own.status, 201, own.text);
+    assert.equal(own.data.summary.sent, 1, own.text);
+    const sendCall = (await mtproto("send")).at(-1);
+    assert.equal(sendCall.body.target, "@nodira_student");
+    assert.equal(sendCall.body.text, "Salom Nodira Student", "from the teacher: no bot signature");
+    assert.equal((await prisma.telegramDelivery.findFirst({ where: { messageId: own.data.messageId } })).via, "ACCOUNT");
+
+    // Privacy blocks strangers → the bot takes over (signed).
+    const privateId = await addStudent("Private Student", "@private_user", "778");
+    await ready();
+    const fallback = await create({ text: "Salom {name}", audience: "SELECTED", studentIds: [privateId], when: "NOW", pacing: "FAST" });
+    assert.equal(fallback.data.summary.sent, 1, fallback.text);
+    assert.equal((await prisma.telegramDelivery.findFirst({ where: { messageId: fallback.data.messageId } })).via, "BOT");
+    const botCall = (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "778").at(-1);
+    assert.equal(botCall.body.text, "Salom Private Student\n\n— Nodira Opa, ERA Academy");
+
+    // FAST from an own number: one now, the next after a random 45–110 s gap.
+    await ready();
+    const fast = await create({ text: "Tez {name}", audience: "SELECTED", studentIds: [nt.studentId, privateId], when: "NOW", pacing: "FAST" });
+    assert.equal(fast.data.summary.queued, 1, fast.text);
+    const queued = await prisma.telegramDelivery.findFirst({ where: { messageId: fast.data.messageId, status: "QUEUED" } });
+    const gap = queued.scheduledFor.getTime() - queued.createdAt.getTime();
+    assert.ok(gap >= 44_000 && gap <= 111_000, `random gap ${gap}`);
+    assert.equal((await call("GET", "/api/cron/telegram", { headers: { authorization: "Bearer test-cron-secret" } })).status, 200);
+    assert.equal((await prisma.telegramDelivery.findUnique({ where: { id: queued.id } })).status, "QUEUED", "not before its time");
+
+    // FLOOD_WAIT: the account pauses and the message waits (it does not jump to the bot).
+    const floodId = await addStudent("Flood Student", "@flood_user", "779");
+    await ready();
+    const flood = await create({ text: "Flood {name}", audience: "SELECTED", studentIds: [floodId], when: "NOW", pacing: "FAST" });
+    assert.equal(flood.data.summary.queued, 1, flood.text);
+    const waiting = await prisma.telegramDelivery.findFirst({ where: { messageId: flood.data.messageId } });
+    assert.equal(waiting.status, "QUEUED");
+    assert.ok(waiting.scheduledFor.getTime() >= Date.now() + 290_000, "retried after Telegram's wait");
+    assert.ok((await prisma.telegramAccount.findUnique({ where: { instructorId: nt.instructorId } })).limitedUntil > new Date());
+    assert.ok(!(await storageLog()).some((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "779"), "no bot burst while waiting");
+
+    // SPREAD: random times inside 08:00–17:00 Seoul, never at night, and pausing holds the queue.
+    await ready();
+    const tomorrow = addDays(today, 1);
+    const spread = await create({ text: "Kun {name}", audience: "ALL", when: "ONCE", date: tomorrow, pacing: "SPREAD", windowStart: "08:00", windowEnd: "17:00" });
+    assert.equal(spread.status, 201, spread.text);
+    assert.equal(new Date(spread.data.nextRunAt).toISOString(), new Date(`${addDays(tomorrow, -1)}T23:00:00.000Z`).toISOString(), "08:00 Seoul = 23:00 UTC the day before");
+    await prisma.telegramMessage.update({ where: { id: spread.data.messageId }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+    await call("GET", "/api/cron/telegram", { headers: { authorization: "Bearer test-cron-secret" } });
+    const planned = await prisma.telegramDelivery.findMany({ where: { messageId: spread.data.messageId } });
+    assert.equal(planned.length, 3);
+    for (const delivery of planned) {
+      const minutes = ((delivery.scheduledFor.getUTCHours() + 9) % 24) * 60 + delivery.scheduledFor.getUTCMinutes();
+      assert.ok(minutes >= 8 * 60 && minutes <= 17 * 60, `inside the window: ${delivery.scheduledFor.toISOString()}`);
+    }
+    const plan = `/api/management/telegram/messages/${spread.data.messageId}`;
+    assert.equal((await call("PATCH", plan, { session: nt.session, json: { workspace: "teacher", active: false } })).status, 200);
+    assert.equal(await prisma.telegramDelivery.count({ where: { messageId: spread.data.messageId, status: "QUEUED" } }), 0, "paused");
+    assert.equal((await call("PATCH", plan, { session: teacherA, json: { workspace: "teacher", active: true } })).status, 404, "other teachers can't touch it");
+    assert.equal((await call("PATCH", plan, { session: nt.session, json: { workspace: "teacher", active: true } })).status, 200);
+    assert.ok((await prisma.telegramDelivery.count({ where: { messageId: spread.data.messageId, status: "QUEUED" } })) > 0, "resumed");
+    await prisma.telegramMessage.delete({ where: { id: spread.data.messageId } });
+
+    // The teacher ended the session in Telegram (Settings → Devices): back to the bot, shown as disconnected.
+    const revokeId = await addStudent("Revoke Student", "@revoke_me", null);
+    await ready();
+    const revoked = await create({ text: "x {name}", audience: "SELECTED", studentIds: [revokeId], when: "NOW", pacing: "FAST" });
+    assert.equal(revoked.data.summary.notConnected, 1, revoked.text);
+    assert.equal((await prisma.telegramAccount.findUnique({ where: { instructorId: nt.instructorId } })).status, "DISCONNECTED");
+
+    // Disconnect removes the login.
+    assert.equal((await call("DELETE", "/api/management/telegram/account?workspace=teacher", { session: nt.session })).status, 200);
+    assert.equal(await prisma.telegramAccount.count({ where: { instructorId: nt.instructorId } }), 0);
+    await prisma.telegramMessage.deleteMany({ where: { instructorId: nt.instructorId } });
   });
 });

@@ -26,7 +26,7 @@ export function useManagementMutation() {
         });
         const payload = (await response.json().catch(() => null)) as ({ ok?: boolean; error?: string } & Record<string, unknown>) | null;
         if (!response.ok || !payload?.ok) {
-          toast({ title: payload?.error ?? T("That didn't work. Please try again."), variant: "error" });
+          toast({ title: payload?.error ? T(payload.error) : T("That didn't work. Please try again."), variant: "error" });
           return null;
         }
         toast({ title: T(success), variant: "success" });

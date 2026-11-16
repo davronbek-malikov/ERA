@@ -13,6 +13,9 @@ import { normalizePermissions, NO_PERMISSIONS } from "@/server/management/actor"
 import { parseCreateEnrollment, parseExam, parsePaymentDecision, parseRecordPayment, requireAmount } from "@/server/management/inputs";
 import { approvedTotal, formatMoney, isOverdue, summarizePayments } from "@/server/management/money";
 import { computeHomeworkPace } from "@/server/management/homework-rule";
+import { planSendTimes, shuffle } from "@/server/telegram/pacing";
+import { decryptSession, encryptSession } from "@/server/telegram/session-crypto";
+import { telegramTarget } from "@/server/telegram/messages";
 import { addDays, fromDbDate, isDateString, monthRange, toDbDate, todayInPlatform, weekRange } from "@/server/management/time";
 
 after(() => prisma.$disconnect());
@@ -211,5 +214,61 @@ describe("Weekly homework rule (calendar weeks from each student's start date)",
     const pace = computeHomeworkPace({ ...base, today: "2026-11-10", submittedAt: ["2026-11-08T23:30:00Z"] });
     assert.equal(pace.lastWeek?.count, 0);
     assert.equal(pace.thisWeek?.count, 1);
+  });
+});
+
+describe("Telegram sending plan (random times, never at night)", () => {
+  const seoulMinutes = (date: Date) => ((date.getUTCHours() + 9) % 24) * 60 + date.getUTCMinutes();
+  // 2026-11-16 07:00 Seoul = 2026-11-15 22:00 UTC.
+  const morning = new Date("2026-11-15T22:00:00.000Z");
+  const base = { pacing: "SPREAD" as const, windowStart: "08:00", windowEnd: "17:00", accountConnected: true };
+
+  test("20 students spread over 08:00–17:00: random, ordered, inside the window, at least 2 minutes apart", () => {
+    const times = planSendTimes({ ...base, count: 20, now: morning });
+    assert.equal(times.length, 20);
+    for (const time of times) {
+      assert.ok(seoulMinutes(time) >= 8 * 60 && seoulMinutes(time) <= 17 * 60, time.toISOString());
+      assert.equal(new Date(time.getTime() + 9 * 3600_000).toISOString().slice(0, 10), "2026-11-16", "the same day");
+    }
+    for (let index = 1; index < times.length; index += 1) assert.ok(times[index].getTime() - times[index - 1].getTime() >= 2 * 60_000 - 1000);
+    const gaps = times.slice(1).map((time, index) => time.getTime() - times[index].getTime());
+    assert.ok(new Set(gaps).size > 10, "gaps are irregular");
+    assert.ok(seoulMinutes(times[0]) < 9 * 60 && seoulMinutes(times.at(-1)!) > 16 * 60, "spread over the whole day");
+  });
+
+  test("after the window closes it starts the next morning; too many students continue the next day", () => {
+    const evening = new Date("2026-11-16T10:00:00.000Z"); // 19:00 Seoul
+    const next = planSendTimes({ ...base, count: 5, now: evening });
+    for (const time of next) {
+      assert.equal(new Date(time.getTime() + 9 * 3600_000).toISOString().slice(0, 10), "2026-11-17");
+      assert.ok(seoulMinutes(time) >= 8 * 60 && seoulMinutes(time) <= 17 * 60);
+    }
+    const many = planSendTimes({ ...base, count: 300, now: morning });
+    const days = new Set(many.map((time) => new Date(time.getTime() + 9 * 3600_000).toISOString().slice(0, 10)));
+    assert.ok(days.size >= 2, "overflow goes to the next day");
+    for (const time of many) assert.ok(seoulMinutes(time) >= 8 * 60 && seoulMinutes(time) <= 17 * 60, "never at night");
+  });
+
+  test("FAST: random 45–110 s gaps from an own number; all at once through the bot", () => {
+    const fast = planSendTimes({ ...base, pacing: "FAST", count: 4, now: morning });
+    assert.equal(fast[0].getTime(), morning.getTime());
+    for (let index = 1; index < fast.length; index += 1) {
+      const gap = fast[index].getTime() - fast[index - 1].getTime();
+      assert.ok(gap >= 45_000 && gap <= 110_000, String(gap));
+    }
+    const bot = planSendTimes({ ...base, pacing: "FAST", count: 4, now: morning, accountConnected: false });
+    assert.ok(bot.every((time) => time.getTime() === morning.getTime()));
+    assert.deepEqual(shuffle([1, 2, 3, 4]).sort(), [1, 2, 3, 4]);
+  });
+
+  test("the saved Telegram login is encrypted and tamper-proof; contacts are parsed safely", () => {
+    const sealed = encryptSession("session-string");
+    assert.ok(!sealed.includes("session-string"));
+    assert.equal(decryptSession(sealed), "session-string");
+    assert.equal(decryptSession(sealed.slice(0, -2) + "AA"), null, "tampered");
+    assert.equal(decryptSession("garbage"), null);
+    assert.deepEqual(telegramTarget("@ali_karimov"), { username: "@ali_karimov", phone: null });
+    assert.deepEqual(telegramTarget("+998 90 123 45 67"), { username: null, phone: "+998901234567" });
+    assert.deepEqual(telegramTarget("hello"), { username: null, phone: null });
   });
 });

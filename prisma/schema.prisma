@@ -231,6 +231,7 @@ model Instructor {
   exams               ExamSchedule[]
   permissions         InstructorPermission?
   telegramMessages    TelegramMessage[]
+  telegramAccount     TelegramAccount?
 }
 
 model Subject {
@@ -1152,6 +1153,10 @@ model TelegramMessage {
   /// When the scheduler sends it next; null once a one-time message went out or the plan is paused.
   nextRunAt    DateTime? @map("next_run_at")
   lastRunAt    DateTime? @map("last_run_at")
+  /// FAST (one after another, short random gaps) or SPREAD (random times inside windowStart–windowEnd).
+  pacing       String    @default("FAST")
+  windowStart  String    @default("08:00") @map("window_start")
+  windowEnd    String    @default("17:00") @map("window_end")
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -1166,22 +1171,52 @@ model TelegramMessage {
 
 /// One delivery of a message to one student in one run (unique, so a run never messages a student twice).
 model TelegramDelivery {
-  id        String    @id @default(cuid())
-  messageId String    @map("message_id")
-  studentId String    @map("student_id")
+  id           String    @id @default(cuid())
+  messageId    String    @map("message_id")
+  studentId    String    @map("student_id")
   /// The run: "once" or the scheduled date of a weekly run.
-  runKey    String    @map("run_key")
-  /// SENDING, SENT, FAILED or NOT_CONNECTED.
-  status    String
-  error     String?
-  sentAt    DateTime? @map("sent_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  runKey       String    @map("run_key")
+  /// QUEUED, SENDING, SENT, FAILED or NOT_CONNECTED.
+  status       String
+  /// When this delivery goes out (random time chosen when the run started).
+  scheduledFor DateTime? @map("scheduled_for")
+  /// ACCOUNT (the teacher's own Telegram number) or BOT (ERA bot, fallback).
+  via          String?
+  error        String?
+  sentAt       DateTime? @map("sent_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   message TelegramMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   student User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, studentId, runKey])
   @@index([studentId, createdAt])
+  @@index([status, scheduledFor])
   @@map("telegram_deliveries")
+}
+
+/// A teacher's own Telegram account, so messages go from their number. The login is stored encrypted.
+model TelegramAccount {
+  instructorId   String    @id @map("instructor_id")
+  /// CODE_SENT, PASSWORD_NEEDED, CONNECTED or DISCONNECTED.
+  status         String
+  phone          String
+  /// AES-256-GCM encrypted session (a full login: never sent to the browser).
+  sessionEnc     String?   @map("session_enc")
+  phoneCodeHash  String?   @map("phone_code_hash")
+  telegramUserId String?   @map("telegram_user_id")
+  displayName    String?   @map("display_name")
+  username       String?
+  /// Telegram asked us to slow down (FLOOD_WAIT / PEER_FLOOD): no sending from the account until then.
+  limitedUntil   DateTime? @map("limited_until")
+  lastSentAt     DateTime? @map("last_sent_at")
+  lastError      String?   @map("last_error")
+  connectedAt    DateTime? @map("connected_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  instructor Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@map("telegram_accounts")
 }

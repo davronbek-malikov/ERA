@@ -44,6 +44,36 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
         return res.end();
       }
     }
+    // Telegram user-account (MTProto) stand-in for teachers' own numbers. Magic values drive each outcome.
+    if (url.pathname.startsWith("/mtproto/") && req.method === "POST") {
+      const input = entry.body ?? {};
+      const LIVE = "live-session-SECRET";
+      const user = { id: "4242", username: "nodira_opa", name: "Nodira Opa" };
+      switch (url.pathname.slice("/mtproto/".length)) {
+        case "sendCode":
+          return send(res, 200, String(input.phone).endsWith("0000") ? { error: "PHONE_NUMBER_INVALID" } : { session: "pending-session", phoneCodeHash: "hash-1" });
+        case "signIn":
+          if (input.code === "11111") return send(res, 200, { session: LIVE, user });
+          if (input.code === "22222") return send(res, 200, { session: "pending-2fa-session", passwordNeeded: true });
+          return send(res, 200, { error: "PHONE_CODE_INVALID" });
+        case "password":
+          return send(res, 200, input.password === "secret-pass" ? { session: LIVE, user } : { error: "PASSWORD_HASH_INVALID" });
+        case "send": {
+          if (input.session !== LIVE) return send(res, 200, { error: "AUTH_KEY_UNREGISTERED" });
+          const outcomes = {
+            "@flood_user": { error: "FLOOD_WAIT", seconds: 300 },
+            "@private_user": { error: "USER_PRIVACY_RESTRICTED" },
+            "@revoke_me": { error: "SESSION_REVOKED" },
+            "@peer_flood": { error: "PEER_FLOOD" }
+          };
+          return send(res, 200, outcomes[input.target] ?? { ok: true });
+        }
+        case "logout":
+          return send(res, 200, { ok: true });
+        default:
+          return send(res, 404, { error: "unknown" });
+      }
+    }
     // Telegram Bot API stand-in (homework reminders): chat "blocked" behaves like a user who blocked the bot.
     if (/^\/bot[^/]+\/sendMessage$/.test(url.pathname) && req.method === "POST") {
       const message = entry.body ?? {};

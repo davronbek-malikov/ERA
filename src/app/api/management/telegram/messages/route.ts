@@ -10,3 +10,4 @@ import { createMessage, parseMessageInput } from "@/server/telegram/messages";
 export async function POST(request: NextRequest) {
   return handleManagementMutation(request, async ({ actor, body }) => createMessage(actor, parseMessageInput(body)), { status: 201 });
 }
+export const maxDuration = 60;

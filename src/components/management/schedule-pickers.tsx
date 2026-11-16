@@ -61,7 +61,7 @@ export function CalendarPicker({ value, min, onChange }: { value: string; min: s
   const canGoBack = month > min.slice(0, 7);
 
   return (
-    <div className="w-full rounded-xl border border-border bg-card p-3">
+    <div className="w-full max-w-sm rounded-xl border border-border bg-card p-3">
       <div className="mb-2 flex items-center justify-between">
         <button type="button" onClick={() => shift(-1)} disabled={!canGoBack} className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-30" aria-label={T("Previous month")}>
           <ChevronLeft className="size-4" />
