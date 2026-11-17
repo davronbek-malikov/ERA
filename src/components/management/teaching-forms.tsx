@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, BookPlus, CalendarCheck, CheckCircle2, ClipboardCheck, ListPlus, PencilLine, Search, UserCheck, UserMinus, UserPlus } from "lucide-react";
+import { ArrowDown, ArrowUp, BookPlus, CalendarCheck, CheckCircle2, ClipboardCheck, Flag, ListPlus, PencilLine, RotateCcw, Search, UserCheck, UserMinus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
@@ -565,5 +565,64 @@ export function HomeworkRuleButton({ workspace, enabled, perWeek }: { workspace:
         <Input id="homework-per-week" name="perWeek" type="number" min={1} max={20} defaultValue={perWeek} required />
       </Field>
     </FormDialog>
+  );
+}
+
+/** The teacher's final exam result for one course: not set / passed / failed. */
+export function ExamResultControl({ enrollmentId, workspace, result }: { enrollmentId: string; workspace: Workspace; result: "PASSED" | "FAILED" | null }) {
+  const T = useT();
+  const { run, pending } = useManagementMutation();
+  const options: Array<{ value: "PASSED" | "FAILED" | null; label: string; active: string }> = [
+    { value: null, label: T("Not set"), active: "bg-card text-foreground shadow-soft" },
+    { value: "PASSED", label: T("Exam: passed"), active: "bg-success text-white shadow-soft" },
+    { value: "FAILED", label: T("Exam: failed"), active: "bg-error text-white shadow-soft" }
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="font-medium">{T("Exam result")}:</span>
+      <div role="radiogroup" aria-label={T("Exam result")} className="inline-flex rounded-full border border-border bg-muted/50 p-0.5">
+        {options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            role="radio"
+            aria-checked={result === option.value}
+            disabled={pending || result === option.value}
+            onClick={() => run(`/api/management/enrollments/${enrollmentId}/exam-result`, "PUT", { workspace, result: option.value }, "Exam result saved.")}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${result === option.value ? option.active : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Finish a course (moves to the profile's previous courses), or reopen a finished one. */
+export function CompleteCourseButton({ workspace, enrollmentId, courseTitle, mode }: { workspace: Workspace; enrollmentId: string; courseTitle: string; mode: "complete" | "reopen" }) {
+  const T = useT();
+  const { run, pending } = useManagementMutation();
+  const completing = mode === "complete";
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button size="sm" variant="outline" disabled={pending}>
+          {completing ? <Flag /> : <RotateCcw />}
+          {completing ? T("Finish course") : T("Reopen course")}
+        </Button>
+      }
+      title={completing ? T("Finish {course}?", { course: courseTitle }) : T("Reopen {course}?", { course: courseTitle })}
+      description={
+        completing
+          ? T("The course moves to Previous courses with its homework, payments and history. Use this when the student finished it or moves on to the next course.")
+          : T("The course becomes current again.")
+      }
+      confirmLabel={completing ? T("Finish course") : T("Reopen course")}
+      cancelLabel={T("Cancel")}
+      onConfirm={async () => {
+        await run(`/api/management/enrollments/${enrollmentId}/membership`, "POST", { workspace, action: completing ? "complete" : "restore" }, completing ? "Course finished." : "Course reopened.");
+      }}
+    />
   );
 }

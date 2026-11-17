@@ -250,6 +250,18 @@ describe("Access, Pay Later and course history", () => {
     assert.equal(restored.status, 200, restored.text);
     assert.equal((await lessonContext(ali2Session, l.lessonA1.id)).status, 200, "back in after the teacher returns them");
     assert.equal(enrollmentOf((await profile(admin, m.ali2.id)).profile, c.courseA.id).status, "ACTIVE");
+
+    // Finished the course (moving on): it leaves "current" for Previous courses, can be reopened.
+    assert.equal((await membership(ali2Session, { action: "complete" })).status, 403, "students can't finish courses");
+    const finished = await membership(admin, { action: "complete" });
+    assert.equal(finished.status, 200, finished.text);
+    const p = (await profile(admin, m.ali2.id)).profile;
+    assert.ok(p.history.some((view) => view.id === state.ali2A && view.status === "COMPLETED"), "under previous courses");
+    assert.ok(!p.current.some((view) => view.id === state.ali2A), "no longer current");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "enrollment.complete", entityId: state.ali2A } }));
+    assert.equal((await membership(admin, { action: "complete" })).status, 409, "already finished");
+    assert.equal((await membership(admin, { action: "restore" })).status, 200, "reopened");
+    assert.equal(enrollmentOf((await profile(admin, m.ali2.id)).profile, c.courseA.id).status, "ACTIVE");
   });
 
   test("19. due dates: with the overdue rule on, a passed due date with a balance pauses access", async () => {
@@ -624,6 +636,40 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.equal(p.current.find((item) => item.id === hw.enrollmentId).pace.state, "off");
     assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "homework.rule", actorId: u.teacherA.id } }), "audited");
     assert.equal((await rule(teacherA, { workspace: "teacher", enabled: true, perWeek: 3 })).status, 200);
+  });
+
+  test("Tugallanmagan after the deadline; the teacher records Imtihondan o'tdi / yiqilgan for their own students only", async () => {
+    const url = `/api/management/enrollments/${hw.enrollmentId}/exam-result`;
+    const result = (session, value) => call("PUT", url, { session, json: { workspace: "teacher", result: value } });
+    assert.equal((await result(teacherB, "FAILED")).status, 404, "another teacher's student");
+    assert.equal((await result(studentA, "FAILED")).status, 403);
+    assert.equal((await result(teacherA, "MAYBE")).status, 400);
+
+    const original = await prisma.enrollment.findUnique({ where: { id: hw.enrollmentId }, select: { startDate: true, endDate: true } });
+    try {
+      // The course ended yesterday with homework still missing → incomplete (Tugallanmagan).
+      await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${addDays(today, -30)}T00:00:00.000Z`), endDate: new Date(`${addDays(today, -1)}T00:00:00.000Z`) } });
+      let view = enrollmentOf((await profile(teacherA, hw.studentId, "teacher")).profile, hw.courseId);
+      assert.equal(view.pace.state, "incomplete", JSON.stringify(view.pace));
+      assert.ok(view.pace.done < view.pace.total);
+      const list = await get("/teacher/my-students?status=all", { session: teacherA });
+      assert.ok(list.text.includes("Incomplete or failed the exam"), "banner on My students");
+
+      assert.equal((await result(teacherA, "FAILED")).status, 200);
+      view = enrollmentOf((await profile(teacherA, hw.studentId, "teacher")).profile, hw.courseId);
+      assert.equal(view.pace.state, "exam-failed");
+      assert.equal(view.examResult, "FAILED");
+      assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "enrollment.exam_result", entityId: hw.enrollmentId, actorId: u.teacherA.id } }));
+
+      assert.equal((await result(teacherA, "PASSED")).status, 200);
+      view = enrollmentOf((await profile(teacherA, hw.studentId, "teacher")).profile, hw.courseId);
+      assert.equal(view.pace.state, "exam-passed");
+
+      assert.equal((await result(teacherA, null)).status, 200, "can be cleared");
+      assert.equal((await prisma.enrollment.findUnique({ where: { id: hw.enrollmentId } })).examResult, null);
+    } finally {
+      await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: original.startDate, endDate: original.endDate, examResult: null, examResultAt: null, examResultById: null } });
+    }
   });
 
   test("Telegram: the webhook needs the secret; only a valid personal invite link connects a student", async () => {

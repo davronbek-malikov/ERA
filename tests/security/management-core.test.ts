@@ -215,6 +215,19 @@ describe("Weekly homework rule (calendar weeks from each student's start date)",
     assert.equal(pace.lastWeek?.count, 0);
     assert.equal(pace.thisWeek?.count, 1);
   });
+
+  test("after the deadline: Tugallanmagan (incomplete); the teacher's exam result wins over everything", () => {
+    const over = computeHomeworkPace({ ...base, doneLessons: 6, today: "2026-12-28", submittedAt: [] });
+    assert.equal(over.state, "incomplete");
+    assert.deepEqual([over.done, over.total], [6, 10]);
+    assert.equal(computeHomeworkPace({ ...base, doneLessons: 6, today: "2026-12-27", submittedAt: [] }).state === "incomplete", false, "the last day still counts");
+    assert.equal(computeHomeworkPace({ ...base, ruleEnabled: false, doneLessons: 6, today: "2026-12-28", submittedAt: [] }).state, "incomplete", "shown even with the weekly rule off");
+    assert.equal(computeHomeworkPace({ ...base, status: "COMPLETED", doneLessons: 6, today: "2026-11-20", submittedAt: [] }).state, "incomplete", "closed early");
+    assert.equal(computeHomeworkPace({ ...base, doneLessons: 10, today: "2026-12-28", submittedAt: [] }).state, "exam-ready", "all done is never incomplete");
+    assert.equal(computeHomeworkPace({ ...base, status: "CANCELLED", doneLessons: 2, today: "2026-12-28", submittedAt: [] }).state, "off", "removed students aren't marked");
+    assert.equal(computeHomeworkPace({ ...base, doneLessons: 10, today: "2026-12-28", submittedAt: [], examResult: "FAILED" }).state, "exam-failed");
+    assert.equal(computeHomeworkPace({ ...base, doneLessons: 3, today: "2026-11-10", submittedAt: [], examResult: "PASSED" }).state, "exam-passed");
+  });
 });
 
 describe("Telegram sending plan (random times, never at night)", () => {

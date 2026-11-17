@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { CalendarClock, KeyRound, PencilLine, UserPlus } from "lucide-react";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
@@ -92,7 +93,8 @@ export function CreateEnrollmentButton({
   instructors,
   permissions,
   today,
-  preset
+  preset,
+  finishable
 }: {
   workspace: Workspace;
   courses: CourseOption[];
@@ -100,9 +102,13 @@ export function CreateEnrollmentButton({
   permissions: { viewPayments: boolean; recordPayments: boolean; approvePayments: boolean; manageAccess: boolean };
   today: string;
   preset?: { id: string; name: string };
+  /** The preset student's current courses: offered to be finished when they move on to the next course. */
+  finishable?: Array<{ id: string; title: string }>;
 }) {
   const T = useT();
   const { run } = useManagementMutation();
+  const router = useRouter();
+  const [finish, setFinish] = React.useState<Set<string>>(() => new Set((finishable ?? []).map((item) => item.id)));
   const [key, setKey] = React.useState(newIdempotencyKey);
   const [arrangement, setArrangement] = React.useState("PAY_IN_FULL");
   const [courseId, setCourseId] = React.useState(courses[0]?.id ?? "");
@@ -150,7 +156,18 @@ export function CreateEnrollmentButton({
       },
       "Enrollment created."
     );
-    if (result) setKey(newIdempotencyKey());
+    if (result) {
+      setKey(newIdempotencyKey());
+      // Moving on: the finished courses leave "current" (kept under Previous courses).
+      const done = [...finish].filter((id) => (finishable ?? []).some((item) => item.id === id));
+      for (const id of done) {
+        await fetch(`/api/management/enrollments/${id}/membership`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace, action: "complete" }) }).catch(() => null);
+      }
+      if (done.length) {
+        toast({ title: T("{count} previous course(s) moved to Previous courses.", { count: done.length }), variant: "success" });
+        router.refresh();
+      }
+    }
     return Boolean(result);
   }
 
@@ -168,6 +185,29 @@ export function CreateEnrollmentButton({
       onSubmit={submit}
     >
       <StudentPicker workspace={workspace} preset={preset} />
+      {finishable?.length ? (
+        <fieldset className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <legend className="px-1 text-xs font-semibold">{T("Moving on to the next course?")}</legend>
+          {finishable.map((item) => (
+            <label key={item.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4"
+                checked={finish.has(item.id)}
+                onChange={() =>
+                  setFinish((current) => {
+                    const next = new Set(current);
+                    if (next.has(item.id)) next.delete(item.id);
+                    else next.add(item.id);
+                    return next;
+                  })
+                }
+              />
+              {T("Finish {course} (moves to Previous courses)", { course: item.title })}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field id="enroll-course" label={T("Course")} required>
           <Select id="enroll-course" name="courseId" value={courseId} onChange={(event) => setCourseId(event.target.value)} required>

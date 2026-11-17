@@ -147,3 +147,25 @@ export async function addStudentNote(actor: ManagementActor, input: NoteInput, o
     return note;
   });
 }
+
+export const EXAM_RESULTS = ["PASSED", "FAILED"] as const;
+export type ExamResult = (typeof EXAM_RESULTS)[number];
+
+/**
+ * The teacher's final exam result for one enrollment: PASSED ("Imtihondan o'tdi"), FAILED ("Imtihondan yiqilgan")
+ * or null (not set). Teachers may always record it for their own students (like exams and notes).
+ */
+export async function setExamResult(actor: ManagementActor, enrollmentId: string, result: ExamResult | null, options: ChangeOptions) {
+  assertCan(actor, "exams");
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.enrollment.findFirst({ where: { id: enrollmentId, ...enrollmentScope(actor) }, select: { id: true, examResult: true } });
+    if (!before) throw authErrors.notFound("Enrollment not found.");
+    const after = await tx.enrollment.update({
+      where: { id: before.id },
+      data: { examResult: result, examResultAt: result ? new Date() : null, examResultById: result ? actor.user.id : null },
+      select: { id: true, examResult: true }
+    });
+    await writeAudit(tx, { actorId: actor.user.id, action: "enrollment.exam_result", entityType: "enrollment", entityId: before.id, before: { examResult: before.examResult }, after: { examResult: after.examResult }, source: options.source });
+    return { enrollmentId: after.id, examResult: after.examResult };
+  });
+}

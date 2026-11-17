@@ -1,4 +1,4 @@
-import { GraduationCap, TriangleAlert } from "lucide-react";
+import { Award, CircleSlash, GraduationCap, TriangleAlert, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { getT } from "@/lib/i18n-server";
@@ -87,6 +87,30 @@ export const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Bank trans
 /** Weekly homework rule: red when last week fell short, green "exam ready" when all homework is done. */
 export async function HomeworkPaceBadge({ pace, showProgress = true }: { pace: HomeworkPace; showProgress?: boolean }) {
   const T = await getT();
+  if (pace.state === "exam-failed") {
+    return (
+      <Badge variant="error" className="w-fit gap-1 border-error/40 font-semibold">
+        <XCircle className="size-3.5" aria-hidden="true" />
+        {T("Failed the exam")}
+      </Badge>
+    );
+  }
+  if (pace.state === "exam-passed") {
+    return (
+      <Badge variant="success" className="w-fit gap-1 font-semibold">
+        <Award className="size-3.5" aria-hidden="true" />
+        {T("Passed the exam")}
+      </Badge>
+    );
+  }
+  if (pace.state === "incomplete") {
+    return (
+      <Badge variant="neutral" className="w-fit gap-1 border-foreground/20 bg-foreground/10 font-semibold text-foreground" title={T("The course ended before every homework was done.")}>
+        <CircleSlash className="size-3.5" aria-hidden="true" />
+        {T("Incomplete ({done}/{total})", { done: pace.done, total: pace.total })}
+      </Badge>
+    );
+  }
   if (pace.state === "exam-ready") {
     return (
       <Badge variant="success" className="w-fit gap-1">

@@ -652,6 +652,11 @@ model Enrollment {
   internalNote        String?                @map("internal_note")
   createdById         String?                @map("created_by_id")
 
+  /// The teacher's final exam result: PASSED or FAILED (null = not set). Shown as "Imtihondan o'tdi" / "yiqilgan".
+  examResult     String?   @map("exam_result")
+  examResultAt   DateTime? @map("exam_result_at")
+  examResultById String?   @map("exam_result_by_id")
+
   user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   course          Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
   currentLesson   Lesson?               @relation("EnrollmentCurrentLesson", fields: [currentLessonId], references: [id], onDelete: SetNull)

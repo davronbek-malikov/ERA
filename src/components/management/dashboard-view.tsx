@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, GraduationCap, Search, TriangleAlert, Users } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, CircleSlash, GraduationCap, Search, TriangleAlert, Users } from "lucide-react";
 
 import { AccessBadge, EnrollmentStatusBadge, HomeworkPaceBadge, PaymentStatusBadge } from "@/components/management/badges";
 import { CreateEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
@@ -101,6 +101,7 @@ export async function StudentManagementDashboard({
   ]);
   const behindRows = list.rows.filter((row) => row.pace.state === "behind");
   const examReadyRows = list.rows.filter((row) => row.pace.state === "exam-ready" && row.status === "ACTIVE");
+  const unfinishedRows = list.rows.filter((row) => row.pace.state === "incomplete" || row.pace.state === "exam-failed");
   const showMoney = can(actor, "viewPayments");
   const filtered = Object.entries(params).some(([key, value]) => key !== "page" && key !== "rfrom" && key !== "rto" && value);
 
@@ -356,6 +357,31 @@ export async function StudentManagementDashboard({
                     <Link href={`${profilePath}/${row.student.id}`} className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-card px-2.5 py-1 text-xs font-medium hover:bg-success/10">
                       🎓 {row.student.name}
                       <span className="text-muted-foreground">· {row.course.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+
+        {unfinishedRows.length ? (
+          <div role="status" className="flex gap-3 rounded-xl border border-foreground/20 bg-foreground/5 p-4 text-sm">
+            <CircleSlash className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <p className="font-semibold">{T("Incomplete or failed the exam ({count})", { count: unfinishedRows.length })}</p>
+              <p className="text-muted-foreground">{T("The course deadline passed before all homework was done, or the exam result is Failed.")}</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {unfinishedRows.map((row) => (
+                  <li key={row.id}>
+                    <Link
+                      href={`${profilePath}/${row.student.id}`}
+                      className={`inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs font-medium hover:bg-muted ${row.pace.state === "exam-failed" ? "border-error/40 text-error" : "border-foreground/20"}`}
+                    >
+                      {row.student.name}
+                      <span className="text-muted-foreground">
+                        · {row.pace.state === "exam-failed" ? T("Failed the exam") : T("Incomplete ({done}/{total})", { done: row.pace.done, total: row.pace.total })}
+                      </span>
                     </Link>
                   </li>
                 ))}

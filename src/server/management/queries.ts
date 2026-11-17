@@ -131,7 +131,8 @@ async function toRows(actor: ManagementActor, enrollments: LoadedEnrollment[], t
           perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
           totalLessons: enrollment.course._count.lessons,
           doneLessons: enrollment.homeworkReviews.filter((review) => review.status === "DONE").length,
-          submittedAt: enrollment.homeworkReviews.map((review) => review.submittedAt)
+          submittedAt: enrollment.homeworkReviews.map((review) => review.submittedAt),
+          examResult: enrollment.examResult
         }),
         createdAt: enrollment.createdAt.toISOString()
       };
@@ -381,7 +382,8 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
           perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
           totalLessons: homework.length,
           doneLessons: homework.filter((lesson) => lesson.review?.status === "DONE").length,
-          submittedAt: homework.map((lesson) => lesson.review?.submittedAt ?? null)
+          submittedAt: homework.map((lesson) => lesson.review?.submittedAt ?? null),
+          examResult: enrollment.examResult
         }),
         id: enrollment.id,
         course: enrollment.course,
@@ -390,6 +392,7 @@ export async function getStudentProfile(actor: ManagementActor, studentId: strin
         startDate: fromDbDate(enrollment.startDate),
         endDate: fromDbDate(enrollment.endDate),
         completedAt: enrollment.completedAt?.toISOString() ?? null,
+        examResult: enrollment.examResult,
         progress: enrollment.progress,
         currency: enrollment.currency,
         arrangement: enrollment.paymentArrangement,

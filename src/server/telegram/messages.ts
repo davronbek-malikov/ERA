@@ -150,6 +150,7 @@ async function scopedStudents(instructorId: string, today = todayInPlatform()): 
         status: true,
         startDate: true,
         endDate: true,
+        examResult: true,
         user: { select: { id: true, name: true, telegram: true, telegramChatId: true } },
         course: { select: { title: true, _count: { select: { lessons: true } } } },
         instructor: { select: { homeworkRuleEnabled: true, homeworkPerWeek: true } },
@@ -168,7 +169,8 @@ async function scopedStudents(instructorId: string, today = todayInPlatform()): 
       perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
       totalLessons: enrollment.course._count.lessons,
       doneLessons: enrollment.homeworkReviews.filter((review) => review.status === "DONE").length,
-      submittedAt: enrollment.homeworkReviews.map((review) => review.submittedAt)
+      submittedAt: enrollment.homeworkReviews.map((review) => review.submittedAt),
+      examResult: enrollment.examResult
     });
     const existing = students.get(enrollment.user.id);
     const behind =

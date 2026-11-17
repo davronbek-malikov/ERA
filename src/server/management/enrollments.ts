@@ -364,7 +364,7 @@ export async function changeEnrollmentAccess(actor: ManagementActor, enrollmentI
 export async function setCourseMembership(
   actor: ManagementActor,
   enrollmentId: string,
-  action: "remove" | "restore",
+  action: "remove" | "restore" | "complete",
   reason: string | null,
   options: ChangeOptions
 ) {
@@ -375,6 +375,15 @@ export async function setCourseMembership(
       select: { ...ENROLLMENT_SNAPSHOT_SELECT, user: { select: { name: true } }, course: { select: { title: true } } }
     });
     if (!current) throw authErrors.notFound("Enrollment not found.");
+    if (action === "complete") {
+      // Finished the course (e.g. moving on to the next month): it leaves "current" and goes to the profile's
+      // previous courses with all its homework, payments and history. Access stays as it was (they can revisit).
+      if (current.status !== "ACTIVE") throw conflict("no-change", `${current.course.title} isn't an active course for ${current.user.name}.`);
+      const updated = await tx.enrollment.update({ where: { id: current.id }, data: { status: "COMPLETED", completedAt: new Date() }, select: ENROLLMENT_SNAPSHOT_SELECT });
+      const { user: _user, course: _course, ...before } = current;
+      await writeAudit(tx, { actorId: actor.user.id, action: "enrollment.complete", entityType: "enrollment", entityId: current.id, before: snapshot(before), after: { ...snapshot(updated), reason }, source: options.source });
+      return { enrollmentId: current.id, studentName: current.user.name, courseTitle: current.course.title, status: updated.status };
+    }
     const removing = action === "remove";
     if (removing && current.status === "CANCELLED" && current.accessStatus === "REVOKED") {
       throw conflict("no-change", `${current.user.name} is already removed from ${current.course.title}.`);

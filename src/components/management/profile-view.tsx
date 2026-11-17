@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronRight, ExternalLink, GraduationCap, History, ShieldCheck, StickyNote, TriangleAlert } from "lucide-react";
+import { Award, CalendarDays, ChevronRight, CircleSlash, ExternalLink, GraduationCap, History, ShieldCheck, StickyNote, TriangleAlert, XCircle } from "lucide-react";
 
 import {
   AccessBadge,
@@ -12,7 +12,7 @@ import {
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
 import { PaymentReviewActions, RecordPaymentButton, MarkPaidButton } from "@/components/management/payment-forms";
-import { CourseMembershipButton, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
+import { CompleteCourseButton, CourseMembershipButton, ExamResultControl, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
 import { telegramUrl } from "@/lib/student-contact";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -139,7 +139,10 @@ async function EnrollmentCard({
         {can(actor, "recordPayments") && view.arrangement !== "WAIVED" ? (
           <RecordPaymentButton enrollmentId={view.id} workspace={workspace} today={today} currency={view.currency} />
         ) : null}
-        {can(actor, "manageEnrollments") || can(actor, "manageAccess") ? (
+        {(can(actor, "manageEnrollments") || can(actor, "manageAccess")) && (view.status === "ACTIVE" || view.status === "COMPLETED") ? (
+          <CompleteCourseButton workspace={workspace} enrollmentId={view.id} courseTitle={view.course.title} mode={view.status === "ACTIVE" ? "complete" : "reopen"} />
+        ) : null}
+        {(can(actor, "manageEnrollments") || can(actor, "manageAccess")) && view.status !== "COMPLETED" ? (
           <CourseMembershipButton
             workspace={workspace}
             enrollmentId={view.id}
@@ -260,6 +263,25 @@ async function HomeworkSection({ view, workspace }: { view: EnrollmentView; work
           })}
         </p>
       ) : null}
+      {view.pace.state === "incomplete" ? (
+        <p className="flex items-start gap-2 rounded-lg border border-foreground/20 bg-foreground/5 px-3 py-2 text-xs">
+          <CircleSlash className="mt-px size-4 shrink-0" aria-hidden="true" />
+          {T("Incomplete: the course ended ({date}) with {done} of {total} homeworks done.", { date: formatCalendarDate(view.endDate), done: view.pace.done, total: view.pace.total })}
+        </p>
+      ) : null}
+      {view.pace.state === "exam-failed" ? (
+        <p className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+          <XCircle className="mt-px size-4 shrink-0" aria-hidden="true" />
+          {T("Failed the exam. Homework: {done} of {total} done.", { done: view.pace.done, total: view.pace.total })}
+        </p>
+      ) : null}
+      {view.pace.state === "exam-passed" ? (
+        <p className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+          <Award className="mt-px size-4 shrink-0" aria-hidden="true" />
+          {T("Passed the exam. Congratulations! 🎉")}
+        </p>
+      ) : null}
+      <ExamResultControl enrollmentId={view.id} workspace={workspace} result={(view.examResult as "PASSED" | "FAILED" | null) ?? null} />
       {view.pace.state === "exam-ready" ? (
         <p className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
           <GraduationCap className="mt-px size-4 shrink-0" aria-hidden="true" />
@@ -393,6 +415,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
                 workspace={workspace}
                 today={today}
                 preset={{ id: profile.student.id, name: profile.student.name }}
+                finishable={profile.current.map((view) => ({ id: view.id, title: view.course.title }))}
                 courses={courses.map((course) => ({ id: course.id, title: course.title, instructorId: course.instructorId, instructorName: course.instructor.name }))}
                 instructors={instructors}
                 permissions={actor.permissions}
@@ -407,29 +430,36 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
         )}
       </section>
 
-      <section className="flex flex-col gap-4" aria-label={T("Course history")}>
-        <SectionHeader title={T("Course history")} description={T("Completed, cancelled, expired and transferred enrollments. Each one keeps its own dates and payments.")} />
+      <section className="flex flex-col gap-3" aria-label={T("Previous courses")}>
+        <SectionHeader
+          title={T("Previous courses ({count})", { count: profile.history.length })}
+          description={T("Finished, removed, expired and transferred courses. Open one to see its homework, payments and history.")}
+        />
         {profile.history.length ? (
-          <>
-            <ol className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-              {all
-                .slice()
-                .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))
-                .map((view) => (
-                  <li key={view.id} className="flex flex-wrap items-center gap-2 text-sm">
-                    <History className="size-4 text-muted-foreground" aria-hidden="true" />
-                    <span className="font-medium">{view.course.title}</span>
+          profile.history
+            .slice()
+            .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""))
+            .map((view) => {
+              const done = view.homework.filter((lesson) => lesson.review?.status === "DONE").length;
+              return (
+                <details key={view.id} className="group rounded-xl border border-border bg-card">
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+                    <History className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span className="font-semibold">{view.course.title}</span>
                     <span className="text-muted-foreground">
-                      {formatCalendarDate(view.startDate)} – {formatCalendarDate(view.endDate)}
+                      {formatCalendarDate(view.startDate)} – {formatCalendarDate(view.completedAt ? view.completedAt.slice(0, 10) : view.endDate)}
                     </span>
                     <EnrollmentStatusBadge status={view.status} />
-                  </li>
-                ))}
-            </ol>
-            {profile.history.map((view) => (
-              <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />
-            ))}
-          </>
+                    {view.homework.length ? <Badge variant={done === view.homework.length ? "success" : "neutral"}>{T("{done}/{total} done", { done, total: view.homework.length })}</Badge> : null}
+                    <HomeworkPaceBadge pace={view.pace} showProgress={false} />
+                  </summary>
+                  <div className="border-t border-border p-2 sm:p-3">
+                    <EnrollmentCard view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />
+                  </div>
+                </details>
+              );
+            })
         ) : (
           <p className="text-sm text-muted-foreground">{T("No earlier enrollments.")}</p>
         )}

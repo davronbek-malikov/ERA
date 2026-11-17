@@ -7,12 +7,17 @@ import { addDays, todayInPlatform } from "@/server/management/time";
  *   - "exam-ready" (green): every lesson's homework is checked as done;
  *   - "behind" (red): the last finished week had fewer hand-ins than required;
  *   - "on-track": otherwise, with this week's progress.
+ * After the course: "incomplete" (Tugallanmagan) when the end date passed (or the course was closed) and not every
+ * homework is done. The teacher's exam result wins over everything: "exam-passed" / "exam-failed".
  * Teachers can switch the rule off (Instructor.homeworkRuleEnabled); exam-ready is always shown.
  * Pure function: no database access, easy to test.
  */
 
 export type HomeworkPace = {
-  state: "exam-ready" | "behind" | "on-track" | "off";
+  state: "exam-failed" | "exam-passed" | "incomplete" | "exam-ready" | "behind" | "on-track" | "off";
+  /** Homework done / total lessons (for "incomplete"). */
+  done: number;
+  total: number;
   /** Current week number (1-based) of the student's course, or null before the start / after the end. */
   week: number | null;
   /** The last finished week (the one that is judged). */
@@ -33,6 +38,8 @@ export type PaceInput = {
   doneLessons: number;
   /** When each homework was handed in (any time zone; converted to the platform calendar date). */
   submittedAt: Array<Date | string | null>;
+  /** The teacher's exam result for this enrollment: PASSED, FAILED or none yet. */
+  examResult?: string | null;
 };
 
 function dayDiff(from: string, to: string) {
@@ -42,9 +49,14 @@ function dayDiff(from: string, to: string) {
 export function computeHomeworkPace(input: PaceInput): HomeworkPace {
   const today = input.today ?? todayInPlatform();
   const perWeek = Math.max(1, Math.min(50, Math.trunc(input.perWeek) || 3));
-  const base = { week: null, lastWeek: null, thisWeek: null, perWeek };
+  const base = { week: null, lastWeek: null, thisWeek: null, perWeek, done: input.doneLessons, total: input.totalLessons };
 
+  if (input.examResult === "FAILED") return { ...base, state: "exam-failed" };
+  if (input.examResult === "PASSED") return { ...base, state: "exam-passed" };
   if (input.totalLessons > 0 && input.doneLessons >= input.totalLessons) return { ...base, state: "exam-ready" };
+  // Deadline over (end date passed, or the course was closed) with homework still missing.
+  const courseOver = (input.endDate !== null && today > input.endDate) || input.status === "COMPLETED" || input.status === "EXPIRED";
+  if (courseOver && input.totalLessons > 0 && ["ACTIVE", "COMPLETED", "EXPIRED"].includes(input.status)) return { ...base, state: "incomplete" };
   if (!input.ruleEnabled || input.status !== "ACTIVE" || !input.startDate) return { ...base, state: "off" };
 
   const days = dayDiff(input.startDate, today);
@@ -78,5 +90,5 @@ export function computeHomeworkPace(input: PaceInput): HomeworkPace {
   }
 
   const behind = lastWeek !== null && lastWeek.count < lastWeek.required;
-  return { state: behind ? "behind" : "on-track", week: ended ? null : currentIndex + 1, lastWeek, thisWeek, perWeek };
+  return { state: behind ? "behind" : "on-track", week: ended ? null : currentIndex + 1, lastWeek, thisWeek, perWeek, done: input.doneLessons, total: input.totalLessons };
 }
