@@ -153,6 +153,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                           id={plan.id}
                           active={plan.active || Boolean(plan.progress && plan.progress.waiting > 0)}
                           canResume={plan.schedule === "WEEKLY" || plan.schedule === "STUDENT_WEEK" || Boolean(plan.progress && plan.progress.paused > 0)}
+                          unreached={plan.schedule === "STUDENT_WEEK" ? 0 : (plan.progress?.unreached ?? 0)}
                         />
                       </li>
                     );

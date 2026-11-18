@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, Copy, Pause, Play, Repeat, Search, Send, Sunrise, Trash2, Wand2, Zap } from "lucide-react";
+import { CalendarClock, Check, Copy, Pause, Play, Repeat, RotateCcw, Search, Send, Sunrise, Trash2, Wand2, Zap } from "lucide-react";
 
 import { useT } from "@/components/i18n/locale-provider";
 import { useManagementMutation } from "@/components/management/use-mutation";
@@ -323,12 +323,24 @@ export function MessageComposer({ students, today, nowTime, defaultText, checkin
   );
 }
 
-export function MessagePlanActions({ id, active, canResume }: { id: string; active: boolean; canResume: boolean }) {
+export function MessagePlanActions({ id, active, canResume, unreached = 0 }: { id: string; active: boolean; canResume: boolean; unreached?: number }) {
   const T = useT();
   const { run, pending } = useManagementMutation();
   const url = `/api/management/telegram/messages/${id}`;
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
+      {unreached > 0 ? (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          title={T("Sends it again, with their current Telegram, to the students it didn't reach.")}
+          onClick={() => run(`${url}/retry`, "POST", { workspace: "teacher" }, "Queued again for the students it didn't reach.")}
+        >
+          <RotateCcw />
+          {T("Send again to those not reached ({count})", { count: unreached })}
+        </Button>
+      ) : null}
       {active ? (
         <Button size="sm" variant="outline" disabled={pending} onClick={() => run(url, "PATCH", { workspace: "teacher", active: false }, "Paused.")}>
           <Pause />

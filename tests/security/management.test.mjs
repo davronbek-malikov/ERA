@@ -682,6 +682,31 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     }
   });
 
+  test("send again to the students a message didn't reach, once they have a Telegram connection", async () => {
+    await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: null, telegram: null } });
+    try {
+      const first = await post("/api/management/telegram/messages", { session: teacherA, json: { workspace: "teacher", text: "Qayta {name}", audience: "SELECTED", studentIds: [hw.studentId], when: "NOW" } });
+      assert.equal(first.status, 201, first.text);
+      assert.equal(first.data.summary.notConnected, 1, "no contact yet");
+      const retry = (session) => post(`/api/management/telegram/messages/${first.data.messageId}/retry`, { session, json: { workspace: "teacher" } });
+      assert.equal((await retry(teacherB)).status, 404, "another teacher's message");
+      assert.equal((await retry(studentA)).status, 403);
+
+      await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: "555" } }); // the contact was added later
+      const again = await retry(teacherA);
+      assert.equal(again.status, 200, again.text);
+      assert.equal(again.data.requeued, 1);
+      assert.equal(again.data.sent, 1);
+      const delivery = await prisma.telegramDelivery.findFirst({ where: { messageId: first.data.messageId } });
+      assert.equal(delivery.status, "SENT");
+      assert.ok((await storageLog()).some((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.text ?? "").startsWith("Qayta Homework Student")));
+      assert.equal((await retry(teacherA)).data.requeued, 0, "nothing left to resend");
+    } finally {
+      await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: null } });
+      await prisma.telegramMessage.deleteMany({ where: { instructorId: ins.instructorA } });
+    }
+  });
+
   test("Tugallanmagan after the deadline; the teacher records Imtihondan o'tdi / yiqilgan for their own students only", async () => {
     const url = `/api/management/enrollments/${hw.enrollmentId}/exam-result`;
     const result = (session, value) => call("PUT", url, { session, json: { workspace: "teacher", result: value } });

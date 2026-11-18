@@ -629,7 +629,9 @@ export async function getMessagesOverview(actor: ManagementActor) {
     const count = (status: string) => ofRun.filter((row) => row.status === status).reduce((sum, row) => sum + row._count._all, 0);
     const total = ofRun.reduce((sum, row) => sum + row._count._all, 0);
     const next = nextQueued.find((row) => row.messageId === messageId)?._min.scheduledFor ?? null;
-    return { total, sent: count("SENT"), waiting: count("QUEUED") + count("SENDING"), paused: count("PAUSED"), next: next ? utcToPlatform(next) : null };
+    // Not reached in ANY run (for "send again to the ones it didn't reach").
+    const unreached = rows.filter((row) => row.status === "NOT_CONNECTED" || row.status === "FAILED").reduce((sum, row) => sum + row._count._all, 0);
+    return { total, sent: count("SENT"), waiting: count("QUEUED") + count("SENDING"), paused: count("PAUSED"), unreached, next: next ? utcToPlatform(next) : null };
   };
 
   return {
@@ -686,4 +688,38 @@ export async function dispatchForTeacher(actor: ManagementActor) {
 /** Queued deliveries whose time passed more than 3 minutes ago: the scheduler isn't running. */
 export async function overdueCount(instructorId: string) {
   return prisma.telegramDelivery.count({ where: { status: "QUEUED", scheduledFor: { lt: new Date(Date.now() - 3 * 60_000) }, message: { instructorId } } });
+}
+
+/**
+ * "Yetmaganlarga qayta yuborish": students this message didn't reach (no contact at the time, privacy, blocked)
+ * get it again with their CURRENT contacts, on the message's own pacing. Students who left the teacher are skipped.
+ */
+export async function retryUnreached(actor: ManagementActor, messageId: string) {
+  const message = await ownMessage(actor, messageId);
+  const now = new Date();
+  const [rows, students, accountConnected] = await Promise.all([
+    prisma.telegramDelivery.findMany({ where: { messageId: message.id, status: { in: ["NOT_CONNECTED", "FAILED"] } }, select: { id: true, studentId: true, text: true } }),
+    scopedStudents(message.instructorId),
+    hasConnectedAccount(message.instructorId)
+  ]);
+  const byId = new Map(students.map((student) => [student.id, student]));
+  const retry = shuffle(rows.filter((row) => byId.has(row.studentId)));
+  if (!retry.length) return { requeued: 0, sent: 0 };
+  const times = planSendTimes({
+    count: retry.length,
+    pacing: message.pacing === "SPREAD" ? "SPREAD" : "FAST",
+    now,
+    windowStart: message.windowStart,
+    windowEnd: message.windowEnd,
+    accountConnected
+  });
+  for (const [index, row] of retry.entries()) {
+    await prisma.telegramDelivery.update({
+      where: { id: row.id },
+      data: { status: "QUEUED", scheduledFor: times[index], error: null, text: row.text ?? renderText(message.text, varsFor(byId.get(row.studentId)!)) }
+    });
+  }
+  const sent = await dispatchDue(new Date(), { instructorId: message.instructorId });
+  await auditRun(actor.user.id, message.id, { requeued: retry.length, ...sent }, "RETRY");
+  return { requeued: retry.length, sent: sent.sent };
 }

@@ -698,7 +698,10 @@ const UZ: Record<string, string> = {
   "week from": "hafta boshi",
   "week to": "hafta oxiri",
   "{course} exam result": "{course} imtihon natijasi",
-  "{course} is finished and moves to Previous courses with its homework, payments and result. The new course becomes the current one.": "{course} yakunlanadi va uy vazifalari, to'lovlari hamda natijasi bilan \"Avvalgi kurslar\"ga o'tadi. Yangi kurs joriy kurs bo'ladi."
+  "{course} is finished and moves to Previous courses with its homework, payments and result. The new course becomes the current one.": "{course} yakunlanadi va uy vazifalari, to'lovlari hamda natijasi bilan \"Avvalgi kurslar\"ga o'tadi. Yangi kurs joriy kurs bo'ladi.",
+  "Send again to those not reached ({count})": "Yetmaganlarga qayta yuborish ({count})",
+  "Sends it again, with their current Telegram, to the students it didn't reach.": "Xabar yetmagan o'quvchilarga ularning hozirgi Telegram kontakti bo'yicha qayta yuboriladi.",
+  "Queued again for the students it didn't reach.": "Xabar yetmagan o'quvchilar uchun qayta navbatga qo'yildi."
 };
 
 export function translate(locale: Locale, text: string, vars?: Record<string, string | number>): string {
