@@ -1,20 +1,20 @@
 import { CalendarClock, CheckCircle2, CircleAlert, History, Link2, PenLine, Repeat, Smartphone, Sunrise } from "lucide-react";
 
-import { CopyInviteButton, MessageComposer, MessagePlanActions, WEEKDAYS } from "@/components/management/message-forms";
+import { CopyInviteButton, MessageComposer, MessagePlanActions, MessagePump, WEEKDAYS } from "@/components/management/message-forms";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getT } from "@/lib/i18n-server";
 import { telegramUrl } from "@/lib/student-contact";
 import type { ManagementActor } from "@/server/management/actor";
 import { todayInPlatform, utcToPlatform } from "@/server/management/time";
-import { DEFAULT_HOMEWORK_TEXT, getMessagesOverview } from "@/server/telegram/messages";
+import { DEFAULT_CHECKIN_TEXT, DEFAULT_HOMEWORK_TEXT, getMessagesOverview, overdueCount } from "@/server/telegram/messages";
 import { getAccountStatus } from "@/server/telegram/account";
 import { TelegramAccountCard } from "@/components/management/telegram-account-card";
 
 /** ERA Assistant → Messages: Telegram messages from the teacher to their students. */
 export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
   const T = await getT();
-  const [data, account] = await Promise.all([getMessagesOverview(actor), getAccountStatus(actor)]);
+  const [data, account, overdue] = await Promise.all([getMessagesOverview(actor), getAccountStatus(actor), actor.instructorId ? overdueCount(actor.instructorId) : Promise.resolve(0)]);
   const connected = data.students.filter((student) => student.linked).length;
   const setupMissing = !data.setup.botConfigured || !data.setup.webhookConfigured || !data.setup.cronConfigured;
   const audienceLabel = (plan: (typeof data.plans)[number]) =>
@@ -28,6 +28,18 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <MessagePump workspace="teacher" />
+      {overdue > 0 ? (
+        <div role="alert" className="flex gap-3 rounded-xl border border-error/30 bg-error/10 p-4 text-sm">
+          <CircleAlert className="mt-0.5 size-5 shrink-0 text-error" aria-hidden="true" />
+          <div className="flex flex-col gap-1">
+            <p className="font-semibold text-error">{T("The timer isn't running: {count} messages are late", { count: overdue })}</p>
+            <p className="text-muted-foreground">
+              {T("While this page is open, ERA sends them itself (one per minute). To send on time even when the page is closed, set up cron-job.org to call /api/cron/telegram every minute.")}
+            </p>
+          </div>
+        </div>
+      ) : null}
       {setupMissing ? (
         <div role="alert" className="flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm">
           <CircleAlert className="mt-0.5 size-5 shrink-0 text-warning-foreground" aria-hidden="true" />
@@ -71,6 +83,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
               today={todayInPlatform()}
               nowTime={utcToPlatform(new Date()).time}
               defaultText={DEFAULT_HOMEWORK_TEXT}
+              checkinText={DEFAULT_CHECKIN_TEXT}
               perWeek={data.perWeek}
               ruleEnabled={data.ruleEnabled}
               accountConnected={account.status === "CONNECTED"}
@@ -97,7 +110,12 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                     return (
                       <li key={plan.id} className="flex flex-col gap-2 py-3 text-sm">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          {plan.schedule === "WEEKLY" ? (
+                          {plan.schedule === "STUDENT_WEEK" ? (
+                            <Badge variant="primary">
+                              <Repeat className="size-3" aria-hidden="true" />
+                              {T("Automatic: when each student's week ends")}
+                            </Badge>
+                          ) : plan.schedule === "WEEKLY" ? (
                             <Badge variant="primary">
                               <Repeat className="size-3" aria-hidden="true" />
                               {T("Every {day} at {time}", { day: T(WEEKDAYS[plan.weekday ?? 6]), time: plan.timeOfDay ?? "" })}
@@ -134,7 +152,7 @@ export async function MessagesPanel({ actor }: { actor: ManagementActor }) {
                         <MessagePlanActions
                           id={plan.id}
                           active={plan.active || Boolean(plan.progress && plan.progress.waiting > 0)}
-                          canResume={plan.schedule === "WEEKLY" || Boolean(plan.progress && plan.progress.paused > 0)}
+                          canResume={plan.schedule === "WEEKLY" || plan.schedule === "STUDENT_WEEK" || Boolean(plan.progress && plan.progress.paused > 0)}
                         />
                       </li>
                     );

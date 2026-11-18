@@ -15,7 +15,8 @@ import { approvedTotal, formatMoney, isOverdue, summarizePayments } from "@/serv
 import { computeHomeworkPace } from "@/server/management/homework-rule";
 import { planSendTimes, shuffle } from "@/server/telegram/pacing";
 import { decryptSession, encryptSession } from "@/server/telegram/session-crypto";
-import { telegramTarget } from "@/server/telegram/messages";
+import { renderText, telegramTarget, uzDate } from "@/server/telegram/messages";
+import { nextDaily } from "@/server/management/time";
 import { addDays, fromDbDate, isDateString, monthRange, toDbDate, todayInPlatform, weekRange } from "@/server/management/time";
 
 after(() => prisma.$disconnect());
@@ -283,5 +284,29 @@ describe("Telegram sending plan (random times, never at night)", () => {
     assert.deepEqual(telegramTarget("@ali_karimov"), { username: "@ali_karimov", phone: null });
     assert.deepEqual(telegramTarget("+998 90 123 45 67"), { username: null, phone: "+998901234567" });
     assert.deepEqual(telegramTarget("hello"), { username: null, phone: null });
+  });
+});
+
+describe("Personal message values and the daily automatic run", () => {
+  test("{name}, {startDate}, {course}, {count}, {required}, {weekFrom}, {weekTo} are filled in (Uzbek dates)", () => {
+    assert.equal(uzDate("2026-11-04"), "4-noyabr");
+    const text = renderText("{name}: {startDate} kuni {course} boshlagansiz. {weekFrom} – {weekTo}: {count}/{required}", {
+      name: "Ali",
+      startDate: "2026-11-04",
+      course: "RAG 1-oy",
+      count: 1,
+      required: 3,
+      weekFrom: "2026-11-11",
+      weekTo: "2026-11-17"
+    });
+    assert.equal(text, "Ali: 4-noyabr kuni RAG 1-oy boshlagansiz. 11-noyabr – 17-noyabr: 1/3");
+    assert.equal(renderText("Salom {name}", "Madina"), "Salom Madina");
+  });
+
+  test("the automatic reminder runs once a day at its time (Seoul)", () => {
+    const at0700 = new Date("2026-11-15T22:00:00.000Z"); // 16 Nov 07:00 Seoul
+    assert.equal(nextDaily("10:00", at0700).toISOString(), "2026-11-16T01:00:00.000Z", "today 10:00");
+    const at1100 = new Date("2026-11-16T02:00:00.000Z"); // 16 Nov 11:00 Seoul
+    assert.equal(nextDaily("10:00", at1100).toISOString(), "2026-11-17T01:00:00.000Z", "tomorrow 10:00");
   });
 });

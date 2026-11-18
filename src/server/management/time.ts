@@ -153,3 +153,10 @@ export function nextWeekly(day: number, time: string, after: Date = new Date()):
   }
   return platformDateTimeToUtc(addDays(today, 7), time);
 }
+
+/** The next instant strictly after `after` at local `time`, today or tomorrow (platform time zone). */
+export function nextDaily(time: string, after: Date = new Date()): Date {
+  const today = todayInPlatform(after);
+  const at = platformDateTimeToUtc(today, time);
+  return at.getTime() > after.getTime() ? at : platformDateTimeToUtc(addDays(today, 1), time);
+}

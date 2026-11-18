@@ -9,7 +9,7 @@ import {
   TransactionStatusBadge,
   HomeworkPaceBadge
 } from "@/components/management/badges";
-import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, type Workspace } from "@/components/management/enrollment-forms";
+import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, NextCourseButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
 import { PaymentReviewActions, RecordPaymentButton, MarkPaidButton } from "@/components/management/payment-forms";
 import { CompleteCourseButton, CourseMembershipButton, ExamResultControl, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
@@ -48,8 +48,10 @@ async function EnrollmentCard({
   workspace,
   instructors,
   today,
-  studentName
+  studentName,
+  courses = []
 }: {
+  courses?: Array<{ id: string; title: string; instructorId: string; instructorName: string }>;
   studentName: string;
   view: EnrollmentView;
   actor: ManagementActor;
@@ -138,6 +140,19 @@ async function EnrollmentCard({
         ) : null}
         {can(actor, "recordPayments") && view.arrangement !== "WAIVED" ? (
           <RecordPaymentButton enrollmentId={view.id} workspace={workspace} today={today} currency={view.currency} />
+        ) : null}
+        {can(actor, "manageEnrollments") && view.status === "ACTIVE" ? (
+          <NextCourseButton
+            workspace={workspace}
+            enrollmentId={view.id}
+            courseId={view.course.id}
+            courseTitle={view.course.title}
+            examResult={view.examResult}
+            courses={courses}
+            today={today}
+            price={view.money?.price ?? null}
+            showMoney={can(actor, "viewPayments")}
+          />
         ) : null}
         {(can(actor, "manageEnrollments") || can(actor, "manageAccess")) && (view.status === "ACTIVE" || view.status === "COMPLETED") ? (
           <CompleteCourseButton workspace={workspace} enrollmentId={view.id} courseTitle={view.course.title} mode={view.status === "ACTIVE" ? "complete" : "reopen"} />
@@ -281,7 +296,7 @@ async function HomeworkSection({ view, workspace }: { view: EnrollmentView; work
           {T("Passed the exam. Congratulations! 🎉")}
         </p>
       ) : null}
-      <ExamResultControl enrollmentId={view.id} workspace={workspace} result={(view.examResult as "PASSED" | "FAILED" | null) ?? null} />
+      <ExamResultControl enrollmentId={view.id} workspace={workspace} courseTitle={view.course.title} result={(view.examResult as "PASSED" | "FAILED" | null) ?? null} />
       {view.pace.state === "exam-ready" ? (
         <p className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
           <GraduationCap className="mt-px size-4 shrink-0" aria-hidden="true" />
@@ -424,7 +439,18 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
           }
         />
         {profile.current.length ? (
-          profile.current.map((view) => <EnrollmentCard key={view.id} view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />)
+          profile.current.map((view) => (
+            <EnrollmentCard
+              key={view.id}
+              view={view}
+              actor={actor}
+              workspace={workspace}
+              instructors={instructors}
+              today={today}
+              studentName={profile.student.name}
+              courses={courses.map((course) => ({ id: course.id, title: course.title, instructorId: course.instructorId, instructorName: course.instructor.name }))}
+            />
+          ))
         ) : (
           <EmptyState title={T("No active enrollments")} description={T("Completed and earlier enrollments are listed under Course history.")} />
         )}

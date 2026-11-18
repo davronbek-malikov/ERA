@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Copy, Pause, Play, Repeat, Search, Send, Sunrise, Trash2, Wand2, Zap } from "lucide-react";
 
 import { useT } from "@/components/i18n/locale-provider";
@@ -24,7 +25,7 @@ const WINDOW_TIMES = Array.from({ length: 35 }, (_, index) => `${String(6 + Math
 
 type Student = { id: string; name: string; linked: boolean; behind: { week: number; count: number; required: number } | null };
 type Audience = "ALL" | "BEHIND" | "SELECTED";
-type When = "NOW" | "ONCE" | "WEEKLY";
+type When = "NOW" | "ONCE" | "WEEKLY" | "AUTO";
 
 function Choice<T extends string>({ value, current, onChange, icon, label, hint }: { value: T; current: T; onChange: (value: T) => void; icon: React.ReactNode; label: string; hint?: string }) {
   const active = value === current;
@@ -48,7 +49,7 @@ function Choice<T extends string>({ value, current, onChange, icon, label, hint 
   );
 }
 
-export function MessageComposer({ students, today, nowTime, defaultText, perWeek, ruleEnabled, accountConnected, disabled }: { students: Student[]; today: string; nowTime: string; defaultText: string; perWeek: number; ruleEnabled: boolean; accountConnected: boolean; disabled?: boolean }) {
+export function MessageComposer({ students, today, nowTime, defaultText, checkinText, perWeek, ruleEnabled, accountConnected, disabled }: { students: Student[]; today: string; nowTime: string; defaultText: string; checkinText: string; perWeek: number; ruleEnabled: boolean; accountConnected: boolean; disabled?: boolean }) {
   const T = useT();
   const { run, pending } = useManagementMutation();
   const [text, setText] = React.useState("");
@@ -70,15 +71,27 @@ export function MessageComposer({ students, today, nowTime, defaultText, perWeek
   const visible = students.filter((student) => student.name.toLowerCase().includes(query.trim().toLowerCase()));
   const allVisibleSelected = visible.length > 0 && visible.every((student) => selected.has(student.id));
 
+  /** The automatic weekly reminder: every student, when THEIR own week (from their start date) ends behind. */
   function applyHomeworkTemplate() {
     setText(defaultText);
     setAudience("BEHIND");
-    setWhen("WEEKLY");
-    setWeekday(6);
+    setWhen("AUTO");
     setTime("10:00");
     setPacing("SPREAD");
-    setWindowStart("08:00");
-    setWindowEnd("17:00");
+    setWindowStart("09:00");
+    setWindowEnd("18:00");
+  }
+
+  function applyCheckinTemplate() {
+    setText(checkinText);
+    setAudience("ALL");
+    setWhen("NOW");
+    setPacing("FAST");
+  }
+
+  function chooseWhen(next: When) {
+    setWhen(next);
+    if (next === "AUTO") setAudience("BEHIND");
   }
 
   function toggle(id: string) {
@@ -128,20 +141,41 @@ export function MessageComposer({ students, today, nowTime, defaultText, perWeek
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">1. {T("Message")}</h3>
-          <button type="button" onClick={applyHomeworkTemplate} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            <Wand2 className="size-3.5" aria-hidden="true" />
-            {T("Template: weekly homework reminder")}
-          </button>
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" onClick={applyCheckinTemplate} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">
+              <Wand2 className="size-3.5" aria-hidden="true" />
+              {T("Template: general message")}
+            </button>
+            <button type="button" onClick={applyHomeworkTemplate} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10">
+              <Wand2 className="size-3.5" aria-hidden="true" />
+              {T("Template: automatic weekly homework reminder")}
+            </button>
+          </div>
         </div>
         <Textarea value={text} onChange={(event) => setText(event.target.value)} rows={5} maxLength={2000} placeholder={T("Write your message…")} disabled={disabled} aria-label={T("Message")} />
-        <p className="text-xs text-muted-foreground">{T("Tip: {name} is replaced by the student's name.")}</p>
+        <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          <span>{T("Personal values (click to insert):")}</span>
+          {[
+            ["{name}", T("name")],
+            ["{startDate}", T("start date")],
+            ["{course}", T("course")],
+            ["{count}", T("handed in")],
+            ["{required}", T("required")],
+            ["{weekFrom}", T("week from")],
+            ["{weekTo}", T("week to")]
+          ].map(([token, label]) => (
+            <button key={token} type="button" title={label} onClick={() => setText((current) => `${current}${current && !current.endsWith(" ") ? " " : ""}${token}`)} className="rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono hover:bg-muted">
+              {token}
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* WHO */}
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">2. {T("Who gets it")}</h3>
         <div role="radiogroup" className="flex flex-col gap-2 sm:flex-row">
-          <Choice value="ALL" current={audience} onChange={setAudience} icon={<Send />} label={T("All students")} hint={T("{count} students", { count: students.length })} />
+          <Choice value="ALL" current={audience} onChange={(value) => (when === "AUTO" ? null : setAudience(value))} icon={<Send />} label={T("All students")} hint={T("{count} students", { count: students.length })} />
           <Choice
             value="BEHIND"
             current={audience}
@@ -150,7 +184,7 @@ export function MessageComposer({ students, today, nowTime, defaultText, perWeek
             label={T("Behind the weekly rule")}
             hint={ruleEnabled ? T("Fewer than {count} homeworks last week · now {behind}", { count: perWeek, behind: behindCount }) : T("The weekly rule is off")}
           />
-          <Choice value="SELECTED" current={audience} onChange={setAudience} icon={<Check />} label={T("Choose students")} hint={T("{count} selected", { count: selected.size })} />
+          <Choice value="SELECTED" current={audience} onChange={(value) => (when === "AUTO" ? null : setAudience(value))} icon={<Check />} label={T("Choose students")} hint={T("{count} selected", { count: selected.size })} />
         </div>
         {audience === "SELECTED" ? (
           <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
@@ -202,10 +236,16 @@ export function MessageComposer({ students, today, nowTime, defaultText, perWeek
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">3. {T("When")}</h3>
         <div role="radiogroup" className="flex flex-col gap-2 sm:flex-row">
-          <Choice value="NOW" current={when} onChange={setWhen} icon={<Send />} label={T("Now")} />
-          <Choice value="ONCE" current={when} onChange={setWhen} icon={<CalendarClock />} label={T("On a date")} />
-          <Choice value="WEEKLY" current={when} onChange={setWhen} icon={<Repeat />} label={T("Every week")} />
+          <Choice value="NOW" current={when} onChange={chooseWhen} icon={<Send />} label={T("Now")} />
+          <Choice value="ONCE" current={when} onChange={chooseWhen} icon={<CalendarClock />} label={T("On a date")} />
+          <Choice value="WEEKLY" current={when} onChange={chooseWhen} icon={<Repeat />} label={T("Every week")} />
+          <Choice value="AUTO" current={when} onChange={chooseWhen} icon={<Zap />} label={T("Automatic")} hint={T("When each student's own week ends")} />
         </div>
+        {when === "AUTO" ? (
+          <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs">
+            {T("Every day ERA checks each student's own calendar: weeks are counted from the day THEY started the course. When a student's week ends with fewer than {count} homeworks, they get this message once for that week. Works with the weekly homework rule.", { count: perWeek })}
+          </p>
+        ) : null}
         {when === "ONCE" ? <CalendarPicker value={date} min={today} onChange={setDate} /> : null}
         {when === "WEEKLY" ? <WeekdayPicker value={weekday} onChange={setWeekday} /> : null}
       </section>
@@ -241,7 +281,11 @@ export function MessageComposer({ students, today, nowTime, defaultText, perWeek
         ) : null}
         <ScheduleSummary
           text={
-            pacing === "SPREAD"
+            when === "AUTO"
+              ? pacing === "SPREAD"
+                ? T("Automatic: every day, for students whose week just ended behind; random times between {start} and {end}", { start: windowStart, end: windowEnd })
+                : T("Automatic: every day at {time}, for students whose week just ended behind", { time })
+              : pacing === "SPREAD"
               ? when === "WEEKLY"
                 ? T("Every {day}, at random times between {start} and {end}", { day: T(WEEKDAYS[weekday]), start: windowStart, end: windowEnd })
                 : when === "ONCE"
@@ -337,4 +381,33 @@ export function CopyInviteButton({ url }: { url: string }) {
       {copied ? T("Copied") : T("Copy invite link")}
     </Button>
   );
+}
+
+/**
+ * Backup timer: while this page is open, send this teacher's due messages every minute (the real timer is
+ * cron-job.org calling /api/cron/telegram). Refreshes the page when something went out.
+ */
+export function MessagePump({ workspace }: { workspace: "teacher" | "admin" }) {
+  const router = useRouter();
+  React.useEffect(() => {
+    let stopped = false;
+    const tick = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch("/api/management/telegram/dispatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace }) });
+        const payload = (await response.json().catch(() => null)) as { ok?: boolean; sent?: number; failed?: number; notConnected?: number; processed?: number } | null;
+        if (payload?.ok && ((payload.sent ?? 0) + (payload.failed ?? 0) + (payload.notConnected ?? 0) + (payload.processed ?? 0) > 0)) router.refresh();
+      } catch {
+        // offline: try again next minute
+      }
+    };
+    const first = setTimeout(tick, 5_000);
+    const timer = setInterval(tick, 60_000);
+    return () => {
+      stopped = true;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [router, workspace]);
+  return null;
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, KeyRound, PencilLine, UserPlus } from "lucide-react";
+import { ArrowRightCircle, CalendarClock, KeyRound, PencilLine, UserPlus } from "lucide-react";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
 import { newIdempotencyKey, useManagementMutation } from "@/components/management/use-mutation";
@@ -483,6 +483,113 @@ export function AccessButton({
         Current access: {current.accessStatus.toLowerCase()}
         {current.accessExpiresAt ? `, last day ${current.accessExpiresAt}` : ""}.
       </p>
+    </FormDialog>
+  );
+}
+
+/**
+ * "Keyingi oyga o'tkazish": finish this course (with ITS exam result) and enroll the student in the next one, in
+ * one step. The next course defaults to the one after this in the teacher's course order.
+ */
+export function NextCourseButton({
+  workspace,
+  enrollmentId,
+  courseId,
+  courseTitle,
+  examResult,
+  courses,
+  today,
+  price,
+  showMoney
+}: {
+  workspace: Workspace;
+  enrollmentId: string;
+  courseId: string;
+  courseTitle: string;
+  examResult: string | null;
+  courses: CourseOption[];
+  today: string;
+  price: number | null;
+  showMoney: boolean;
+}) {
+  const T = useT();
+  const { run } = useManagementMutation();
+  const index = courses.findIndex((course) => course.id === courseId);
+  const others = courses.filter((course) => course.id !== courseId);
+  const suggested = (index >= 0 ? courses[index + 1] : undefined) ?? others[0];
+  const [result, setResult] = React.useState<string>(examResult ?? "");
+
+  if (!others.length) return null;
+  return (
+    <FormDialog
+      triggerLabel={T("Move to next month")}
+      triggerVariant="default"
+      triggerIcon={<ArrowRightCircle />}
+      title={T("Move to the next course")}
+      description={T("{course} is finished and moves to Previous courses with its homework, payments and result. The new course becomes the current one.", { course: courseTitle })}
+      submitLabel={T("Move to next month")}
+      onOpen={() => setResult(examResult ?? "")}
+      onSubmit={async (form) => {
+        const amount = showMoney ? formAmount(form, "priceAmount") : undefined;
+        if (showMoney && (amount === null || Number.isNaN(amount))) {
+          toast({ title: T("Amounts must be whole numbers of won (e.g. 500000)."), variant: "error" });
+          return false;
+        }
+        const body: Record<string, unknown> = {
+          workspace,
+          courseId: formString(form, "courseId"),
+          startDate: formString(form, "startDate"),
+          endDate: formString(form, "endDate") || null,
+          examResult: result || null
+        };
+        if (showMoney) body.priceAmount = amount;
+        return Boolean(await run(`/api/management/enrollments/${enrollmentId}/next`, "POST", body, "Moved to the next course."));
+      }}
+    >
+      <fieldset className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+        <legend className="px-1 text-sm font-semibold">{T("1. Result of {course}", { course: courseTitle })}</legend>
+        <div role="radiogroup" className="flex flex-wrap gap-2">
+          {[
+            { value: "PASSED", label: T("Passed the exam"), tone: "border-success bg-success/10 text-success" },
+            { value: "FAILED", label: T("Failed the exam"), tone: "border-error bg-error/10 text-error" },
+            { value: "", label: T("No exam / not set"), tone: "border-primary bg-primary/5 text-foreground" }
+          ].map((option) => (
+            <button
+              key={option.value || "none"}
+              type="button"
+              role="radio"
+              aria-checked={result === option.value}
+              onClick={() => setResult(option.value)}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${result === option.value ? option.tone : "border-border text-muted-foreground hover:bg-muted"}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <p className="text-sm font-semibold">{T("2. The next course")}</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id={`next-course-${enrollmentId}`} label={T("Course")} required>
+          <Select id={`next-course-${enrollmentId}`} name="courseId" defaultValue={suggested?.id} required>
+            {others.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field id={`next-start-${enrollmentId}`} label={T("Start date")} required>
+          <Input id={`next-start-${enrollmentId}`} name="startDate" type="date" defaultValue={today} required />
+        </Field>
+        <Field id={`next-end-${enrollmentId}`} label={T("Expected end date")}>
+          <Input id={`next-end-${enrollmentId}`} name="endDate" type="date" />
+        </Field>
+        {showMoney ? (
+          <Field id={`next-price-${enrollmentId}`} label={T("Price (₩)")} required>
+            <Input id={`next-price-${enrollmentId}`} name="priceAmount" inputMode="numeric" defaultValue={price === null ? "" : String(price)} required />
+          </Field>
+        ) : null}
+      </div>
     </FormDialog>
   );
 }

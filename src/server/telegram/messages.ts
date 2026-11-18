@@ -6,7 +6,7 @@ import type { ManagementActor } from "@/server/management/actor";
 import { writeAudit } from "@/server/management/audit";
 import { conflict } from "@/server/management/enrollments";
 import { computeHomeworkPace } from "@/server/management/homework-rule";
-import { fromDbDate, nextWeekly, platformDateTimeToUtc, requireDateString, requireTimeString, todayInPlatform, utcToPlatform } from "@/server/management/time";
+import { addDays, fromDbDate, nextDaily, nextWeekly, platformDateTimeToUtc, requireDateString, requireTimeString, todayInPlatform, utcToPlatform } from "@/server/management/time";
 import { sendFromAccount } from "@/server/telegram/account-client";
 import { sendTelegramMessage, telegramConfig, telegramInviteUrl } from "@/server/telegram/bot";
 import { planSendTimes, shuffle, windowIsValid, type Pacing } from "@/server/telegram/pacing";
@@ -19,7 +19,8 @@ import { decryptSession } from "@/server/telegram/session-crypto";
  *   WHO   ALL (every student with an active course), BEHIND (behind the weekly homework rule at send time),
  *         or SELECTED (students they tick; checked against their own students when saved AND when sent);
  *   WHAT  the text ({name} becomes the student's name);
- *   WHEN  now, once on a date, or every week on a weekday;
+ *   WHEN  now, once on a date, every week on a weekday, or AUTO: every day it picks the students whose own
+ *         7-day week (counted from THEIR course start date) just ended behind the weekly homework rule;
  *   PACE  FAST (one after another, random 45–110 s gaps) or SPREAD (random times inside e.g. 08:00–17:00).
  *
  * HOW it is sent (per student, at their own random time):
@@ -37,12 +38,28 @@ import { decryptSession } from "@/server/telegram/session-crypto";
  * never message a student twice.
  */
 
+/** Template: the automatic weekly reminder (per student, from their own start date). */
 export const DEFAULT_HOMEWORK_TEXT =
-  "Assalomu alaykum, {name}! Kelishganimizdek, siz bir haftada eng kamida 3 ta vazifa topshirishingiz kerak edi, lekin vazifalarni to'liq bajarmadingiz. Eng avvalo tartib o'zingiz uchun kerak, shuning uchun yangi haftada o'tgan haftadagi kamchiliklarni to'ldirib qo'ying.";
+  "Assalomu alaykum, {name}! Siz {startDate} kuni darslarni boshlagansiz. O'tgan haftada ({weekFrom} – {weekTo}) {required} ta vazifa topshirishingiz kerak edi, lekin {count} ta topshirdingiz. Iltimos, vazifalarni o'z vaqtida yuborishni unutmang.";
+
+/** Template: a general check-in for everyone. */
+export const DEFAULT_CHECKIN_TEXT =
+  "Assalomu alaykum, {name}! Yaxshimisiz? Darslar yaxshi ketyaptimi? Muammolar bo'lsa, bemalol murojaat qilishingiz mumkin. Vazifalarni o'z vaqtida yuborish esingizdan chiqmasin, iltimos.";
+
+/** Personal values a message can contain. */
+export const PLACEHOLDERS = ["{name}", "{startDate}", "{course}", "{count}", "{required}", "{weekFrom}", "{weekTo}"] as const;
+
+const UZ_MONTHS = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"];
+/** "2026-11-04" → "4-noyabr" (messages go to Uzbek-speaking students). */
+export function uzDate(date: string | null | undefined) {
+  if (!date) return "";
+  const [, month, day] = date.split("-").map(Number);
+  return `${day}-${UZ_MONTHS[month - 1] ?? ""}`;
+}
 
 export const AUDIENCES = ["ALL", "BEHIND", "SELECTED"] as const;
 export type Audience = (typeof AUDIENCES)[number];
-type When = "NOW" | "ONCE" | "WEEKLY";
+type When = "NOW" | "ONCE" | "WEEKLY" | "AUTO";
 
 const MAX_TEXT = 2000;
 const MAX_SELECTED = 500;
@@ -73,7 +90,10 @@ type Raw = Record<string, unknown>;
 export function parseMessageInput(raw: Raw, now: Date = new Date()): MessageInput {
   const text = requireString(raw.text, "Message", { min: 1, max: MAX_TEXT }).trim();
   if (!text) throw invalid("invalid-Message", "Write the message.");
-  const audience = AUDIENCES.find((value) => value === raw.audience);
+  const when = (["NOW", "ONCE", "WEEKLY", "AUTO"] as const).find((value) => value === raw.when);
+  if (!when) throw invalid("invalid-when", "Choose when to send.");
+  // AUTO is always the weekly-rule reminder: only students whose own week just ended behind.
+  const audience = when === "AUTO" ? "BEHIND" : AUDIENCES.find((value) => value === raw.audience);
   if (!audience) throw invalid("invalid-audience", "Choose who gets the message.");
   let studentIds: string[] = [];
   if (audience === "SELECTED") {
@@ -81,9 +101,6 @@ export function parseMessageInput(raw: Raw, now: Date = new Date()): MessageInpu
     if (raw.studentIds.length > MAX_SELECTED) throw invalid("invalid-students", "Too many students.");
     studentIds = [...new Set(raw.studentIds.map((id) => requireId(id, "studentId")))];
   }
-  const when = (["NOW", "ONCE", "WEEKLY"] as const).find((value) => value === raw.when);
-  if (!when) throw invalid("invalid-when", "Choose when to send.");
-
   const pacing: Pacing = raw.pacing === "SPREAD" ? "SPREAD" : "FAST";
   const windowStart = pacing === "SPREAD" ? requireTimeString(raw.windowStart, "windowStart") : "08:00";
   const windowEnd = pacing === "SPREAD" ? requireTimeString(raw.windowEnd, "windowEnd") : "17:00";
@@ -102,6 +119,9 @@ export function parseMessageInput(raw: Raw, now: Date = new Date()): MessageInpu
     if (sendAt.getTime() < now.getTime() - 60_000) throw invalid("time-passed", "That time has already passed. Choose a later time.");
     return { ...base, sendAt, weekday: null, timeOfDay: null };
   }
+  if (when === "AUTO") {
+    return { ...base, sendAt: null, weekday: null, timeOfDay: pacing === "SPREAD" ? windowStart : requireTimeString(raw.time, "time") };
+  }
   if (when === "WEEKLY") {
     const weekday = Number(raw.weekday);
     if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw invalid("invalid-weekday", "Choose a day of the week.");
@@ -110,8 +130,19 @@ export function parseMessageInput(raw: Raw, now: Date = new Date()): MessageInpu
   return { ...base, sendAt: now, weekday: null, timeOfDay: null };
 }
 
-export function renderText(template: string, studentName: string) {
-  return template.replaceAll("{name}", studentName);
+export type MessageVars = { name: string; startDate?: string | null; course?: string | null; count?: number | null; required?: number | null; weekFrom?: string | null; weekTo?: string | null };
+
+/** Fills in {name}, {startDate}, {course}, {count}, {required}, {weekFrom}, {weekTo}. */
+export function renderText(template: string, vars: MessageVars | string) {
+  const value = typeof vars === "string" ? { name: vars } : vars;
+  return template
+    .replaceAll("{name}", value.name)
+    .replaceAll("{startDate}", uzDate(value.startDate))
+    .replaceAll("{course}", value.course ?? "")
+    .replaceAll("{count}", value.count === null || value.count === undefined ? "" : String(value.count))
+    .replaceAll("{required}", value.required === null || value.required === undefined ? "" : String(value.required))
+    .replaceAll("{weekFrom}", uzDate(value.weekFrom))
+    .replaceAll("{weekTo}", uzDate(value.weekTo));
 }
 
 function requireInstructor(actor: ManagementActor) {
@@ -132,13 +163,35 @@ export function telegramTarget(value: string | null | undefined): { username: st
 // The teacher's students (scope)
 // ------------------------------------------------------------------------------------------------
 
+type WeekInfo = { course: string; startDate: string | null; week: number; count: number; required: number; from: string; to: string };
+
 type ScopedStudent = {
   id: string;
   name: string;
   telegram: string | null;
   chatId: string | null;
-  behind: { course: string; week: number; count: number; required: number } | null;
+  /** Their (first) current course and its start date: for {course} and {startDate}. */
+  course: string;
+  startDate: string | null;
+  perWeek: number;
+  /** The last finished week of a course in which they're behind the weekly rule. */
+  behind: WeekInfo | null;
+  /** The last finished week (behind or not), for {count}/{required} in general messages. */
+  lastWeek: WeekInfo | null;
 };
+
+function varsFor(student: ScopedStudent): MessageVars {
+  const week = student.behind ?? student.lastWeek;
+  return {
+    name: student.name,
+    startDate: week?.startDate ?? student.startDate,
+    course: week?.course ?? student.course,
+    count: week?.count ?? 0,
+    required: week?.required ?? student.perWeek,
+    weekFrom: week?.from ?? null,
+    weekTo: week?.to ?? null
+  };
+}
 
 /** Students with an ACTIVE course of this teacher, with their Telegram contact and weekly-rule state. */
 async function scopedStudents(instructorId: string, today = todayInPlatform()): Promise<ScopedStudent[]> {
@@ -173,19 +226,25 @@ async function scopedStudents(instructorId: string, today = todayInPlatform()): 
       examResult: enrollment.examResult
     });
     const existing = students.get(enrollment.user.id);
-    const behind =
-      pace.state === "behind" && pace.lastWeek
-        ? { course: enrollment.course.title, week: pace.lastWeek.number, count: pace.lastWeek.count, required: pace.lastWeek.required }
-        : null;
+    const startDate = fromDbDate(enrollment.startDate);
+    const lastWeek = pace.lastWeek
+      ? { course: enrollment.course.title, startDate, week: pace.lastWeek.number, count: pace.lastWeek.count, required: pace.lastWeek.required, from: pace.lastWeek.from, to: pace.lastWeek.to }
+      : null;
+    const behind = pace.state === "behind" ? lastWeek : null;
     if (existing) {
       existing.behind ??= behind;
+      existing.lastWeek ??= lastWeek;
     } else {
       students.set(enrollment.user.id, {
         id: enrollment.user.id,
         name: enrollment.user.name,
         telegram: enrollment.user.telegram,
         chatId: enrollment.user.telegramChatId,
-        behind
+        course: enrollment.course.title,
+        startDate,
+        perWeek: enrollment.instructor?.homeworkPerWeek ?? 3,
+        behind,
+        lastWeek
       });
     }
   }
@@ -228,12 +287,22 @@ async function hasConnectedAccount(instructorId: string) {
 export type DeliverySummary = { recipients: number; queued: number; sent: number; failed: number; notConnected: number; skipped: number };
 const emptySummary = (): DeliverySummary => ({ recipients: 0, queued: 0, sent: 0, failed: 0, notConnected: 0, skipped: 0 });
 
-type RunMessage = { id: string; instructorId: string; audience: string; studentIds: string[]; pacing: string; windowStart: string; windowEnd: string };
+type RunMessage = { id: string; instructorId: string; text: string; schedule: string; audience: string; studentIds: string[]; pacing: string; windowStart: string; windowEnd: string };
+
+/** AUTO picks a student when their own week ended in the last few days (a missed scheduler day still catches up). */
+const AUTO_CATCH_UP_DAYS = 3;
 
 /** Queues one delivery per recipient with its own random time. Returns the first and last planned times. */
 async function startRun(message: RunMessage, runKey: string, now: Date) {
   const [students, accountConnected] = await Promise.all([scopedStudents(message.instructorId), hasConnectedAccount(message.instructorId)]);
-  const recipients = shuffle(recipientsFor(message.audience, message.studentIds, students));
+  const auto = message.schedule === "STUDENT_WEEK";
+  const today = todayInPlatform(now);
+  const recipients = shuffle(
+    auto
+      ? // Their own week (from their own start date) just ended, and they were behind in it.
+        students.filter((student) => student.behind && student.behind.to < today && student.behind.to >= addDays(today, -AUTO_CATCH_UP_DAYS))
+      : recipientsFor(message.audience, message.studentIds, students)
+  );
   const times = planSendTimes({
     count: recipients.length,
     pacing: message.pacing === "SPREAD" ? "SPREAD" : "FAST",
@@ -244,9 +313,12 @@ async function startRun(message: RunMessage, runKey: string, now: Date) {
   });
   const rows = recipients.map((student, index) => {
     const reachable = Boolean(student.chatId) || (accountConnected && Boolean(telegramTarget(student.telegram).username || telegramTarget(student.telegram).phone));
+    // AUTO: one reminder per student per judged week (unique message + student + week).
+    const key = auto ? `week:${student.behind!.from}` : runKey;
+    const text = renderText(message.text, varsFor(student));
     return reachable
-      ? { messageId: message.id, studentId: student.id, runKey, status: "QUEUED", scheduledFor: times[index] }
-      : { messageId: message.id, studentId: student.id, runKey, status: "NOT_CONNECTED", scheduledFor: times[index], error: "No Telegram connection: the student has no saved Telegram and hasn't pressed Start on the bot." };
+      ? { messageId: message.id, studentId: student.id, runKey: key, status: "QUEUED", scheduledFor: times[index], text }
+      : { messageId: message.id, studentId: student.id, runKey: key, status: "NOT_CONNECTED", scheduledFor: times[index], text, error: "No Telegram connection: the student has no saved Telegram and hasn't pressed Start on the bot." };
   });
   // Unique (message, student, run): a second scheduler call for the same run adds nothing.
   const created = await prisma.telegramDelivery.createMany({ data: rows, skipDuplicates: true });
@@ -267,6 +339,7 @@ async function dispatchDue(now: Date, options: { instructorId?: string } = {}): 
     select: {
       id: true,
       scheduledFor: true,
+      text: true,
       student: { select: { id: true, name: true, telegram: true, telegramChatId: true } },
       message: { select: { id: true, text: true, instructorId: true, instructor: { select: { name: true } } } }
     }
@@ -306,7 +379,7 @@ async function dispatchDue(now: Date, options: { instructorId?: string } = {}): 
         continue;
       }
 
-      const text = renderText(delivery.message.text, delivery.student.name);
+      const text = delivery.text ?? renderText(delivery.message.text, delivery.student.name);
       let outcome: { status: "SENT"; via: "ACCOUNT" | "BOT" } | { status: "FAILED" | "NOT_CONNECTED"; error: string } | null = null;
 
       if (canUseAccount && account.mode === "send") {
@@ -384,7 +457,8 @@ export async function createMessage(actor: ManagementActor, input: MessageInput)
   }
 
   const now = new Date();
-  const nextRunAt = input.when === "WEEKLY" ? nextWeekly(input.weekday!, input.timeOfDay!, now) : input.when === "ONCE" ? input.sendAt : null;
+  const nextRunAt =
+    input.when === "WEEKLY" ? nextWeekly(input.weekday!, input.timeOfDay!, now) : input.when === "AUTO" ? nextDaily(input.timeOfDay!, now) : input.when === "ONCE" ? input.sendAt : null;
   const message = await prisma.$transaction(async (tx) => {
     const created = await tx.telegramMessage.create({
       data: {
@@ -393,7 +467,7 @@ export async function createMessage(actor: ManagementActor, input: MessageInput)
         text: input.text,
         audience: input.audience,
         studentIds: input.studentIds,
-        schedule: input.when === "WEEKLY" ? "WEEKLY" : "ONCE",
+        schedule: input.when === "WEEKLY" ? "WEEKLY" : input.when === "AUTO" ? "STUDENT_WEEK" : "ONCE",
         sendAt: input.when === "WEEKLY" ? null : input.sendAt,
         weekday: input.weekday,
         timeOfDay: input.timeOfDay,
@@ -450,6 +524,7 @@ export async function setMessageActive(actor: ManagementActor, messageId: string
   let nextRunAt = message.nextRunAt;
   if (active) {
     if (message.schedule === "WEEKLY") nextRunAt = nextWeekly(message.weekday ?? 6, message.timeOfDay ?? "10:00", now);
+    else if (message.schedule === "STUDENT_WEEK") nextRunAt = nextDaily(message.timeOfDay ?? "10:00", now);
     else if (!message.sendAt || message.sendAt.getTime() < now.getTime() || message.lastRunAt) throw conflict("message-done", "This message was already sent or its time has passed.");
     else nextRunAt = message.sendAt;
   }
@@ -475,9 +550,9 @@ export async function deleteMessage(actor: ManagementActor, messageId: string) {
 // ------------------------------------------------------------------------------------------------
 
 /** Starts every run whose time has come, then sends what is due. Called by /api/cron/telegram every minute. */
-export async function runDueMessages(now: Date = new Date()) {
+export async function runDueMessages(now: Date = new Date(), options: { instructorId?: string } = {}) {
   const due = await prisma.telegramMessage.findMany({
-    where: { active: true, nextRunAt: { lte: now } },
+    where: { active: true, nextRunAt: { lte: now }, ...(options.instructorId ? { instructorId: options.instructorId } : {}) },
     orderBy: { nextRunAt: "asc" },
     take: RUN_BATCH
   });
@@ -485,19 +560,22 @@ export async function runDueMessages(now: Date = new Date()) {
   for (const message of due) {
     const scheduledFor = message.nextRunAt!;
     const weekly = message.schedule === "WEEKLY";
+    const daily = message.schedule === "STUDENT_WEEK";
     // Compare-and-set on nextRunAt: if another call already took this run, count is 0 and we skip it.
     const claimed = await prisma.telegramMessage.updateMany({
       where: { id: message.id, active: true, nextRunAt: scheduledFor },
       data: weekly
         ? { nextRunAt: nextWeekly(message.weekday ?? 6, message.timeOfDay ?? "10:00", now), lastRunAt: now }
-        : { nextRunAt: null, active: false, lastRunAt: now }
+        : daily
+          ? { nextRunAt: nextDaily(message.timeOfDay ?? "10:00", now), lastRunAt: now }
+          : { nextRunAt: null, active: false, lastRunAt: now }
     });
     if (claimed.count === 0) continue;
-    const run = await startRun(message, weekly ? utcToPlatform(scheduledFor).date : "once", now);
-    await auditRun(null, message.id, run, weekly ? "WEEKLY" : "ONCE");
+    const run = await startRun(message, weekly || daily ? utcToPlatform(scheduledFor).date : "once", now);
+    await auditRun(null, message.id, run, weekly ? "WEEKLY" : daily ? "STUDENT_WEEK" : "ONCE");
     processed += 1;
   }
-  const sent = await dispatchDue(new Date());
+  const sent = await dispatchDue(new Date(), options);
   return { reason: null, processed, ...sent };
 }
 
@@ -519,7 +597,7 @@ export async function getMessagesOverview(actor: ManagementActor) {
     scopedStudents(instructorId),
     retryOnDatabaseFailure(() =>
       prisma.telegramMessage.findMany({
-        where: { instructorId, OR: [{ active: true }, { schedule: "WEEKLY" }, { createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } }] },
+        where: { instructorId, OR: [{ active: true }, { schedule: { in: ["WEEKLY", "STUDENT_WEEK"] } }, { createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } }] },
         orderBy: [{ active: "desc" }, { createdAt: "desc" }],
         take: 30
       })
@@ -542,11 +620,12 @@ export async function getMessagesOverview(actor: ManagementActor) {
     : [[], []];
   const names = new Map(students.map((student) => [student.id, student.name]));
 
-  const progressOf = (messageId: string) => {
+  const progressOf = (messageId: string, auto: boolean) => {
     const rows = counts.filter((row) => row.messageId === messageId);
     const latest = rows.map((row) => row.runKey).sort().at(-1);
     if (!latest) return null;
-    const ofRun = rows.filter((row) => row.runKey === latest);
+    // AUTO reminders have one key per student and week: count them all together.
+    const ofRun = auto ? rows : rows.filter((row) => row.runKey === latest);
     const count = (status: string) => ofRun.filter((row) => row.status === status).reduce((sum, row) => sum + row._count._all, 0);
     const total = ofRun.reduce((sum, row) => sum + row._count._all, 0);
     const next = nextQueued.find((row) => row.messageId === messageId)?._min.scheduledFor ?? null;
@@ -571,7 +650,7 @@ export async function getMessagesOverview(actor: ManagementActor) {
       text: plan.text,
       audience: plan.audience as Audience,
       selectedNames: plan.studentIds.map((id) => names.get(id)).filter((name): name is string => Boolean(name)),
-      schedule: plan.schedule as "ONCE" | "WEEKLY",
+      schedule: plan.schedule as "ONCE" | "WEEKLY" | "STUDENT_WEEK",
       weekday: plan.weekday,
       timeOfDay: plan.timeOfDay,
       pacing: plan.pacing as Pacing,
@@ -581,7 +660,7 @@ export async function getMessagesOverview(actor: ManagementActor) {
       nextRunAt: plan.nextRunAt ? utcToPlatform(plan.nextRunAt) : null,
       lastRunAt: plan.lastRunAt ? utcToPlatform(plan.lastRunAt) : null,
       active: plan.active,
-      progress: progressOf(plan.id)
+      progress: progressOf(plan.id, plan.schedule === "STUDENT_WEEK")
     })),
     history: history.map((row) => ({
       id: row.id,
@@ -593,4 +672,18 @@ export async function getMessagesOverview(actor: ManagementActor) {
       preview: row.message.text.slice(0, 80)
     }))
   };
+}
+
+/**
+ * Backup timer: while a teacher has the Messages page open, the page calls this every minute so their own due
+ * messages go out even if the external scheduler isn't set up yet. Only the teacher's own messages.
+ */
+export async function dispatchForTeacher(actor: ManagementActor) {
+  const instructorId = requireInstructor(actor);
+  return runDueMessages(new Date(), { instructorId });
+}
+
+/** Queued deliveries whose time passed more than 3 minutes ago: the scheduler isn't running. */
+export async function overdueCount(instructorId: string) {
+  return prisma.telegramDelivery.count({ where: { status: "QUEUED", scheduledFor: { lt: new Date(Date.now() - 3 * 60_000) }, message: { instructorId } } });
 }

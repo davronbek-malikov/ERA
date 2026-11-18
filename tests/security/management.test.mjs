@@ -638,6 +638,50 @@ describe("Teacher homework workflow (docs/ERA_TEACHER_HOMEWORK.md)", () => {
     assert.equal((await rule(teacherA, { workspace: "teacher", enabled: true, perWeek: 3 })).status, 200);
   });
 
+  test("automatic reminder: each student's own week (from their start date) ends behind → one personal message per week", async () => {
+    const UZ = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"];
+    const uz = (date) => `${Number(date.slice(8, 10))}-${UZ[Number(date.slice(5, 7)) - 1]}`;
+    const start = addDays(today, -7); // week 1 = start … yesterday: just ended
+    const cron = () => call("GET", "/api/cron/telegram", { headers: { authorization: "Bearer test-cron-secret" } });
+    await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: "555" } });
+    await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${start}T00:00:00.000Z`) } });
+    try {
+      const auto = await post("/api/management/telegram/messages", {
+        session: teacherA,
+        json: { workspace: "teacher", text: "Avto {name}: {startDate} kuni boshlagansiz, {weekFrom}–{weekTo}: {count}/{required}", audience: "ALL", when: "AUTO", time: "10:00", pacing: "FAST" }
+      });
+      assert.equal(auto.status, 201, auto.text);
+      const row = await prisma.telegramMessage.findUnique({ where: { id: auto.data.messageId } });
+      assert.equal(row.schedule, "STUDENT_WEEK");
+      assert.equal(row.audience, "BEHIND", "AUTO always targets students behind the rule");
+
+      await prisma.telegramMessage.update({ where: { id: row.id }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+      assert.equal((await cron()).status, 200);
+      const deliveries = await prisma.telegramDelivery.findMany({ where: { messageId: row.id, studentId: hw.studentId } });
+      assert.equal(deliveries.length, 1, "the student whose week just ended");
+      assert.equal(deliveries[0].runKey, `week:${start}`);
+      const expected = `Avto Homework Student: ${uz(start)} kuni boshlagansiz, ${uz(start)}–${uz(addDays(start, 6))}: 0/3`;
+      assert.equal(deliveries[0].text, expected);
+      const sent = (await storageLog()).filter((entry) => entry.path.endsWith("/sendMessage") && String(entry.body?.chat_id) === "555" && String(entry.body?.text ?? "").startsWith("Avto Homework Student"));
+      assert.equal(sent.length, 1);
+      assert.ok(sent[0].body.text.startsWith(expected), "personal values filled in");
+
+      // Next day's run: same week, no second message.
+      await prisma.telegramMessage.update({ where: { id: row.id }, data: { nextRunAt: new Date(Date.now() - 1000) } });
+      await cron();
+      assert.equal(await prisma.telegramDelivery.count({ where: { messageId: row.id, studentId: hw.studentId } }), 1, "once per week");
+      assert.ok((await prisma.telegramMessage.findUnique({ where: { id: row.id } })).nextRunAt > new Date(), "runs again tomorrow");
+
+      // Backup timer from the open page: teachers only.
+      assert.equal((await post("/api/management/telegram/dispatch", { session: teacherA, json: { workspace: "teacher" } })).status, 200);
+      assert.equal((await post("/api/management/telegram/dispatch", { session: studentA, json: {} })).status, 403);
+    } finally {
+      await prisma.enrollment.update({ where: { id: hw.enrollmentId }, data: { startDate: new Date(`${today}T00:00:00.000Z`) } });
+      await prisma.user.update({ where: { id: hw.studentId }, data: { telegramChatId: null } });
+      await prisma.telegramMessage.deleteMany({ where: { instructorId: ins.instructorA } });
+    }
+  });
+
   test("Tugallanmagan after the deadline; the teacher records Imtihondan o'tdi / yiqilgan for their own students only", async () => {
     const url = `/api/management/enrollments/${hw.enrollmentId}/exam-result`;
     const result = (session, value) => call("PUT", url, { session, json: { workspace: "teacher", result: value } });
@@ -998,5 +1042,32 @@ describe("A new teacher works on their own right away (multi-teacher)", () => {
     assert.equal((await call("DELETE", "/api/management/telegram/account?workspace=teacher", { session: nt.session })).status, 200);
     assert.equal(await prisma.telegramAccount.count({ where: { instructorId: nt.instructorId } }), 0);
     await prisma.telegramMessage.deleteMany({ where: { instructorId: nt.instructorId } });
+  });
+
+  test("move to the next month in one step: the result goes on the finished month, only the new month is current", async () => {
+    assert.ok(nt.session && nt.studentId);
+    const second = await post("/api/management/courses", { session: nt.session, json: { workspace: "teacher", title: "Nodira RAG 1-oy", durationWeeks: 4, lessons: [{ title: "RAG", homework: "Build a retriever" }] } });
+    assert.equal(second.status, 201, second.text);
+    const old = await prisma.enrollment.findFirst({ where: { userId: nt.studentId, courseId: nt.courseId } });
+    const next = (session, json) => post(`/api/management/enrollments/${old.id}/next`, { session, json: { workspace: "teacher", ...json } });
+    assert.ok([403, 404].includes((await next(teacherA, { courseId: second.data.courseId, startDate: today, priceAmount: 100000 })).status), "another teacher's student");
+    assert.equal((await next(studentA, { courseId: second.data.courseId, startDate: today })).status, 403);
+    assert.equal((await next(nt.session, { courseId: nt.courseId, startDate: today, priceAmount: 100000 })).status, 409, "not the same course");
+    assert.equal((await next(nt.session, { courseId: second.data.courseId, startDate: today, priceAmount: 100000, examResult: "GREAT" })).status, 400);
+
+    const moved = await next(nt.session, { courseId: second.data.courseId, startDate: today, priceAmount: 100000, examResult: "PASSED" });
+    assert.equal(moved.status, 201, moved.text);
+    const finished = await prisma.enrollment.findUnique({ where: { id: old.id } });
+    assert.equal(finished.status, "COMPLETED");
+    assert.equal(finished.examResult, "PASSED", "the result belongs to the month that ended");
+    const fresh = await prisma.enrollment.findUnique({ where: { id: moved.data.enrollmentId } });
+    assert.equal(fresh.status, "ACTIVE");
+    assert.equal(fresh.examResult, null, "the new month starts clean");
+    assert.equal(fresh.priceAmount, 100000);
+    const p = (await profile(nt.session, nt.studentId, "teacher")).profile;
+    assert.deepEqual(p.current.map((view) => view.course.id), [second.data.courseId], "only the new month is current");
+    assert.ok(p.history.some((view) => view.id === old.id), "the old month is under previous courses");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "enrollment.move_next", entityId: old.id } }));
+    assert.equal((await next(nt.session, { courseId: second.data.courseId, startDate: today, priceAmount: 100000 })).status, 409, "already moved");
   });
 });

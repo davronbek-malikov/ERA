@@ -1187,6 +1187,8 @@ model TelegramDelivery {
   scheduledFor DateTime? @map("scheduled_for")
   /// ACCOUNT (the teacher's own Telegram number) or BOT (ERA bot, fallback).
   via          String?
+  /// The message as this student receives it ({name}, {startDate}, {count}… filled in when queued).
+  text         String?
   error        String?
   sentAt       DateTime? @map("sent_at")
   createdAt    DateTime  @default(now()) @map("created_at")

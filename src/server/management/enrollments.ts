@@ -426,3 +426,45 @@ export async function setCourseMembership(
     return { enrollmentId: current.id, studentName: current.user.name, courseTitle: current.course.title, status: updated.status };
   });
 }
+
+/**
+ * "Keyingi oyga o'tkazish": the student finished this course (month) and moves on to the next one, in one step.
+ * 1. the next enrollment is created (same rules as any new enrollment: checked, scoped, audited);
+ * 2. this one is finished: COMPLETED, with the exam result of THIS month if the teacher gave one.
+ * The old month keeps its homework, payments and history under the profile's previous courses; only the new
+ * month is current (My students, homework rule, reminders).
+ */
+export async function moveToNextCourse(
+  actor: ManagementActor,
+  enrollmentId: string,
+  buildNext: (current: { userId: string; courseId: string; currency: string; paymentArrangement: PaymentArrangement | null; priceAmount: number | null }) => CreateEnrollmentInput,
+  examResult: "PASSED" | "FAILED" | null | undefined,
+  options: ChangeOptions
+) {
+  assertCan(actor, "manageEnrollments");
+  const current = await prisma.enrollment.findFirst({
+    where: { id: enrollmentId, ...enrollmentScope(actor) },
+    select: { id: true, status: true, userId: true, courseId: true, currency: true, paymentArrangement: true, priceAmount: true, examResult: true, course: { select: { title: true } } }
+  });
+  if (!current) throw authErrors.notFound("Enrollment not found.");
+  if (current.status !== "ACTIVE") throw conflict("not-current", `${current.course.title} isn't a current course.`);
+  const next = buildNext(current);
+  if (next.courseId === current.courseId) throw conflict("same-course", "Choose the next course (not the same one).");
+
+  const created = await createEnrollment(actor, next, options);
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    const resultChange = examResult === undefined ? {} : { examResult, examResultAt: examResult ? now : null, examResultById: examResult ? actor.user.id : null };
+    await tx.enrollment.update({ where: { id: current.id }, data: { status: "COMPLETED", completedAt: now, ...resultChange } });
+    await writeAudit(tx, {
+      actorId: actor.user.id,
+      action: "enrollment.move_next",
+      entityType: "enrollment",
+      entityId: current.id,
+      before: { status: current.status, examResult: current.examResult },
+      after: { status: "COMPLETED", examResult: examResult === undefined ? current.examResult : examResult, nextEnrollmentId: created.enrollmentId },
+      source: options.source
+    });
+  });
+  return { ...created, previousEnrollmentId: current.id };
+}

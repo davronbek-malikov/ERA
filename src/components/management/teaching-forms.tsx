@@ -569,7 +569,7 @@ export function HomeworkRuleButton({ workspace, enabled, perWeek }: { workspace:
 }
 
 /** The teacher's final exam result for one course: not set / passed / failed. */
-export function ExamResultControl({ enrollmentId, workspace, result }: { enrollmentId: string; workspace: Workspace; result: "PASSED" | "FAILED" | null }) {
+export function ExamResultControl({ enrollmentId, workspace, courseTitle, result }: { enrollmentId: string; workspace: Workspace; courseTitle: string; result: "PASSED" | "FAILED" | null }) {
   const T = useT();
   const { run, pending } = useManagementMutation();
   const options: Array<{ value: "PASSED" | "FAILED" | null; label: string; active: string }> = [
@@ -579,7 +579,7 @@ export function ExamResultControl({ enrollmentId, workspace, result }: { enrollm
   ];
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="font-medium">{T("Exam result")}:</span>
+      <span className="font-medium">{T("{course} exam result", { course: courseTitle })}:</span>
       <div role="radiogroup" aria-label={T("Exam result")} className="inline-flex rounded-full border border-border bg-muted/50 p-0.5">
         {options.map((option) => (
           <button
