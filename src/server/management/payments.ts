@@ -20,6 +20,9 @@ import { fromDbDate, toDbDate } from "@/server/management/time";
  *   reverse  → REVERSED     (an APPROVED payment taken back, with a reason)
  *   correct  → the original is reversed (if approved) or rejected (if pending), and a NEW pending
  *              transaction with the right amount is recorded and linked to it.
+ *   move     → recorded for the wrong month/course of the same student: the original is reversed (if
+ *              approved) or rejected (if pending), and the same payment is recorded on the right
+ *              enrollment with the same status, linked to it. Each month keeps its own balance.
  * Nothing is ever deleted or edited in place. Every step writes an audit row in the same transaction.
  * Retries are safe: a repeated idempotency key returns the first transaction instead of creating a second.
  */
@@ -194,20 +197,42 @@ export async function checkPaymentDecision(db: Db, actor: ManagementActor, trans
         throw conflict("no-change", "The corrected payment is the same as the original.");
       }
       break;
+    case "move": {
+      assertCan(actor, "recordPayments");
+      if (transaction.status === "APPROVED") assertCan(actor, "approvePayments");
+      else if (transaction.status === "PENDING") {
+        if (transaction.recordedById !== actor.user.id) assertCan(actor, "approvePayments");
+      } else {
+        throw conflict("payment-not-movable", `A ${transaction.status.toLowerCase()} payment doesn't count; nothing to move.`);
+      }
+      if (input.targetEnrollmentId === transaction.enrollmentId) throw conflict("same-enrollment", "The payment is already on this course.");
+      const target = await db.enrollment.findFirst({
+        where: { id: input.targetEnrollmentId, ...enrollmentScope(actor) },
+        select: { id: true, userId: true, currency: true, priceAmount: true, paymentArrangement: true, course: { select: { title: true } }, payments: { select: { id: true, kind: true, amount: true, status: true } } }
+      });
+      if (!target) throw authErrors.notFound("Enrollment not found.");
+      if (target.userId !== transaction.enrollment.userId) throw conflict("different-student", "A payment can only be moved to another course of the same student.");
+      if (target.currency !== transaction.currency) throw conflict("currency-mismatch", `That course is in ${target.currency}.`);
+      if (transaction.status === "APPROVED" && transaction.kind === "REFUND" && transaction.amount > summarizePayments(target, target.payments).approved) {
+        throw conflict("refund-too-large", "A refund can't be larger than the approved payments for this enrollment.");
+      }
+      const before = summarizePayments(transaction.enrollment, transaction.enrollment.payments);
+      return { transaction, before, target };
+    }
   }
 
   const before = summarizePayments(transaction.enrollment, transaction.enrollment.payments);
-  return { transaction, before };
+  return { transaction, before, target: null };
 }
 
 export async function decidePayment(actor: ManagementActor, transactionId: string, input: PaymentDecisionInput, options: ChangeOptions) {
-  if (input.decision === "correct" && input.idempotencyKey) {
+  if ((input.decision === "correct" || input.decision === "move") && input.idempotencyKey) {
     const existing = await prisma.paymentTransaction.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: TRANSACTION_SELECT });
     if (existing && existing.correctionOfId === transactionId) return { original: null, correction: snapshot(existing), created: false };
   }
 
   return prisma.$transaction(async (tx) => {
-    const { transaction } = await checkPaymentDecision(tx, actor, transactionId, input);
+    const { transaction, target } = await checkPaymentDecision(tx, actor, transactionId, input);
     const now = new Date();
     const { enrollment: _enrollment, ...beforeRow } = transaction;
 
@@ -224,6 +249,13 @@ export async function decidePayment(actor: ManagementActor, transactionId: strin
     } else if (input.decision === "reverse") {
       data = { status: "REVERSED", reversedById: actor.user.id, reversedAt: now, reversalReason: input.reason };
       action = "payment.reverse";
+    } else if (input.decision === "move") {
+      const note = `Moved to ${target!.course.title}: ${input.reason}`;
+      data =
+        transaction.status === "APPROVED"
+          ? { status: "REVERSED", reversedById: actor.user.id, reversedAt: now, reversalReason: note }
+          : { status: "REJECTED", reviewedById: actor.user.id, reviewedAt: now, rejectionReason: note };
+      action = "payment.move";
     } else if (transaction.status === "APPROVED") {
       data = { status: "REVERSED", reversedById: actor.user.id, reversedAt: now, reversalReason: `Corrected: ${input.reason}` };
       action = "payment.correct";
@@ -237,7 +269,29 @@ export async function decidePayment(actor: ManagementActor, transactionId: strin
     const original = await tx.paymentTransaction.findUniqueOrThrow({ where: { id: transaction.id }, select: TRANSACTION_SELECT });
 
     let correction: TransactionRow | null = null;
-    if (input.decision === "correct") {
+    if (input.decision === "move") {
+      const wasApproved = transaction.status === "APPROVED";
+      correction = await tx.paymentTransaction.create({
+        data: {
+          enrollmentId: target!.id,
+          kind: transaction.kind,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          method: transaction.method,
+          transactionDate: transaction.transactionDate,
+          status: wasApproved ? "APPROVED" : "PENDING",
+          reviewedById: wasApproved ? actor.user.id : null,
+          reviewedAt: wasApproved ? now : null,
+          reference: transaction.reference,
+          description: [transaction.description, `Moved from ${transaction.enrollment.course.title}: ${input.reason}`].filter(Boolean).join(" · "),
+          source: options.source,
+          recordedById: actor.user.id,
+          correctionOfId: transaction.id,
+          idempotencyKey: input.idempotencyKey ?? null
+        },
+        select: TRANSACTION_SELECT
+      });
+    } else if (input.decision === "correct") {
       correction = await tx.paymentTransaction.create({
         data: {
           enrollmentId: transaction.enrollmentId,
@@ -270,7 +324,7 @@ export async function decidePayment(actor: ManagementActor, transactionId: strin
     if (correction) {
       await writeAudit(tx, {
         actorId: actor.user.id,
-        action: "payment.record_correction",
+        action: input.decision === "move" ? "payment.record_moved" : "payment.record_correction",
         entityType: "payment",
         entityId: correction.id,
         after: snapshot(correction),

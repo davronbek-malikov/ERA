@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { BadgeCheck, Ban, HandCoins, PencilLine, Undo2 } from "lucide-react";
+import { ArrowRightLeft, BadgeCheck, Ban, CalendarRange, HandCoins, PencilLine, Undo2 } from "lucide-react";
 
 import { FormDialog, formAmount, formString } from "@/components/management/form-dialog";
 import { newIdempotencyKey, useManagementMutation } from "@/components/management/use-mutation";
@@ -19,22 +19,59 @@ import { useT } from "@/components/i18n/locale-provider";
  * makes it count. Corrections keep the original and add a linked new record. Nothing is ever deleted.
  */
 
+/** One month/course of the student that a payment can belong to. Each one keeps its own balance. */
+export type PaymentMonth = { id: string; label: string; remaining: number | null };
+
+/**
+ * Shows (and lets the teacher change) which month the payment is for, so money for an old month never
+ * lands on the new one by accident.
+ */
+function MonthField({ id, months, value, onChange }: { id: string; months: PaymentMonth[]; value: string; onChange: (id: string) => void }) {
+  const T = useT();
+  const current = months.find((month) => month.id === value);
+  if (months.length <= 1) {
+    return current ? (
+      <p className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+        <CalendarRange className="size-4 shrink-0 text-primary" aria-hidden="true" />
+        <span>
+          {T("For")}: <strong>{current.label}</strong>
+        </span>
+      </p>
+    ) : null;
+  }
+  return (
+    <Field id={id} label={T("Which month is this payment for?")} hint={T("Each month has its own payment. Money for an earlier month goes on that month.")} required>
+      <Select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+        {months.map((month) => (
+          <option key={month.id} value={month.id}>
+            {month.label}
+            {month.remaining ? ` — ${T("owes ₩{amount}", { amount: month.remaining.toLocaleString("en-US") })}` : month.remaining === 0 ? ` — ${T("paid")}` : ""}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
 export function RecordPaymentButton({
   enrollmentId,
   workspace,
   today,
   label = "Record payment",
-  currency = "KRW"
+  currency = "KRW",
+  months = []
 }: {
   enrollmentId: string;
   workspace: Workspace;
   today: string;
   label?: string;
   currency?: string;
+  months?: PaymentMonth[];
 }) {
   const T = useT();
   const { run } = useManagementMutation();
   const [key, setKey] = React.useState(newIdempotencyKey);
+  const [forId, setForId] = React.useState(enrollmentId);
 
   async function submit(form: FormData) {
     const amount = formAmount(form, "amount");
@@ -47,7 +84,7 @@ export function RecordPaymentButton({
       "POST",
       {
         workspace,
-        enrollmentId,
+        enrollmentId: forId,
         kind: formString(form, "kind") || "PAYMENT",
         amount,
         currency,
@@ -70,9 +107,13 @@ export function RecordPaymentButton({
       title={T("Record a payment")}
       description={T("For money received outside ERA (bank transfer, cash…). It is saved as pending and counts only after someone verifies and approves it.")}
       submitLabel={T("Record as pending")}
-      onOpen={() => setKey(newIdempotencyKey())}
+      onOpen={() => {
+        setKey(newIdempotencyKey());
+        setForId(enrollmentId);
+      }}
       onSubmit={submit}
     >
+      <MonthField id={`pay-month-${enrollmentId}`} months={months} value={forId} onChange={setForId} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field id={`pay-amount-${enrollmentId}`} label={T("Amount (₩)")} required>
           <Input id={`pay-amount-${enrollmentId}`} name="amount" inputMode="numeric" placeholder="100000" required />
@@ -111,7 +152,8 @@ export function PaymentReviewActions({
   status,
   amount,
   canApprove,
-  canCorrect
+  canCorrect,
+  moveTargets = []
 }: {
   transactionId: string;
   workspace: Workspace;
@@ -119,6 +161,8 @@ export function PaymentReviewActions({
   amount: number;
   canApprove: boolean;
   canCorrect: boolean;
+  /** The student's other months/courses this payment can be moved to. */
+  moveTargets?: PaymentMonth[];
 }) {
   const T = useT();
   const { run, pending } = useManagementMutation();
@@ -201,6 +245,40 @@ export function PaymentReviewActions({
           </Field>
         </FormDialog>
       ) : null}
+      {(status === "PENDING" || status === "APPROVED") && canCorrect && moveTargets.length ? (
+        <FormDialog
+          triggerLabel={T("Move to another month")}
+          triggerIcon={<ArrowRightLeft />}
+          title={T("Move this payment to another month")}
+          description={T("Use this when the payment was recorded on the wrong month. It stays in this month's history as moved, and the same payment is put on the month you choose.")}
+          submitLabel={T("Move payment")}
+          onOpen={() => setKey(newIdempotencyKey())}
+          onSubmit={async (form) =>
+            Boolean(
+              await run(
+                url,
+                "POST",
+                { workspace, decision: "move", targetEnrollmentId: formString(form, "target"), reason: formString(form, "reason") || null, idempotencyKey: key },
+                T("Payment moved to the right month.")
+              )
+            )
+          }
+        >
+          <Field id={`move-target-${transactionId}`} label={T("Which month is this payment for?")} required>
+            <Select id={`move-target-${transactionId}`} name="target" defaultValue={moveTargets[0].id}>
+              {moveTargets.map((month) => (
+                <option key={month.id} value={month.id}>
+                  {month.label}
+                  {month.remaining ? ` — ${T("owes ₩{amount}", { amount: month.remaining.toLocaleString("en-US") })}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field id={`move-reason-${transactionId}`} label={T("Note (optional)")}>
+            <Input id={`move-reason-${transactionId}`} name="reason" maxLength={500} placeholder={T("e.g. Paid for the previous month")} />
+          </Field>
+        </FormDialog>
+      ) : null}
     </div>
   );
 }
@@ -215,7 +293,9 @@ export function MarkPaidButton({
   today,
   remaining,
   canApprove,
-  currency = "KRW"
+  currency = "KRW",
+  months = [],
+  label = "Confirm payment"
 }: {
   enrollmentId: string;
   workspace: Workspace;
@@ -223,10 +303,19 @@ export function MarkPaidButton({
   remaining: number;
   canApprove: boolean;
   currency?: string;
+  months?: PaymentMonth[];
+  label?: string;
 }) {
   const T = useT();
   const { run } = useManagementMutation();
   const [key, setKey] = React.useState(newIdempotencyKey);
+  const [forId, setForId] = React.useState(enrollmentId);
+  const [amountText, setAmountText] = React.useState(String(remaining));
+  function chooseMonth(id: string) {
+    setForId(id);
+    const month = months.find((item) => item.id === id);
+    if (month?.remaining) setAmountText(String(month.remaining));
+  }
 
   async function submit(form: FormData) {
     const amount = formAmount(form, "amount");
@@ -236,7 +325,7 @@ export function MarkPaidButton({
     }
     const body = {
       workspace,
-      enrollmentId,
+      enrollmentId: forId,
       kind: "PAYMENT",
       amount,
       currency,
@@ -273,7 +362,7 @@ export function MarkPaidButton({
 
   return (
     <FormDialog
-      triggerLabel={T("Confirm payment")}
+      triggerLabel={T(label)}
       triggerVariant="default"
       triggerIcon={<BadgeCheck />}
       title={T("The student paid")}
@@ -283,12 +372,17 @@ export function MarkPaidButton({
           : T("It is saved and counts after an administrator approves it.")
       }
       submitLabel={T("Confirm payment")}
-      onOpen={() => setKey(newIdempotencyKey())}
+      onOpen={() => {
+        setKey(newIdempotencyKey());
+        setForId(enrollmentId);
+        setAmountText(String(remaining));
+      }}
       onSubmit={submit}
     >
+      <MonthField id={`paid-month-${enrollmentId}`} months={months} value={forId} onChange={chooseMonth} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field id={`paid-amount-${enrollmentId}`} label={T("Amount (₩)")} required>
-          <Input id={`paid-amount-${enrollmentId}`} name="amount" inputMode="numeric" defaultValue={String(remaining)} required />
+          <Input id={`paid-amount-${enrollmentId}`} name="amount" inputMode="numeric" value={amountText} onChange={(event) => setAmountText(event.target.value)} required />
         </Field>
         <Field id={`paid-method-${enrollmentId}`} label={T("Method")}>
           <Select id={`paid-method-${enrollmentId}`} name="method" defaultValue="BANK_TRANSFER">

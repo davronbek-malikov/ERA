@@ -171,6 +171,47 @@ describe("Enrollments and manual payment verification (admin)", () => {
     assert.equal(await prisma.paymentTransaction.count({ where: { id: recorded.data.transaction.id } }), 1, "original kept");
   });
 
+  test("each month keeps its own payment: a payment recorded on the wrong month is moved, not double counted", async () => {
+    // Bob: month 1 (courseA, state.bobA) and a second month (courseA2), both unpaid at first.
+    const second = await createEnrollment(admin, { studentId: m.bob.id, courseId: m.courseA2.id, startDate: today, priceAmount: 100000, paymentArrangement: "PAY_IN_FULL" });
+    assert.equal(second.status, 201, second.text);
+    const monthTwo = second.data.enrollmentId;
+    try {
+      // Paid for the old month but confirmed on the new one by mistake.
+      const wrong = await recordPayment(admin, { enrollmentId: monthTwo, amount: 100000, method: "CASH" });
+      assert.equal((await decide(admin, wrong.data.transaction.id, { decision: "approve" })).status, 200);
+      const oldBefore = enrollmentOf((await profile(admin, m.bob.id)).profile, c.courseA.id).money;
+
+      assert.equal((await decide(admin, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: monthTwo })).status, 409, "already on that month");
+      assert.equal((await decide(admin, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: state.ali1A2 })).status, 409, "another student's course");
+      assert.equal((await decide(studentA, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: state.bobA })).status, 403);
+
+      const key = randomUUID();
+      const moved = await decide(admin, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: state.bobA, reason: "Paid for month 1", idempotencyKey: key });
+      assert.equal(moved.status, 200, moved.text);
+      assert.equal(moved.data.original.status, "REVERSED", "kept in the wrong month's history, no longer counts");
+      assert.equal(moved.data.correction.enrollmentId, state.bobA);
+      assert.equal(moved.data.correction.status, "APPROVED", "an approved payment stays approved on the right month");
+      assert.equal(moved.data.correction.correctionOfId, wrong.data.transaction.id);
+      const again = await decide(admin, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: state.bobA, idempotencyKey: key });
+      assert.equal(again.status, 200, "a retry returns the same move");
+      assert.equal(await prisma.paymentTransaction.count({ where: { correctionOfId: wrong.data.transaction.id } }), 1, "moved once");
+
+      const p = (await profile(admin, m.bob.id)).profile;
+      const newMonth = enrollmentOf(p, m.courseA2.id).money;
+      assert.equal(newMonth.approved, 0, "the new month is not paid by the old month's money");
+      assert.equal(newMonth.remaining, 100000);
+      assert.equal(enrollmentOf(p, c.courseA.id).money.approved, oldBefore.approved + 100000, "counted on the old month");
+      assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "payment.move", entityId: wrong.data.transaction.id } }));
+      assert.equal((await decide(admin, wrong.data.transaction.id, { decision: "move", targetEnrollmentId: monthTwo })).status, 409, "a moved payment can't move again");
+    } finally {
+      const ids = (await prisma.paymentTransaction.findMany({ where: { enrollmentId: monthTwo }, select: { id: true } })).map((row) => row.id);
+      await prisma.paymentTransaction.deleteMany({ where: { correctionOfId: { in: ids } } });
+      await prisma.paymentTransaction.deleteMany({ where: { enrollmentId: monthTwo } });
+      await prisma.enrollment.delete({ where: { id: monthTwo } });
+    }
+  });
+
   test("18 (manual). retrying with the same idempotency key never records a second payment", async () => {
     const key = randomUUID();
     const first = await recordPayment(admin, { enrollmentId: state.ali1A2, amount: 12345, idempotencyKey: key });

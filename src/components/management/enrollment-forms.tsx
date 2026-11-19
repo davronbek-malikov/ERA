@@ -500,7 +500,8 @@ export function NextCourseButton({
   courses,
   today,
   price,
-  showMoney
+  showMoney,
+  debt = 0
 }: {
   workspace: Workspace;
   enrollmentId: string;
@@ -511,6 +512,8 @@ export function NextCourseButton({
   today: string;
   price: number | null;
   showMoney: boolean;
+  /** Still unpaid on the month being finished: it stays on that month. */
+  debt?: number;
 }) {
   const T = useT();
   const { run } = useManagementMutation();
@@ -567,6 +570,14 @@ export function NextCourseButton({
           ))}
         </div>
       </fieldset>
+      {showMoney && debt > 0 ? (
+        <p role="note" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+          {T("{course} still owes ₩{amount}. The debt stays on {course}: when the student pays it, confirm the payment on {course} (Unpaid months on the profile), not on the new month.", {
+            course: courseTitle,
+            amount: debt.toLocaleString("en-US")
+          })}
+        </p>
+      ) : null}
       <p className="text-sm font-semibold">{T("2. The next course")}</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field id={`next-course-${enrollmentId}`} label={T("Course")} required>

@@ -11,7 +11,7 @@ import {
 } from "@/components/management/badges";
 import { AccessButton, CreateEnrollmentButton, EditEnrollmentButton, NextCourseButton, type Workspace } from "@/components/management/enrollment-forms";
 import { AddNoteButton } from "@/components/management/misc-forms";
-import { PaymentReviewActions, RecordPaymentButton, MarkPaidButton } from "@/components/management/payment-forms";
+import { PaymentReviewActions, RecordPaymentButton, MarkPaidButton, type PaymentMonth } from "@/components/management/payment-forms";
 import { CompleteCourseButton, CourseMembershipButton, ExamResultControl, HomeworkReviewButton, StudentContactButton } from "@/components/management/teaching-forms";
 import { telegramUrl } from "@/lib/student-contact";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -49,9 +49,12 @@ async function EnrollmentCard({
   instructors,
   today,
   studentName,
-  courses = []
+  courses = [],
+  months = []
 }: {
   courses?: Array<{ id: string; title: string; instructorId: string; instructorName: string }>;
+  /** Every month/course of this student that can hold a payment (each keeps its own balance). */
+  months?: PaymentMonth[];
   studentName: string;
   view: EnrollmentView;
   actor: ManagementActor;
@@ -61,6 +64,8 @@ async function EnrollmentCard({
 }) {
   const T = await getT();
   const canEdit = can(actor, "manageEnrollments") || can(actor, "manageAccess");
+  const sameCurrency = months;
+  const otherMonths = sameCurrency.filter((month) => month.id !== view.id);
   return (
     <article className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:p-5" aria-label={view.course.title}>
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -74,7 +79,7 @@ async function EnrollmentCard({
           <EnrollmentStatusBadge status={view.status} />
           <AccessBadge status={view.accessStatus} allowed={view.accessAllowed} payLater={view.arrangement === "PAY_LATER"} />
           {view.money ? <PaymentStatusBadge status={view.money.status} overdue={view.money.overdue} /> : null}
-          {view.money && view.money.remaining > 0 && view.status === "ACTIVE" && view.arrangement !== "WAIVED" && can(actor, "recordPayments") ? (
+          {view.money && view.money.remaining > 0 && (view.status === "ACTIVE" || view.status === "COMPLETED") && view.arrangement !== "WAIVED" && can(actor, "recordPayments") ? (
             <MarkPaidButton
               enrollmentId={view.id}
               workspace={workspace}
@@ -82,6 +87,7 @@ async function EnrollmentCard({
               remaining={view.money.remaining}
               canApprove={can(actor, "approvePayments")}
               currency={view.currency}
+              months={sameCurrency}
             />
           ) : null}
         </span>
@@ -139,7 +145,7 @@ async function EnrollmentCard({
           />
         ) : null}
         {can(actor, "recordPayments") && view.arrangement !== "WAIVED" ? (
-          <RecordPaymentButton enrollmentId={view.id} workspace={workspace} today={today} currency={view.currency} />
+          <RecordPaymentButton enrollmentId={view.id} workspace={workspace} today={today} currency={view.currency} months={sameCurrency} />
         ) : null}
         {can(actor, "manageEnrollments") && view.status === "ACTIVE" ? (
           <NextCourseButton
@@ -152,6 +158,7 @@ async function EnrollmentCard({
             today={today}
             price={view.money?.price ?? null}
             showMoney={can(actor, "viewPayments")}
+            debt={view.money && view.arrangement !== "WAIVED" ? view.money.remaining : 0}
           />
         ) : null}
         {(can(actor, "manageEnrollments") || can(actor, "manageAccess")) && (view.status === "ACTIVE" || view.status === "COMPLETED") ? (
@@ -211,6 +218,7 @@ async function EnrollmentCard({
                     amount={payment.amount}
                     canApprove={can(actor, "approvePayments")}
                     canCorrect={can(actor, "recordPayments") && (payment.status === "PENDING" ? payment.recordedById === actor.user.id || can(actor, "approvePayments") : can(actor, "approvePayments"))}
+                    moveTargets={otherMonths}
                   />
                 </li>
               ))}
@@ -381,6 +389,15 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
   const today = todayInPlatform();
   const [profile, courses, instructors] = await Promise.all([getStudentProfile(actor, studentId), listScopedCourses(actor), listInstructorsForActor(actor)]);
   const all = [...profile.current, ...profile.history];
+  const monthLabel = (view: EnrollmentView) => `${view.course.title} (${formatCalendarDate(view.startDate)} – ${formatCalendarDate(view.endDate)})`;
+  const monthsFor = (currency: string): PaymentMonth[] =>
+    all
+      .filter((view) => view.money && view.currency === currency && view.arrangement !== "WAIVED" && (view.status === "ACTIVE" || view.status === "COMPLETED"))
+      .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))
+      .map((view) => ({ id: view.id, label: monthLabel(view), remaining: view.money?.remaining ?? null }));
+  const unpaid = all.filter((view) => view.money && view.money.remaining > 0 && view.arrangement !== "WAIVED" && (view.status === "ACTIVE" || view.status === "COMPLETED"));
+  // Shown when the student has more than one month, so the teacher sees which month each debt belongs to.
+  const showUnpaid = can(actor, "viewPayments") && unpaid.length > 0 && all.length > 1;
 
   return (
     <div className="flex flex-col gap-8">
@@ -421,6 +438,41 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
         </div>
       </section>
 
+      {showUnpaid ? (
+        <section aria-label={T("Unpaid months")} className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <TriangleAlert className="size-4 text-warning-foreground" aria-hidden="true" />
+            {T("Unpaid months ({count})", { count: unpaid.length })}
+          </h3>
+          <p className="text-xs text-muted-foreground">{T("Each month has its own payment. When the student pays for a month, confirm it on that month.")}</p>
+          <ul className="flex flex-col gap-2">
+            {unpaid
+              .slice()
+              .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))
+              .map((view) => (
+                <li key={view.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-card px-3 py-2 text-sm">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{monthLabel(view)}</span>
+                    <EnrollmentStatusBadge status={view.status} />
+                    <span className="font-semibold tabular-nums">{T("owes {amount}", { amount: formatMoney(view.money!.remaining, view.currency) })}</span>
+                  </span>
+                  {can(actor, "recordPayments") ? (
+                    <MarkPaidButton
+                      enrollmentId={view.id}
+                      workspace={workspace}
+                      today={today}
+                      remaining={view.money!.remaining}
+                      canApprove={can(actor, "approvePayments")}
+                      currency={view.currency}
+                      months={monthsFor(view.currency)}
+                    />
+                  ) : null}
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="flex flex-col gap-4" aria-label={T("Current enrollments")}>
         <SectionHeader
           title={T("Current enrollments")}
@@ -449,6 +501,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
               today={today}
               studentName={profile.student.name}
               courses={courses.map((course) => ({ id: course.id, title: course.title, instructorId: course.instructorId, instructorName: course.instructor.name }))}
+              months={monthsFor(view.currency)}
             />
           ))
         ) : (
@@ -481,7 +534,7 @@ export async function StudentProfileView({ actor, studentId, workspace }: { acto
                     <HomeworkPaceBadge pace={view.pace} showProgress={false} />
                   </summary>
                   <div className="border-t border-border p-2 sm:p-3">
-                    <EnrollmentCard view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} />
+                    <EnrollmentCard view={view} actor={actor} workspace={workspace} instructors={instructors} today={today} studentName={profile.student.name} months={monthsFor(view.currency)} />
                   </div>
                 </details>
               );

@@ -701,7 +701,25 @@ const UZ: Record<string, string> = {
   "{course} is finished and moves to Previous courses with its homework, payments and result. The new course becomes the current one.": "{course} yakunlanadi va uy vazifalari, to'lovlari hamda natijasi bilan \"Avvalgi kurslar\"ga o'tadi. Yangi kurs joriy kurs bo'ladi.",
   "Send again to those not reached ({count})": "Yetmaganlarga qayta yuborish ({count})",
   "Sends it again, with their current Telegram, to the students it didn't reach.": "Xabar yetmagan o'quvchilarga ularning hozirgi Telegram kontakti bo'yicha qayta yuboriladi.",
-  "Queued again for the students it didn't reach.": "Xabar yetmagan o'quvchilar uchun qayta navbatga qo'yildi."
+  "Queued again for the students it didn't reach.": "Xabar yetmagan o'quvchilar uchun qayta navbatga qo'yildi.",
+  "For": "Qaysi oy uchun",
+  "Which month is this payment for?": "Bu to'lov qaysi oy uchun?",
+  "Each month has its own payment. Money for an earlier month goes on that month.": "Har bir oyning o'z to'lovi bor. O'tgan oy uchun to'langan pul o'sha oyga yoziladi.",
+  "owes ₩{amount}": "qarz ₩{amount}",
+  "paid": "to'langan",
+  "owes {amount}": "qarz {amount}",
+  "Move to another month": "Boshqa oyga o'tkazish",
+  "Move this payment to another month": "To'lovni boshqa oyga o'tkazish",
+  "Use this when the payment was recorded on the wrong month. It stays in this month's history as moved, and the same payment is put on the month you choose.": "To'lov noto'g'ri oyga yozilgan bo'lsa, shundan foydalaning. Bu oy tarixida \"o'tkazildi\" deb qoladi, xuddi shu to'lov esa siz tanlagan oyga yoziladi.",
+  "Move payment": "To'lovni o'tkazish",
+  "Payment moved to the right month.": "To'lov to'g'ri oyga o'tkazildi.",
+  "e.g. Paid for the previous month": "masalan: O'tgan oy uchun to'ladi",
+  "Unpaid months": "To'lanmagan oylar",
+  "Unpaid months ({count})": "To'lanmagan oylar ({count})",
+  "Each month has its own payment. When the student pays for a month, confirm it on that month.": "Har bir oyning o'z to'lovi bor. O'quvchi qaysi oy uchun to'lasa, to'lovni o'sha oyda tasdiqlang.",
+  "{course} still owes ₩{amount}. The debt stays on {course}: when the student pays it, confirm the payment on {course} (Unpaid months on the profile), not on the new month.": "{course} bo'yicha hali ₩{amount} qarz bor. Qarz {course} da qoladi: o'quvchi to'laganda, to'lovni yangi oyda emas, {course} da tasdiqlang (profildagi \"To'lanmagan oylar\").",
+  "The payment is already on this course.": "To'lov allaqachon shu kursda.",
+  "A payment can only be moved to another course of the same student.": "To'lovni faqat shu o'quvchining boshqa kursiga o'tkazish mumkin."
 };
 
 export function translate(locale: Locale, text: string, vars?: Record<string, string | number>): string {

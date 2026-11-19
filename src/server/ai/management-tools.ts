@@ -1184,10 +1184,10 @@ export async function executeManagementAction(user: AuthUser, action: { id: stri
       const result = await decidePayment(
         actor,
         String(payload.transactionId ?? ""),
-        decision.decision === "correct" ? { ...decision, idempotencyKey: `ai-action:${action.id}` } : decision,
+        decision.decision === "correct" || decision.decision === "move" ? { ...decision, idempotencyKey: `ai-action:${action.id}` } : decision,
         options
       );
-      const word = { approve: "approved", reject: "rejected", reverse: "reversed", correct: "corrected" }[decision.decision];
+      const word = { approve: "approved", reject: "rejected", reverse: "reversed", correct: "corrected", move: "moved to the right month" }[decision.decision];
       return {
         message:
           decision.decision === "correct" && result.correction

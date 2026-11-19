@@ -215,17 +215,26 @@ export function parseRecordPayment(raw: Raw, today: string): RecordPaymentInput 
   };
 }
 
-export const PAYMENT_DECISIONS = ["approve", "reject", "reverse", "correct"] as const;
+export const PAYMENT_DECISIONS = ["approve", "reject", "reverse", "correct", "move"] as const;
 export type PaymentDecision = (typeof PAYMENT_DECISIONS)[number];
 
 export type PaymentDecisionInput =
   | { decision: "approve"; note: string | null }
   | { decision: "reject" | "reverse"; reason: string }
-  | { decision: "correct"; reason: string; amount: number; transactionDate?: string; method?: PaymentMethod; idempotencyKey?: string };
+  | { decision: "correct"; reason: string; amount: number; transactionDate?: string; method?: PaymentMethod; idempotencyKey?: string }
+  | { decision: "move"; reason: string; targetEnrollmentId: string; idempotencyKey?: string };
 
 export function parsePaymentDecision(raw: Raw): PaymentDecisionInput {
   const decision = oneOf(raw.decision, PAYMENT_DECISIONS, "decision");
   if (decision === "approve") return { decision, note: optionalText(raw.note, "note", 500) ?? null };
+  if (decision === "move") {
+    return {
+      decision,
+      reason: optionalText(raw.reason, "reason", 500) ?? "Recorded for the wrong month",
+      targetEnrollmentId: requireId(raw.targetEnrollmentId, "targetEnrollmentId"),
+      idempotencyKey: optionalIdempotencyKey(raw.idempotencyKey)
+    };
+  }
   const reason = requireString(raw.reason, "reason", { max: 500 });
   if (decision === "correct") {
     return {
