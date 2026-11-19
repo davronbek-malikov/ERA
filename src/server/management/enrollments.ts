@@ -90,6 +90,13 @@ export async function checkCreateEnrollment(db: Db, actor: ManagementActor, inpu
     where: { userId_courseId: { userId: student.id, courseId: course.id } },
     select: { id: true, status: true }
   });
+  if (existing && existing.status === "CANCELLED") {
+    // Removed by mistake? Bring the same enrollment back (homework, payments and history included).
+    throw conflict(
+      "already-enrolled",
+      "This student was removed from this course earlier. To bring them back, open the student's profile → Previous courses → this course → Return to course. Their homework and payments come back too."
+    );
+  }
   if (existing) {
     throw conflict(
       "already-enrolled",
