@@ -601,3 +601,136 @@ describe("8. Legacy lesson URL, direct URLs and headers", () => {
     assert.equal(response.headers.get("x-frame-options"), "SAMEORIGIN");
   });
 });
+
+describe("9. Student registration (Prompt 01): pending until a teacher approves", () => {
+  const ip = () => `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+  let signUpAction;
+  let signInAction;
+  const register = async (fields, forwardedFor = ip()) => {
+    const form = new FormData();
+    form.append(`$ACTION_ID_${signUpAction}`, "");
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    return call("POST", "/sign-up", { body: form, headers: { "x-forwarded-for": forwardedFor } });
+  };
+  const signIn = async (identifier, password) => {
+    const form = new FormData();
+    form.append(`$ACTION_ID_${signInAction}`, "");
+    form.append("identifier", identifier);
+    form.append("password", password);
+    form.append("next", "/learn");
+    return call("POST", "/sign-in", { body: form, headers: { "x-forwarded-for": ip() } });
+  };
+  const valid = (email) => ({ name: "Reg Student", email, phone: "", password: "longpassword1", confirmPassword: "longpassword1", preferredLanguage: "uz" });
+  const created = [];
+  const remember = async (email) => {
+    const user = await prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+    if (user) created.push(user.id);
+    return user;
+  };
+
+  before(async () => {
+    const page = await get("/sign-up");
+    assert.equal(page.status, 200);
+    signUpAction = actionWithFields(page.text, ["name", "email", "password", "confirmPassword", "preferredLanguage"]);
+    assert.ok(signUpAction, "sign-up form found");
+    signInAction = actionWithFields((await get("/sign-in")).text, ["identifier", "password"]);
+    assert.ok(signInAction, "sign-in form found");
+  });
+  after(async () => {
+    await prisma.activityLog.deleteMany({ where: { userId: { in: created } } });
+    await prisma.userOnboarding.deleteMany({ where: { userId: { in: created } } });
+    await prisma.user.deleteMany({ where: { id: { in: created } } });
+  });
+
+  test("a valid registration creates a PENDING student with the chosen language and shows the approval page; no session", async () => {
+    const email = `reg-${Date.now()}@example.com`;
+    const response = await register({ ...valid(email), email: email.toUpperCase(), phone: "+82 10 5555 0101", preferredLanguage: "en" });
+    assert.ok(isRedirect(response.status), String(response.status));
+    assert.match(response.location ?? "", /\/sign-up\/pending$/);
+    assert.ok(!(response.headers.get("set-cookie") ?? "").includes("era_session="), "no session for a pending account");
+    const user = await remember(email);
+    assert.ok(user, "profile created");
+    assert.equal(user.email, email, "stored in lower case");
+    assert.equal(user.role, "STUDENT");
+    assert.equal(user.status, "PENDING");
+    assert.equal(user.preferredLanguage, "en");
+    assert.equal(user.phone, "+821055550101");
+    assert.ok(user.passwordHash && user.passwordHash.startsWith("$2") && !user.passwordHash.includes("longpassword1"), "bcrypt hash, never the password");
+    const pending = await get("/sign-up/pending");
+    assert.equal(pending.status, 200);
+    assert.doesNotMatch(pending.text, /longpassword1|passwordHash/);
+  });
+
+  test("the role and status can't be chosen by the visitor", async () => {
+    const email = `reg-role-${Date.now()}@example.com`;
+    await register({ ...valid(email), role: "ADMIN", status: "ACTIVE" });
+    const user = await remember(email);
+    assert.equal(user.role, "STUDENT");
+    assert.equal(user.status, "PENDING");
+  });
+
+  test("invalid input is refused with a clear error and nothing is created", async () => {
+    const email = `reg-bad-${Date.now()}@example.com`;
+    const cases = [
+      [{ ...valid(email), name: "" }, "missing-fields"],
+      [{ ...valid(email), name: "A" }, "invalid-name"],
+      [{ ...valid(email), email: "not-an-email" }, "invalid-email"],
+      [{ ...valid(email), phone: "12" }, "invalid-phone"],
+      [{ ...valid(email), preferredLanguage: "ru" }, "invalid-language"],
+      [{ ...valid(email), password: "short", confirmPassword: "short" }, "password-too-short"],
+      [{ ...valid(email), password: "x".repeat(80), confirmPassword: "x".repeat(80) }, "password-too-long"],
+      [{ ...valid(email), confirmPassword: "different-password" }, "password-mismatch"]
+    ];
+    for (const [fields, error] of cases) {
+      const response = await register(fields);
+      assert.ok(isRedirect(response.status), `${error}: ${response.status}`);
+      assert.match(response.location ?? "", new RegExp(`error=${error}`), error);
+    }
+    assert.equal(await prisma.user.count({ where: { email } }), 0);
+  });
+
+  test("the same email (any letter case) or phone can't register twice", async () => {
+    const email = `reg-dup-${Date.now()}@example.com`;
+    await register({ ...valid(email), phone: "+82 10 5555 0202" });
+    assert.ok(await remember(email));
+    assert.match((await register(valid(email.toUpperCase()))).location ?? "", /error=email-exists/);
+    assert.match((await register(valid(u.studentA.email))).location ?? "", /error=email-exists/, "an existing student's email");
+    assert.match((await register({ ...valid(`other-${email}`), phone: "+82 10 5555 0202" })).location ?? "", /error=phone-exists/);
+    assert.equal(await prisma.user.count({ where: { email: { equals: email, mode: "insensitive" } } }), 1);
+  });
+
+  test("mass sign-ups from one network are rate limited", async () => {
+    const network = ip();
+    const results = [];
+    for (let index = 0; index < 6; index += 1) {
+      const email = `reg-rate-${Date.now()}-${index}@example.com`;
+      results.push((await register(valid(email), network)).location ?? "");
+      await remember(email);
+    }
+    assert.match(results[5], /error=rate-limited/);
+  });
+
+  test("a pending student can't sign in or open learning content until approved", async () => {
+    const email = `reg-gate-${Date.now()}@example.com`;
+    await register(valid(email));
+    const user = await remember(email);
+    assert.match((await signIn(email, "wrong-password-1")).location ?? "", /error=invalid-credentials/, "status not revealed without the password");
+    const right = await signIn(email, "longpassword1");
+    assert.match(right.location ?? "", /error=pending-approval/);
+    assert.ok(!(right.headers.get("set-cookie") ?? "").includes("era_session="));
+
+    // Even a forged or old session cookie for the pending account is refused everywhere.
+    const pending = as({ id: user.id, role: "STUDENT", name: user.name });
+    for (const path of ["/learn", "/learn/courses/course-a/lessons/a-1"]) {
+      const response = await get(path, { session: pending });
+      assert.ok(isRedirect(response.status) && (response.location ?? "").includes("/sign-in"), `${path}: ${response.status}`);
+    }
+    assert.equal((await get(`/api/lesson/${l.lessonA1.id}/context`, { session: pending })).status, 401);
+    assert.equal((await chat(pending, { lessonId: l.lessonA1.id, question: "hi" })).status, 401);
+
+    // Approved: can sign in.
+    await prisma.user.update({ where: { id: user.id }, data: { status: "ACTIVE" } });
+    const approved = await signIn(email, "longpassword1");
+    assert.ok((approved.headers.get("set-cookie") ?? "").includes("era_session="), "signed in after approval");
+  });
+});

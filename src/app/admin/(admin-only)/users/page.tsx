@@ -33,6 +33,7 @@ const roleLabels: Record<string, string> = { STUDENT: "Student", INSTRUCTOR: "Te
 const statusVariant: Record<string, "success" | "warning" | "error" | "neutral"> = {
   ACTIVE: "success",
   INVITED: "warning",
+  PENDING: "warning",
   SUSPENDED: "error"
 };
 
@@ -122,6 +123,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps) {
               options: [
                 { value: "", label: "All statuses" },
                 { value: "ACTIVE", label: "Active" },
+                { value: "PENDING", label: "Waiting for approval" },
                 { value: "INVITED", label: "Invited" },
                 { value: "SUSPENDED", label: "Suspended" }
               ]

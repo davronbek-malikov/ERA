@@ -69,6 +69,7 @@ export const messages = {
         "missing-fields": "Enter your email or phone number and your password.",
         "invalid-credentials": "We could not sign you in with those credentials.",
         "inactive-account": "This account is not active. Contact support if you need access restored.",
+        "pending-approval": "Your account is waiting for your teacher's approval. You can sign in once it is approved.",
         "rate-limited": "Too many sign-in attempts. Please wait a little and try again.",
         "service-unavailable":
           "Sign-in is temporarily unavailable because the database is busy. Please try again in a moment."
@@ -95,6 +96,16 @@ export const messages = {
       submit: "Create account",
       already: "Already registered?",
       signInHere: "Sign in here",
+      language: "Preferred language",
+      languageUz: "O'zbekcha",
+      languageEn: "English",
+      approvalNote: "After you register, your teacher checks and approves your account. You can open lessons once it is approved.",
+      pendingBadge: "Registration received",
+      pendingTitle: "Thank you! Your account is waiting for approval.",
+      pendingBody: "Your teacher needs to approve your account before you can open lessons and learning materials. This usually happens within a day.",
+      pendingSteps: ["Your teacher checks your details.", "Your account is approved.", "Sign in with your email and password and start learning."],
+      pendingSignIn: "Go to sign in",
+      pendingHome: "Back to the home page",
       errors: {
         "missing-fields": "Please complete your name, Gmail, and password.",
         "invalid-email": "Enter a valid email address.",
@@ -106,7 +117,11 @@ export const messages = {
         "duplicate-email": "That Gmail address is already being used.",
         "duplicate-phone": "That phone number is already being used.",
         "duplicate-record": "An account with those details already exists.",
-        "service-unavailable": "Sign-up is temporarily unavailable. Please try again in a moment."
+        "service-unavailable": "Sign-up is temporarily unavailable. Please try again in a moment.",
+        "invalid-name": "Enter your full name (2–100 characters).",
+        "invalid-language": "Choose Uzbek or English.",
+        "password-too-long": "Passwords can be at most 72 characters long.",
+        "rate-limited": "Too many registrations from this network. Please try again in an hour."
       }
     },
     courses: {
@@ -283,6 +298,7 @@ export const messages = {
         "missing-fields": "Email yoki telefon raqamingiz va parolingizni kiriting.",
         "invalid-credentials": "Bu ma'lumotlar bilan tizimga kira olmadik.",
         "inactive-account": "Bu akkaunt faol emas. Kirish kerak bo'lsa, qo'llab-quvvatlash bilan bog'laning.",
+        "pending-approval": "Akkauntingiz o'qituvchingiz tasdiqlashini kutmoqda. Tasdiqlangandan keyin kira olasiz.",
         "rate-limited": "Juda ko'p kirish urinishi bo'ldi. Biroz kutib, qayta urinib ko'ring.",
         "service-unavailable":
           "Ma'lumotlar bazasi bandligi sababli kirish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
@@ -309,6 +325,16 @@ export const messages = {
       submit: "Akkaunt yaratish",
       already: "Avval ro'yxatdan o'tganmisiz?",
       signInHere: "Bu yerda kiring",
+      language: "Qaysi tilda o'qiysiz",
+      languageUz: "O'zbekcha",
+      languageEn: "English",
+      approvalNote: "Ro'yxatdan o'tganingizdan keyin o'qituvchingiz akkauntingizni tekshirib tasdiqlaydi. Tasdiqlangach darslarni ocha olasiz.",
+      pendingBadge: "Ariza qabul qilindi",
+      pendingTitle: "Rahmat! Akkauntingiz tasdiqlanishini kutmoqda.",
+      pendingBody: "Darslar va o'quv materiallarini ochishdan oldin o'qituvchingiz akkauntingizni tasdiqlashi kerak. Odatda bu bir kun ichida bo'ladi.",
+      pendingSteps: ["O'qituvchingiz ma'lumotlaringizni tekshiradi.", "Akkauntingiz tasdiqlanadi.", "Email va parolingiz bilan kiring va o'qishni boshlang."],
+      pendingSignIn: "Kirish sahifasiga o'tish",
+      pendingHome: "Bosh sahifaga qaytish",
       errors: {
         "missing-fields": "Iltimos, ism, Gmail va parolni to'liq kiriting.",
         "invalid-email": "Yaroqli email manzilini kiriting.",
@@ -320,7 +346,11 @@ export const messages = {
         "duplicate-email": "Bu Gmail manzili allaqachon ishlatilmoqda.",
         "duplicate-phone": "Bu telefon raqami allaqachon ishlatilmoqda.",
         "duplicate-record": "Bu ma'lumotlar bilan akkaunt allaqachon mavjud.",
-        "service-unavailable": "Ro'yxatdan o'tish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
+        "service-unavailable": "Ro'yxatdan o'tish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring.",
+        "invalid-name": "To'liq ismingizni kiriting (2–100 belgi).",
+        "invalid-language": "O'zbekcha yoki English tilini tanlang.",
+        "password-too-long": "Parol ko'pi bilan 72 belgidan iborat bo'lishi mumkin.",
+        "rate-limited": "Bu tarmoqdan juda ko'p ro'yxatdan o'tildi. Bir soatdan keyin qayta urinib ko'ring."
       }
     },
     courses: {

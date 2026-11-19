@@ -1,108 +1,47 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { createUserSession, hashPassword, normalizePhone } from "@/lib/auth";
 import { getActionErrorRedirectPath } from "@/lib/app-errors";
-import { prisma } from "@/lib/prisma";
-import { retryOnDatabaseFailure } from "@/lib/server-data";
-import { ensureOnboardingRecord } from "@/server/onboarding";
+import { localeCookieName } from "@/lib/i18n";
+import { assertRateLimit, getRequestRateLimitKeyParts, RateLimitError } from "@/lib/rate-limit";
+import { parseRegistration, registerStudent } from "@/server/registration";
 
-function asString(formData: FormData, key: string) {
-  return String(formData.get(key) ?? "").trim();
-}
-
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function isValidPhone(value: string) {
-  const digitsOnly = value.replace(/\D/g, "");
-  return digitsOnly.length >= 10 && digitsOnly.length <= 15;
-}
-
+/*
+ * Student registration (Prompt 01). Creates a PENDING student account and shows the "waiting for your
+ * teacher's approval" page. No session is created: a pending student can't open learning content until a
+ * teacher or admin approves them. The role is never read from the form.
+ */
 export async function signUpAction(formData: FormData) {
-  const name = asString(formData, "name");
-  const email = asString(formData, "email").toLowerCase();
-  const rawPhone = asString(formData, "phone");
-  const phone = normalizePhone(rawPhone) || null;
-  const password = asString(formData, "password");
-  const confirmPassword = asString(formData, "confirmPassword");
+  const field = (key: string) => formData.get(key);
+  const parsed = parseRegistration({
+    name: field("name"),
+    email: field("email"),
+    phone: field("phone"),
+    password: field("password"),
+    confirmPassword: field("confirmPassword"),
+    preferredLanguage: field("preferredLanguage")
+  });
+  if (!parsed.ok) redirect(`/sign-up?error=${parsed.error}`);
 
-  if (!name || !email || !password || !confirmPassword) {
-    redirect("/sign-up?error=missing-fields");
-  }
-
-  if (!isValidEmail(email)) {
-    redirect("/sign-up?error=invalid-email");
-  }
-
-  if (phone && !isValidPhone(phone)) {
-    redirect("/sign-up?error=invalid-phone");
-  }
-
-  if (password.length < 8) {
-    redirect("/sign-up?error=password-too-short");
-  }
-
-  if (password !== confirmPassword) {
-    redirect("/sign-up?error=password-mismatch");
-  }
-
-  let existingUser;
-
+  // At most 5 registrations per network per hour: stops scripted mass sign-ups.
   try {
-    existingUser = await retryOnDatabaseFailure(() =>
-      prisma.user.findFirst({
-        where: {
-          OR: phone ? [{ email }, { phone }] : [{ email }]
-        },
-        select: {
-          email: true,
-          phone: true
-        }
-      })
-    );
+    await assertRateLimit({ scope: "sign-up", maxAttempts: 5, windowMs: 60 * 60 * 1000, cooldownMs: 60 * 60 * 1000, keyParts: await getRequestRateLimitKeyParts() });
+  } catch (error) {
+    if (error instanceof RateLimitError) redirect("/sign-up?error=rate-limited");
+    throw error;
+  }
+
+  let result: Awaited<ReturnType<typeof registerStudent>>;
+  try {
+    result = await registerStudent(parsed.input);
   } catch (error) {
     redirect(getActionErrorRedirectPath("/sign-up", error, "service-unavailable"));
   }
+  if (!result.ok) redirect(`/sign-up?error=${result.error}`);
 
-  if (existingUser?.email === email) {
-    redirect("/sign-up?error=email-exists");
-  }
-
-  if (phone && existingUser?.phone === phone) {
-    redirect("/sign-up?error=phone-exists");
-  }
-
-  let user;
-  const passwordHash = await hashPassword(password);
-
-  try {
-    user = await retryOnDatabaseFailure(() =>
-      prisma.user.create({
-        data: {
-          name,
-          email,
-          phone,
-          passwordHash
-        },
-        select: {
-          id: true,
-          role: true
-        }
-      })
-    );
-  } catch (error) {
-    redirect(getActionErrorRedirectPath("/sign-up", error, "service-unavailable"));
-  }
-
-  await createUserSession(user.id, user.role, name);
-  await ensureOnboardingRecord(user.id);
-  revalidatePath("/", "layout");
-  revalidatePath("/courses");
-  revalidatePath("/my-learning");
-  revalidatePath("/onboarding");
-  redirect("/onboarding?welcome=1");
+  // Show the rest of the site in the language the student chose.
+  (await cookies()).set(localeCookieName, parsed.input.preferredLanguage, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 365 });
+  redirect("/sign-up/pending");
 }

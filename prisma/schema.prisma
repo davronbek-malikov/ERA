@@ -121,7 +121,10 @@ model User {
   passwordHash       String?
   image              String?
   role               UserRole           @default(STUDENT)
+  /// ACTIVE, INVITED, SUSPENDED, or PENDING (registered by themselves, waiting for teacher approval).
   status             String             @default("ACTIVE")
+  /// "uz" or "en", chosen at registration.
+  preferredLanguage  String?            @map("preferred_language")
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   /// Student's GitHub profile or repository (homework checking). Shown to the student's teachers only.

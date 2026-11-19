@@ -93,13 +93,17 @@ export async function signInAction(formData: FormData) {
     redirect(`/sign-in?error=invalid-credentials&next=${encodeURIComponent(nextPath)}`);
   }
 
-  if (user.status !== "ACTIVE") {
-    redirect(`/sign-in?error=inactive-account&next=${encodeURIComponent(nextPath)}`);
-  }
-
   const validPassword = await verifyPassword(password, user.passwordHash);
   if (!validPassword) {
     redirect(`/sign-in?error=invalid-credentials&next=${encodeURIComponent(nextPath)}`);
+  }
+
+  // Only after the password is right, so the status of an account is never revealed to someone else.
+  if (user.status === "PENDING") {
+    redirect(`/sign-in?error=pending-approval&next=${encodeURIComponent(nextPath)}`);
+  }
+  if (user.status !== "ACTIVE") {
+    redirect(`/sign-in?error=inactive-account&next=${encodeURIComponent(nextPath)}`);
   }
 
   await createUserSession(user.id, user.role, user.name);

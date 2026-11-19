@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { KeyRound, Mail, Phone } from "lucide-react";
+import { KeyRound, Mail, Phone, ShieldCheck } from "lucide-react";
 
 import { signUpAction } from "@/app/(public)/sign-up/actions";
 import { SignUpSubmitButton } from "@/components/auth/sign-up-submit-button";
@@ -56,10 +56,9 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
-              {locale === "uz"
-                ? "Email va parol bilan tezda akkaunt yarating. Telefon raqami ixtiyoriy, lekin keyinroq telefon orqali kirish uchun foydali."
-                : "Create your account quickly with email and password. A phone number is optional, but helpful if you want phone login later."}
+            <div className="flex gap-3 rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
+              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+              <p>{t.signUp.approvalNote}</p>
             </div>
 
             <form action={signUpAction} className="space-y-4">
@@ -105,6 +104,20 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   className="h-12"
                 />
               </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">{t.signUp.language}</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["uz", "en"] as const).map((value) => (
+                    <label
+                      key={value}
+                      className="flex h-12 cursor-pointer items-center gap-2 rounded-xl border border-border px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+                    >
+                      <input type="radio" name="preferredLanguage" value={value} defaultChecked={value === (locale === "en" ? "en" : "uz")} className="accent-primary" />
+                      {value === "uz" ? t.signUp.languageUz : t.signUp.languageEn}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor="password" className="text-sm font-medium">
