@@ -134,6 +134,7 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
    *   FORCE_REFUSAL          → Anthropic refusal stop reason
    * Every request is logged with its full system prompt and messages (prompt-injection assertions).
    */
+  const rateLimitedOnce = new Set();
   const ollama = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${ollamaPort}`);
     const body = safeJson(await readBody(req)) ?? {};
@@ -187,6 +188,17 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
 
     if (kind === "anthropic" && (req.headers["x-api-key"] === "bad-key" || req.headers.authorization === "Bearer bad-key")) {
       return send(res, 401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key SECRET_PROVIDER_DETAIL" } });
+    }
+    // FORCE_RATE_LIMIT_ONCE: the first such request gets 429 + retry-after 1; the retry succeeds.
+    // FORCE_RATE_LIMIT_LONG: always 429 with a long wait (per-day limit).
+    if (last.includes("FORCE_RATE_LIMIT_LONG")) {
+      res.setHeader("retry-after", "600");
+      return send(res, 429, { error: { message: "Rate limit reached for model `m` in organization `org_SECRET123` on tokens per day (TPD): Limit 200000, Used 199990, Requested 5000. Please try again in 10m." } });
+    }
+    if (last.includes("FORCE_RATE_LIMIT_ONCE") && !rateLimitedOnce.has(last)) {
+      rateLimitedOnce.add(last);
+      res.setHeader("retry-after", "1");
+      return send(res, 429, { error: { message: "Rate limit reached on tokens per minute (TPM): Limit 8000, Used 7000, Requested 3000." } });
     }
     if (last.includes("FORCE_PROVIDER_FAILURE")) {
       return send(res, 500, { error: "model exploded at /internal/secret/path" });

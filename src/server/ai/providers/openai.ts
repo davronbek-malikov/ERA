@@ -3,6 +3,44 @@ import { AiError } from "@/server/ai/errors";
 import { mapHttpStatus, providerFetch, readLines } from "@/server/ai/providers/http-stream";
 import type { AiProvider, ProviderEvent, ProviderMessage, ProviderRequest, ToolCall } from "@/server/ai/types";
 
+const GROQ_MAX_OUTPUT_TOKENS = 2048;
+const RATE_LIMIT_RETRIES = 2;
+const MAX_RATE_LIMIT_WAIT_MS = 20_000;
+
+/** How long the provider asks us to wait (retry-after seconds, or Groq's x-ratelimit-reset-tokens like "7.66s"). */
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get("retry-after");
+  if (header && /^\d+(\.\d+)?$/.test(header.trim())) return Math.ceil(Number(header) * 1000) + 250;
+  const reset = response.headers.get("x-ratelimit-reset-tokens") ?? response.headers.get("x-ratelimit-reset-requests");
+  const match = reset?.match(/^(?:(\d+)m)?(\d+(?:\.\d+)?)s$/);
+  if (match) return Math.ceil(((Number(match[1] ?? 0) * 60) + Number(match[2])) * 1000) + 250;
+  return null;
+}
+
+/** Operator log only: which limit was hit (per minute / per day), never keys or prompts. */
+async function rateLimitDetail(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    const message = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? "";
+    const limit = message.match(/on (tokens|requests) per (minute|day)[^:]*: Limit (\d+), Used (\d+), Requested (\d+)/i);
+    if (limit) return `(${limit[1]} per ${limit[2]}: limit ${limit[3]}, used ${limit[4]}, requested ${limit[5]})`;
+    return message ? `(${message.replace(/org_[A-Za-z0-9]+/g, "org").slice(0, 160)})` : "";
+  } catch {
+    return "";
+  }
+}
+
+function sleep(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new AiError("ai-cancelled"));
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new AiError("ai-cancelled"));
+    }, { once: true });
+  });
+}
+
 /** Provider-neutral transcript → Chat Completions messages (tool results are role "tool" with tool_call_id). */
 function toOpenAiMessages(messages: ProviderMessage[]) {
   return messages.flatMap((message): Array<Record<string, unknown>> => {
@@ -40,26 +78,40 @@ export function createOpenAiProvider(model: string, flavor: "openai" | "groq" = 
       const baseUrl = flavor === "groq" ? env.groqBaseUrl : env.openaiBaseUrl;
       if (!apiKey) throw new AiError("ai-not-configured", flavor === "groq" ? "GROQ_API_KEY is not set" : "OPENAI_API_KEY is not set");
 
-      const response = await providerFetch(
-        `${baseUrl}/chat/completions`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model,
-            stream: true,
-            stream_options: { include_usage: true },
-            max_completion_tokens: request.maxOutputTokens,
-            messages: [{ role: "system", content: request.system }, ...toOpenAiMessages(request.messages)],
-            ...(request.tools?.length
-              ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })) }
-              : {})
-          }),
-          signal: request.signal
-        },
-        flavor
-      );
-      if (!response.ok || !response.body) throw mapHttpStatus(response.status, flavor);
+      const body = JSON.stringify({
+        model,
+        stream: true,
+        stream_options: { include_usage: true },
+        // Groq's free plan counts the requested answer size against a small per-minute token budget, so a
+        // big reservation alone can trip its limit. A chat answer never needs more than this.
+        max_completion_tokens: flavor === "groq" ? Math.min(request.maxOutputTokens, GROQ_MAX_OUTPUT_TOKENS) : request.maxOutputTokens,
+        messages: [{ role: "system", content: request.system }, ...toOpenAiMessages(request.messages)],
+        ...(request.tools?.length
+          ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })) }
+          : {})
+      });
+      const send = () =>
+        providerFetch(
+          `${baseUrl}/chat/completions`,
+          { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body, signal: request.signal },
+          flavor
+        );
+
+      // Rate limited (a tool step right after the first call often hits a per-minute limit): wait as long as the
+      // provider asks, if that is short, and try again instead of failing the teacher's question.
+      let response = await send();
+      for (let attempt = 0; response.status === 429 && attempt < RATE_LIMIT_RETRIES; attempt += 1) {
+        const wait = retryAfterMs(response);
+        const detail = await rateLimitDetail(response);
+        if (wait === null || wait > MAX_RATE_LIMIT_WAIT_MS) throw new AiError("ai-provider-busy", `${flavor} 429 ${detail}`.trim());
+        await sleep(wait, request.signal);
+        response = await send();
+      }
+      if (!response.ok || !response.body) {
+        const error = mapHttpStatus(response.status, flavor);
+        const detail = response.status === 429 || response.status === 413 || response.status === 400 ? await rateLimitDetail(response) : "";
+        throw detail ? new AiError(error.code, `${error.logDetail} ${detail}`) : error;
+      }
 
       let inputTokens: number | null = null;
       let outputTokens: number | null = null;

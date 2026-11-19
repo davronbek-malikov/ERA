@@ -101,6 +101,14 @@ describe("OpenAI adapter", async () => {
     assert.deepEqual(done?.usage, { inputTokens: 55, outputTokens: 9, source: "provider" });
   });
 
+  test("rate limited (429): waits as the provider asks and tries again; a long (per-day) limit fails safely", async () => {
+    const { text } = await collect(createOpenAiProvider("gpt-test"), `FORCE_RATE_LIMIT_ONCE ${Date.now()}`);
+    assert.match(text, /Fake tutor answer/);
+    await assert.rejects(collect(createOpenAiProvider("gpt-test"), "FORCE_RATE_LIMIT_LONG"), (e: { code?: string; message?: string; logDetail?: string }) => {
+      return e.code === "ai-provider-busy" && /tokens per day/.test(String(e.logDetail)) && !/SECRET|org_/.test(String(e.logDetail)) && !/limit 200000/.test(String(e.message));
+    });
+  });
+
   test("a cut stream is ai-stream-interrupted", async () => {
     await rejectsWithCode(collect(createOpenAiProvider("gpt-test"), "FORCE_STREAM_CUT"), "ai-stream-interrupted");
   });
