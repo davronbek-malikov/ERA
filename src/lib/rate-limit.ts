@@ -38,7 +38,8 @@ function touchBucket(key: string, options: Omit<RateLimitOptions, "scope" | "key
     const bucket: RateLimitBucket = {
       count: 1,
       windowStart: now,
-      cooldownUntil: 0
+      // A limit of one attempt starts its cooldown immediately (previously a second attempt slipped through).
+      cooldownUntil: options.maxAttempts <= 1 ? now + options.cooldownMs : 0
     };
     rateLimitStore.set(key, bucket);
     return bucket;
@@ -94,4 +95,12 @@ export async function getRequestRateLimitKeyParts(identifier?: string) {
     "unknown-ip";
 
   return [ip, identifier ?? ""];
+}
+
+/**
+ * Key for endpoints that require a signed-in user. Keyed by account only: students in one classroom
+ * usually share a school IP, and an IP key would make them exhaust each other's tutor/practice budget.
+ */
+export function getUserRateLimitKeyParts(userId: string) {
+  return [`user:${userId}`];
 }

@@ -1,0 +1,139 @@
+import { Award, CircleSlash, GraduationCap, TriangleAlert, XCircle } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { getT } from "@/lib/i18n-server";
+import type { HomeworkPace } from "@/server/management/homework-rule";
+
+/*
+ * Status badges for Student Management (ERA Design System: color carries meaning, text always says it too).
+ * Payment status and access status are separate badges on purpose: Pay Later = "Unpaid" + "Can study".
+ */
+
+type Variant = "neutral" | "primary" | "success" | "warning" | "error" | "outline" | "accent";
+
+const PAYMENT: Record<string, { label: string; variant: Variant }> = {
+  FULLY_PAID: { label: "Fully paid", variant: "success" },
+  PARTIALLY_PAID: { label: "Partially paid", variant: "warning" },
+  UNPAID: { label: "Unpaid", variant: "error" },
+  WAIVED: { label: "Waived", variant: "neutral" },
+  NO_FEE: { label: "No fee", variant: "neutral" }
+};
+
+export async function PaymentStatusBadge({ status, overdue }: { status: string; overdue?: boolean }) {
+  const T = await getT();
+  const meta = PAYMENT[status] ?? { label: status, variant: "neutral" as Variant };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <Badge variant={meta.variant}>{T(meta.label)}</Badge>
+      {overdue ? <Badge variant="error">{T("Overdue")}</Badge> : null}
+    </span>
+  );
+}
+
+const ACCESS: Record<string, { label: string; variant: Variant }> = {
+  ACTIVE: { label: "Can study", variant: "primary" },
+  RESTRICTED: { label: "Restricted", variant: "warning" },
+  REVOKED: { label: "Revoked", variant: "error" }
+};
+
+export async function AccessBadge({ status, allowed, payLater }: { status: string; allowed?: boolean; payLater?: boolean }) {
+  const T = await getT();
+  const meta = ACCESS[status] ?? { label: status, variant: "neutral" as Variant };
+  const blockedAnyway = status === "ACTIVE" && allowed === false;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <Badge variant={blockedAnyway ? "warning" : meta.variant}>{blockedAnyway ? T("Paused") : T(meta.label)}</Badge>
+      {payLater ? <Badge variant="outline">{T("Pay Later")}</Badge> : null}
+    </span>
+  );
+}
+
+const ENROLLMENT: Record<string, { label: string; variant: Variant }> = {
+  ACTIVE: { label: "Active", variant: "primary" },
+  COMPLETED: { label: "Completed", variant: "success" },
+  CANCELLED: { label: "Cancelled", variant: "neutral" },
+  EXPIRED: { label: "Expired", variant: "neutral" },
+  TRANSFERRED: { label: "Transferred", variant: "neutral" }
+};
+
+export async function EnrollmentStatusBadge({ status }: { status: string }) {
+  const T = await getT();
+  const meta = ENROLLMENT[status] ?? { label: status, variant: "neutral" as Variant };
+  return <Badge variant={meta.variant}>{T(meta.label)}</Badge>;
+}
+
+const TRANSACTION: Record<string, { label: string; variant: Variant }> = {
+  PENDING: { label: "Pending verification", variant: "warning" },
+  APPROVED: { label: "Approved", variant: "success" },
+  REJECTED: { label: "Rejected", variant: "error" },
+  REVERSED: { label: "Reversed", variant: "neutral" }
+};
+
+export async function TransactionStatusBadge({ status }: { status: string }) {
+  const T = await getT();
+  const meta = TRANSACTION[status] ?? { label: status, variant: "neutral" as Variant };
+  return <Badge variant={meta.variant}>{T(meta.label)}</Badge>;
+}
+
+export const ARRANGEMENT_LABEL: Record<string, string> = {
+  PAY_IN_FULL: "Pay in full",
+  PARTIAL: "Partial payments",
+  PAY_LATER: "Pay Later",
+  WAIVED: "Free / waived"
+};
+
+export const METHOD_LABEL: Record<string, string> = { BANK_TRANSFER: "Bank transfer", CASH: "Cash", ONLINE: "Online", OTHER: "Other" };
+
+/** Weekly homework rule: red when last week fell short, green "exam ready" when all homework is done. */
+export async function HomeworkPaceBadge({ pace, showProgress = true }: { pace: HomeworkPace; showProgress?: boolean }) {
+  const T = await getT();
+  if (pace.state === "exam-failed") {
+    return (
+      <Badge variant="error" className="w-fit gap-1 border-error/40 font-semibold">
+        <XCircle className="size-3.5" aria-hidden="true" />
+        {T("Failed the exam")}
+      </Badge>
+    );
+  }
+  if (pace.state === "exam-passed") {
+    return (
+      <Badge variant="success" className="w-fit gap-1 font-semibold">
+        <Award className="size-3.5" aria-hidden="true" />
+        {T("Passed the exam")}
+      </Badge>
+    );
+  }
+  if (pace.state === "incomplete") {
+    return (
+      <Badge variant="neutral" className="w-fit gap-1 border-foreground/20 bg-foreground/10 font-semibold text-foreground" title={T("The course ended before every homework was done.")}>
+        <CircleSlash className="size-3.5" aria-hidden="true" />
+        {T("Incomplete ({done}/{total})", { done: pace.done, total: pace.total })}
+      </Badge>
+    );
+  }
+  if (pace.state === "exam-ready") {
+    return (
+      <Badge variant="success" className="w-fit gap-1">
+        <GraduationCap className="size-3.5" aria-hidden="true" />
+        {T("Exam ready")}
+      </Badge>
+    );
+  }
+  if (pace.state === "behind" && pace.lastWeek) {
+    return (
+      <Badge variant="error" className="w-fit gap-1" title={T("Week {week}: {from} – {to}", { week: pace.lastWeek.number, from: pace.lastWeek.from, to: pace.lastWeek.to })}>
+        <TriangleAlert className="size-3.5" aria-hidden="true" />
+        {T("Week {week}: {count}/{required} homework", { week: pace.lastWeek.number, count: pace.lastWeek.count, required: pace.lastWeek.required })}
+      </Badge>
+    );
+  }
+  if (showProgress && pace.state === "on-track" && pace.thisWeek && pace.thisWeek.required > 0) {
+    const met = pace.thisWeek.count >= pace.thisWeek.required;
+    return (
+      <span className={met ? "text-xs text-success" : "text-xs text-muted-foreground"}>
+        {T("This week: {count}/{required}", { count: pace.thisWeek.count, required: pace.thisWeek.required })}
+      </span>
+    );
+  }
+  return null;
+}

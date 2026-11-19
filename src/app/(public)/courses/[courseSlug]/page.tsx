@@ -15,8 +15,11 @@ import { Container } from "@/components/layout/container";
 import { Section } from "@/components/layout/section";
 import { CourseCard } from "@/components/courses/course-card";
 import { CourseEnrollmentPanel } from "@/components/courses/course-enrollment-panel";
+import { CourseReviewsSection } from "@/components/courses/course-reviews-section";
+import { CourseViewTracker } from "@/components/courses/course-view-tracker";
 import { CurriculumList } from "@/components/courses/curriculum-list";
 import { EmptyState } from "@/components/shared/empty-state";
+import { getCurrentUser } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,8 +30,7 @@ import { createMetadata } from "@/lib/site";
 import { cn } from "@/lib/utils";
 import { getCourseBySlug, getRelatedCourses } from "@/server/courses";
 
-export const dynamic = "force-static";
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 type CourseDetailPageProps = {
   params: Promise<{
@@ -65,7 +67,7 @@ function getVideoEmbedUrl(url?: string | null) {
 export default async function CourseDetailPage({ params, searchParams }: CourseDetailPageProps) {
   const { courseSlug } = await params;
   const query = await searchParams;
-  const locale = await getLocale();
+  const [locale, currentUser] = await Promise.all([getLocale(), getCurrentUser()]);
   const t = getMessages(locale);
   const course = await getCourseBySlug(courseSlug);
 
@@ -78,8 +80,9 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
     course.categoryId,
     course.category.subject.id
   );
-  const featuredLesson = course.lessons.find((lesson) => lesson.videoUrl) ?? course.lessons[0] ?? null;
-  const featuredVideoUrl = featuredLesson?.videoUrl ?? course.promoVideoUrl ?? null;
+  const featuredLesson = course.lessons[0] ?? null;
+  // Only the course's public promo video plays here; lesson videos are for the authorized classroom.
+  const featuredVideoUrl = course.promoVideoUrl ?? null;
   const embedUrl = getVideoEmbedUrl(featuredVideoUrl);
   const lessonSidebarCopy =
     locale === "uz"
@@ -99,10 +102,11 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
         };
 
   return (
-    <Section className="pt-10 sm:pt-12">
+    <Section className="pt-8 sm:pt-10">
       <Container className="space-y-12">
+        <CourseViewTracker courseSlug={course.slug} />
         {query.signedIn === "1" ? (
-          <div className="rounded-[1.6rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="status-success rounded-xl border px-4 py-3 text-sm">
             {t.courseDetail.signedInSuccess}
           </div>
         ) : null}
@@ -117,10 +121,8 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
 
           <div className="grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-end">
             <div className="space-y-5">
-              <h1 className="max-w-4xl font-display text-4xl font-semibold leading-[1.04] text-balance sm:text-5xl lg:text-[4rem]">
-                {course.title}
-              </h1>
-              <p className="max-w-3xl text-lg leading-8 text-muted-foreground">
+              <h1 className="page-title max-w-4xl">{course.title}</h1>
+              <p className="page-lead max-w-3xl">
                 {course.description ??
                   course.shortDescription ??
                   (locale === "uz"
@@ -130,13 +132,13 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.instructor}
                 </p>
                 <p className="mt-2 text-sm font-semibold text-foreground">{course.instructor.name}</p>
               </div>
-              <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.difficulty}
                 </p>
@@ -144,7 +146,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   {formatDifficulty(course.difficulty, locale)}
                 </p>
               </div>
-              <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.lessonCount}
                 </p>
@@ -152,12 +154,20 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   {formatLessonSummary(course.lessons.length, locale)}
                 </p>
               </div>
-              <div className="rounded-[1.5rem] border border-border/70 bg-white px-4 py-4 shadow-soft">
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {t.courseDetail.studyTime}
                 </p>
                 <p className="mt-2 text-sm font-semibold text-foreground">
                   {formatDurationSummary(course.durationMinutes, locale)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-card px-4 py-4 shadow-soft">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {locale === "uz" ? "Reyting" : "Rating"}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {course.averageRating ? `${course.averageRating.toFixed(1)} / 5` : (locale === "uz" ? "Hali yo'q" : "No ratings yet")}
                 </p>
               </div>
             </div>
@@ -166,14 +176,14 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
 
         <div className="grid gap-8 xl:grid-cols-[minmax(0,1.12fr),360px]">
           <div className="space-y-6">
-            <Card className="overflow-hidden border-primary/10 bg-white shadow-panel">
+            <Card className="overflow-hidden border-primary/10 bg-card shadow-panel">
               <CardContent className="space-y-5 p-5 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                       {lessonSidebarCopy.videoLesson}
                     </p>
-                    <h2 className="font-display text-2xl font-semibold text-foreground sm:text-3xl">
+                    <h2 className="section-title">
                       {featuredLesson?.title ?? course.title}
                     </h2>
                   </div>
@@ -182,7 +192,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-[1.8rem] border border-border/70 bg-slate-950">
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-slate-950">
                   {embedUrl ? (
                     <iframe
                       src={embedUrl}
@@ -203,7 +213,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                     </video>
                   ) : (
                     <div
-                      className="aspect-video w-full bg-[linear-gradient(135deg,#312e81,#4f46e5_55%,#818cf8)]"
+                      className="aspect-video w-full bg-primary"
                       style={
                         course.thumbnailUrl
                           ? {
@@ -215,7 +225,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                       }
                     >
                       <div className="flex h-full items-end p-6">
-                        <div className="rounded-[1.5rem] bg-white/12 px-5 py-4 text-white backdrop-blur">
+                        <div className="rounded-xl bg-card/12 px-5 py-4 text-white backdrop-blur">
                           <p className="text-xs uppercase tracking-[0.16em] text-white/72">
                             {t.courseDetail.curriculum}
                           </p>
@@ -241,15 +251,15 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                     <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
                       {t.courseDetail.learningOutcomes}
                     </p>
-                    <h2 className="font-display text-3xl font-semibold">{t.courseDetail.achieve}</h2>
+                    <h2 className="section-title">{t.courseDetail.achieve}</h2>
                   </div>
                   <div className="space-y-4">
                     {course.outcomes.map((outcome) => (
                       <div
                         key={outcome}
-                        className="flex items-start gap-3 rounded-[1.5rem] border border-border/70 bg-secondary/35 px-4 py-4"
+                        className="flex items-start gap-3 rounded-xl border border-border/70 bg-secondary/35 px-4 py-4"
                       >
-                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white">
+                        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-card">
                           <Target className="h-4 w-4 text-primary" />
                         </div>
                         <p className="text-sm leading-7 text-muted-foreground">{outcome}</p>
@@ -262,7 +272,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
               <Card>
                 <CardContent className="space-y-6 p-6">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-[1.4rem] bg-secondary/55 p-4">
+                    <div className="rounded-xl bg-secondary/55 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                         {t.courseDetail.instructor}
                       </p>
@@ -271,7 +281,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                         {course.instructor.name}
                       </p>
                     </div>
-                    <div className="rounded-[1.4rem] bg-secondary/55 p-4">
+                    <div className="rounded-xl bg-secondary/55 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                         {t.courseDetail.category}
                       </p>
@@ -280,7 +290,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                         {course.category.name}
                       </p>
                     </div>
-                    <div className="rounded-[1.4rem] bg-secondary/55 p-4">
+                    <div className="rounded-xl bg-secondary/55 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                         {t.courseDetail.lessonCount}
                       </p>
@@ -289,7 +299,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                         {formatLessonSummary(course.lessons.length, locale)}
                       </p>
                     </div>
-                    <div className="rounded-[1.4rem] bg-secondary/55 p-4">
+                    <div className="rounded-xl bg-secondary/55 p-4">
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                         {t.courseDetail.studyTime}
                       </p>
@@ -309,21 +319,45 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
               <CurriculumList
                 courseSlug={course.slug}
                 locale={locale}
+                modules={course.modules}
                 lessons={course.lessons}
                 courseMaterials={course.materials}
               />
             </div>
+
+            <CourseReviewsSection
+              courseSlug={course.slug}
+              locale={locale}
+              isAuthenticated={Boolean(currentUser)}
+              initialAverageRating={course.averageRating ?? null}
+              initialReviewCount={course.reviewCount ?? 0}
+              initialReviews={course.reviews.map((review) => ({
+                id: review.id,
+                rating: review.rating,
+                comment: review.comment,
+                createdAt: review.createdAt.toISOString(),
+                user: review.user
+              }))}
+              currentUserReview={
+                course.currentUserReview
+                  ? {
+                      rating: course.currentUserReview.rating,
+                      comment: course.currentUserReview.comment
+                    }
+                  : null
+              }
+            />
           </div>
 
           <div className="space-y-6">
-            <Card className="overflow-hidden border-border/70 bg-white">
+            <Card className="overflow-hidden border-border/70 bg-card">
               <CardContent className="space-y-4 p-5">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                       {lessonSidebarCopy.continueFlow}
                     </p>
-                    <h2 className="mt-2 font-display text-2xl font-semibold text-foreground">
+                    <h2 className="section-title mt-2">
                       {t.courseDetail.curriculum}
                     </h2>
                   </div>
@@ -334,10 +368,11 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
 
                 <div className="space-y-3">
                   {course.lessons.slice(0, 6).map((lesson) => (
-                    <div
+                    <Link
                       key={lesson.id}
+                      href={`/courses/${course.slug}/lessons/${lesson.slug}`}
                       className={cn(
-                        "rounded-[1.4rem] border border-border/70 bg-secondary/35 px-4 py-4 transition-colors",
+                        "block rounded-xl border border-border/70 bg-secondary/35 px-4 py-4 transition-colors hover:border-primary/30 hover:bg-accent/80",
                         featuredLesson?.id === lesson.id && "border-primary/20 bg-accent/70"
                       )}
                     >
@@ -353,7 +388,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
                       <p className="mt-2 text-xs text-muted-foreground">
                         {lesson.duration ?? (locale === "uz" ? "Video dars" : "Video lesson")}
                       </p>
-                    </div>
+                    </Link>
                   ))}
                 </div>
 
@@ -365,12 +400,12 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
               </CardContent>
             </Card>
 
-            <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(249,250,255,0.95),rgba(255,255,255,1))]">
+            <Card className="border-border/70 bg-card">
               <CardContent className="space-y-3 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   {lessonSidebarCopy.support}
                 </p>
-                <p className="font-display text-2xl font-semibold text-foreground">
+                <p className="card-title text-foreground">
                   {locale === "uz" ? "O'rganishni toza usulda davom ettiring" : "Keep learning without distraction"}
                 </p>
                 <p className="text-sm leading-7 text-muted-foreground">
@@ -386,9 +421,7 @@ export default async function CourseDetailPage({ params, searchParams }: CourseD
             <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
               {t.courseDetail.relatedCourses}
             </p>
-            <h2 className="font-display text-3xl font-semibold sm:text-4xl">
-              {t.courseDetail.momentum}
-            </h2>
+            <h2 className="section-title">{t.courseDetail.momentum}</h2>
           </div>
 
           {relatedCourses.length === 0 ? (
