@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { prisma } from "@/lib/prisma";
 import { retryOnDatabaseFailure } from "@/lib/server-data";
@@ -41,6 +42,11 @@ function signValue(value: string) {
   return createHmac("sha256", getAuthSecret()).update(value).digest("base64url");
 }
 
+/** HMAC with the app secret, separated by purpose so a signature for one feature is never valid for another. */
+export function signForPurpose(purpose: string, value: string) {
+  return createHmac("sha256", getAuthSecret()).update(`${purpose}:${value}`).digest("base64url");
+}
+
 function encodeSession(payload: SessionPayload) {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const signature = signValue(encodedPayload);
@@ -78,7 +84,9 @@ function decodeSession(token: string): SessionPayload | null {
 
 export function normalizePhone(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) {
+  // An email address is never a phone number, even when it contains digits ("name96@gmail.com" used to
+  // become the phone "96", so sign-in looked up the wrong account and failed).
+  if (!trimmed || trimmed.includes("@")) {
     return "";
   }
 
@@ -164,7 +172,12 @@ export async function getSessionUser() {
   };
 }
 
-export async function getCurrentUser() {
+/**
+ * The signed-in user, re-read from the database (so suspensions apply at once). Wrapped in React `cache()`:
+ * a page, its layouts and the navigation all ask for the user, but the database is queried once per request.
+ * Outside a React render (route handlers, server actions) `cache` doesn't dedupe and simply calls through.
+ */
+export const getCurrentUser = cache(async function getCurrentUser() {
   const session = await getSession();
   if (!session) {
     return null;
@@ -186,9 +199,15 @@ export async function getCurrentUser() {
   );
 
   if (!user || user.status !== "ACTIVE") {
-    await clearUserSession();
+    // Cookies can only be changed in Server Actions and Route Handlers. In Server Components the stale
+    // cookie stays until the next action/route clears it; the user is treated as signed out either way.
+    try {
+      await clearUserSession();
+    } catch {
+      // ignore
+    }
     return null;
   }
 
   return user;
-}
+});

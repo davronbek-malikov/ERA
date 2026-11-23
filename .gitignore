@@ -11,3 +11,9 @@ node_modules
 auth-cookies.txt
 *.report.html
 .lighthouse-*.json
+tsconfig.tsbuildinfo
+.next-test
+tests/security/.state
+
+# Vercel project link (local only: it points this folder at a Vercel project)
+.vercel

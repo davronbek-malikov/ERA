@@ -32,6 +32,7 @@ type CoursesPageProps = {
     category?: string;
     difficulty?: string;
     search?: string;
+    sort?: string;
     signedUp?: string;
     signedIn?: string;
     welcome?: string;
@@ -47,6 +48,10 @@ function parseDifficulty(value?: string) {
   return options.includes(value as CourseDifficulty) ? (value as CourseDifficulty) : undefined;
 }
 
+function parseSort(value?: string) {
+  return value === "rating" ? "rating" : "popularity";
+}
+
 export default async function CoursesPage({ searchParams }: CoursesPageProps) {
   const filters = await searchParams;
   const locale = await getLocale();
@@ -58,7 +63,8 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
       subject: filters.subject,
       category: filters.category,
       difficulty: parseDifficulty(filters.difficulty),
-      search: filters.search
+      search: filters.search,
+      sort: parseSort(filters.sort)
     })
   ]);
 
@@ -69,8 +75,9 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
         !filters.subject &&
         !filters.category &&
         !filters.difficulty &&
-        !filters.search ? (
-          <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-primary">
+        !filters.search &&
+        (!filters.sort || filters.sort === "popularity") ? (
+          <div className="status-success rounded-xl border px-4 py-3 text-sm">
             {t.courses.myLearningHint}{" "}
             <Link
               href="/my-learning"
@@ -84,7 +91,7 @@ export default async function CoursesPage({ searchParams }: CoursesPageProps) {
           </div>
         ) : null}
         {filters.signedUp === "1" || filters.signedIn === "1" ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="status-success rounded-xl border px-4 py-3 text-sm">
             {filters.signedUp === "1" ? t.courses.signedUp : t.courses.signedIn}
           </div>
         ) : null}

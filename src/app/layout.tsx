@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 
 import "@/app/globals.css";
+import { LocaleProvider } from "@/components/i18n/locale-provider";
 import { getLocale } from "@/lib/i18n-server";
 import { siteConfig } from "@/lib/site";
+import { Toaster } from "@/components/ui/toast";
 
-const display = Poppins({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["500", "600", "700"]
-});
-
+// One family for headings and body. Inter covers Latin (including Uzbek Latin)
+// and Cyrillic, so English, Uzbek and Russian text all render in the same font.
 const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans"
+  subsets: ["latin", "latin-ext", "cyrillic", "cyrillic-ext"],
+  variable: "--font-sans",
+  weight: ["400", "500", "600"],
+  display: "swap"
 });
 
 export const metadata: Metadata = {
@@ -79,11 +79,11 @@ export default async function RootLayout({
 
   return (
     <html lang={locale}>
-      <body className={`${display.variable} ${sans.variable}`}>
-        <div className="relative min-h-screen">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_top,rgba(254,249,240,0.95),transparent_62%)]" />
-          {children}
-        </div>
+      <body className={sans.variable}>
+        <LocaleProvider locale={locale}>
+          <div className="relative min-h-screen">{children}</div>
+        </LocaleProvider>
+        <Toaster />
         <Analytics />
       </body>
     </html>

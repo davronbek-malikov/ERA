@@ -281,7 +281,7 @@ export function MediaUploadField({
       {storagePathName ? <input type="hidden" name={storagePathName} value={storagePath ?? ""} /> : null}
       {mimeTypeName ? <input type="hidden" name={mimeTypeName} value={mimeType} /> : null}
       {value ? (
-        <div className="overflow-hidden rounded-2xl border border-border bg-white/80">
+        <div className="overflow-hidden rounded-2xl border border-border bg-card/80">
           {isVideo ? (
             <video controls className="max-h-72 w-full bg-black" src={value}>
               <track kind="captions" />
@@ -361,7 +361,7 @@ export function MediaUploadField({
         </div>
         {isUploading || uploadProgress > 0 ? (
           <div className="mt-4 space-y-2">
-            <div className="h-2 overflow-hidden rounded-full bg-white">
+            <div className="h-2 overflow-hidden rounded-full bg-card">
               <div
                 className="h-full rounded-full bg-primary transition-[width] duration-200"
                 style={{ width: `${uploadProgress}%` }}
@@ -375,8 +375,8 @@ export function MediaUploadField({
         {helperText ??
           `Paste an existing public ${mediaType} URL or upload a local file directly to Supabase Storage.`}
       </p>
-      {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
-      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+      {message ? <p className="text-sm text-success">{message}</p> : null}
+      {error ? <p className="text-sm text-error">{error}</p> : null}
     </div>
   );
 }

@@ -124,31 +124,27 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
         };
 
   return (
-    <Section className="py-16 sm:py-20">
+    <Section className="py-10 sm:py-14 lg:py-16">
       <Container className="grid gap-8 lg:grid-cols-[0.95fr,1.05fr]">
         <div className="space-y-6">
           <Badge>{copy.badge}</Badge>
-          <h1 className="font-display text-5xl leading-tight sm:text-6xl">
-            {copy.title}
-          </h1>
-          <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-            {copy.description}
-          </p>
+          <h1 className="page-title">{copy.title}</h1>
+          <p className="page-lead">{copy.description}</p>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <MailCheck className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardOne}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <ShieldCheck className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardTwo}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
+            <Card className="bg-card/70">
               <CardContent className="space-y-3 p-5">
                 <KeyRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{copy.cardThree}</p>
@@ -158,21 +154,21 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
         </div>
 
         <div className="space-y-6">
-          <Card className="border-white/70 bg-white/85">
+          <Card className="border-white/70 bg-card/85">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-3xl">{copy.sendTitle}</CardTitle>
+              <CardTitle>{copy.sendTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
                 {copy.sendDescription}
               </p>
             </CardHeader>
             <CardContent className="space-y-5">
               {message ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div className="rounded-2xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
                   {message}
                 </div>
               ) : null}
               {params.sent === "1" ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <div className="rounded-2xl border border-success/20 bg-success/5 px-4 py-3 text-sm text-success">
                   {copy.sent}
                 </div>
               ) : null}
@@ -198,9 +194,9 @@ export default async function ForgotPasswordPage({ searchParams }: ForgotPasswor
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/85">
+          <Card className="border-white/70 bg-card/85">
             <CardHeader className="space-y-3">
-              <CardTitle className="text-3xl">{copy.resetTitle}</CardTitle>
+              <CardTitle>{copy.resetTitle}</CardTitle>
               <p className="text-sm leading-7 text-muted-foreground">
                 {copy.resetDescription}
               </p>

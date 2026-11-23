@@ -1,50 +1,17 @@
 import { NextRequest } from "next/server";
-import { UserRole } from "@prisma/client";
 
 import { createApiErrorResponse, createApiSuccessResponse } from "@/lib/app-errors";
-import { getCurrentUser } from "@/lib/auth";
-import { buildUserScopedStoragePath, getSupabaseStorageConfig } from "@/lib/storage";
-import { retryOnDatabaseFailure } from "@/lib/server-data";
-
-const allowedUploadFolders = new Set([
-  "course-materials",
-  "course-promo-videos",
-  "course-thumbnails",
-  "images",
-  "lesson-materials",
-  "lesson-videos",
-  "subject-thumbnails"
-]);
-
-const maxUploadSizeByFolder: Record<string, number> = {
-  "course-materials": 25 * 1024 * 1024,
-  "course-promo-videos": 500 * 1024 * 1024,
-  "course-thumbnails": 10 * 1024 * 1024,
-  images: 10 * 1024 * 1024,
-  "lesson-materials": 25 * 1024 * 1024,
-  "lesson-videos": 500 * 1024 * 1024,
-  "subject-thumbnails": 10 * 1024 * 1024
-};
-
-function isAllowedUploadType(contentType: string) {
-  return (
-    contentType.startsWith("video/") ||
-    contentType.startsWith("image/") ||
-    contentType === "application/pdf" ||
-    contentType === "application/zip" ||
-    contentType === "application/x-zip-compressed" ||
-    contentType === "application/vnd.rar" ||
-    contentType === "application/x-7z-compressed" ||
-    contentType === "text/plain" ||
-    contentType === "text/csv" ||
-    contentType === "application/msword" ||
-    contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    contentType === "application/vnd.ms-powerpoint" ||
-    contentType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-    contentType === "application/vnd.ms-excel" ||
-    contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
-}
+import { assertRateLimit, getUserRateLimitKeyParts } from "@/lib/rate-limit";
+import {
+  bucketForFolder,
+  buildPublicObjectUrl,
+  buildUserScopedStoragePath,
+  STORAGE_FOLDERS,
+  validateUpload
+} from "@/lib/storage";
+import { readJsonObject, requireString } from "@/lib/validation";
+import { assertSameOrigin, requireTeacherUser, toApiErrorResponse } from "@/server/authz";
+import { createSignedUploadUrl } from "@/server/storage";
 
 function isSafeFilename(filename: string) {
   return (
@@ -55,100 +22,62 @@ function isSafeFilename(filename: string) {
   );
 }
 
+/**
+ * Issues a one-time signed upload URL for teachers and admins. The object path is generated here
+ * (scoped to the uploader); the client never chooses where a file lands.
+ */
 export async function POST(request: NextRequest) {
-  const currentUser = await getCurrentUser();
-
-  if (
-    !currentUser ||
-    (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.INSTRUCTOR)
-  ) {
-    return createApiErrorResponse(401, "unauthorized", "Unauthorized.");
-  }
-
   try {
-    const { filename, contentType, folder, fileSize } = (await request.json()) as {
-      filename?: string;
-      contentType?: string;
-      folder?: string;
-      fileSize?: number;
-    };
+    assertSameOrigin(request);
+    const currentUser = await requireTeacherUser();
+    const body = await readJsonObject(request, 4 * 1024);
 
-    if (!filename || !contentType || !folder || typeof fileSize !== "number") {
-      return createApiErrorResponse(400, "missing-upload-parameters", "Missing upload parameters.");
-    }
+    const filename = requireString(body.filename, "filename", { max: 180 });
+    const contentType = requireString(body.contentType, "contentType", { max: 120 });
+    const folder = requireString(body.folder, "folder", { max: 40 });
+    const fileSize = body.fileSize;
 
-    if (!allowedUploadFolders.has(folder)) {
+    if (!STORAGE_FOLDERS[folder]) {
       return createApiErrorResponse(400, "invalid-upload-folder", "Invalid upload folder.");
     }
-
     if (!isSafeFilename(filename)) {
       return createApiErrorResponse(400, "invalid-filename", "Invalid filename.");
     }
-
-    if (!isAllowedUploadType(contentType)) {
-      return createApiErrorResponse(
-        400,
-        "invalid-upload-type",
-        "Only image, video, and common document uploads are allowed."
-      );
-    }
-
-    if (!Number.isFinite(fileSize) || fileSize <= 0) {
+    if (typeof fileSize !== "number") {
       return createApiErrorResponse(400, "invalid-file-size", "Invalid file size.");
     }
-
-    const maxSizeBytes = maxUploadSizeByFolder[folder] ?? 25 * 1024 * 1024;
-    if (fileSize > maxSizeBytes) {
-      return createApiErrorResponse(400, "file-too-large", "The selected file exceeds the size limit.");
+    const uploadError = validateUpload(folder, filename, contentType, fileSize);
+    if (uploadError) {
+      return createApiErrorResponse(400, "invalid-upload", uploadError);
     }
 
-    const { supabaseUrl, serviceRoleKey, bucket } = getSupabaseStorageConfig();
+    await assertRateLimit({
+      scope: "storage-upload",
+      maxAttempts: 60,
+      windowMs: 60 * 60_000,
+      cooldownMs: 15 * 60_000,
+      keyParts: getUserRateLimitKeyParts(currentUser.id)
+    });
+
+    const bucket = bucketForFolder(folder);
     const path = buildUserScopedStoragePath(currentUser.id, folder, filename);
-    const signResponse = await retryOnDatabaseFailure(() =>
-      fetch(`${supabaseUrl}/storage/v1/object/upload/sign/${bucket}/${path}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${serviceRoleKey}`,
-          apikey: serviceRoleKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          upsert: true
-        })
-      })
-    );
+    const uploadUrl = await createSignedUploadUrl(bucket, path);
 
-    const signPayload = await signResponse.json();
-
-    if (!signResponse.ok) {
-      const errorMessage =
-        typeof signPayload?.message === "string"
-          ? signPayload.message
-          : "Could not create a Supabase upload URL.";
-      return createApiErrorResponse(500, "upload-url-failed", errorMessage);
-    }
-
-    const signedPath =
-      typeof signPayload?.signedURL === "string"
-        ? signPayload.signedURL
-        : `/object/upload/sign/${bucket}/${path}?token=${signPayload?.token ?? ""}`;
-
-    const uploadUrl = signedPath.startsWith("http")
-      ? signedPath
-      : `${supabaseUrl}/storage/v1${signedPath}`;
-
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
-
+    // `publicUrl` keeps its historical name and format. For private folders it is only a stable
+    // reference: once the bucket is private it cannot be opened directly, and learners receive
+    // signed URLs instead (see src/server/storage.ts).
     return createApiSuccessResponse({
       uploadUrl,
-      publicUrl,
-      path
+      publicUrl: buildPublicObjectUrl(bucket, path),
+      path,
+      visibility: STORAGE_FOLDERS[folder].visibility
     });
   } catch (error) {
-    return createApiErrorResponse(
-      500,
-      "upload-prepare-failed",
-      error instanceof Error ? error.message : "Could not prepare the upload."
-    );
+    return toApiErrorResponse(error, {
+      status: 500,
+      code: "upload-prepare-failed",
+      message: "Could not prepare the upload.",
+      log: "storage-upload"
+    });
   }
 }

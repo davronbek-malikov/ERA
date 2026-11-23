@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMessages, type Locale } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 type HeroSectionProps = {
   locale: Locale;
@@ -65,19 +64,14 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
         };
 
   return (
-    <Section className="overflow-hidden pt-10 sm:pt-14 lg:pt-16">
+    <Section className="overflow-hidden pt-8 sm:pt-12 lg:pt-14">
       <Container className="grid items-start gap-12 lg:grid-cols-[minmax(0,1.04fr),minmax(0,0.96fr)]">
         <div className="space-y-8">
           <div className="space-y-5">
             <Badge className="animate-fade-up">{t.home.heroBadge}</Badge>
             <div className="space-y-5">
-              <h1 className="animate-fade-up max-w-3xl font-display text-5xl font-semibold leading-[1.02] text-balance sm:text-6xl lg:text-[4.55rem]">
-                {t.home.heroTitle}
-              </h1>
-              <p
-                className="animate-fade-up max-w-2xl text-lg leading-8 text-muted-foreground"
-                style={{ animationDelay: "120ms" }}
-              >
+              <h1 className="display-title animate-fade-up max-w-3xl">{t.home.heroTitle}</h1>
+              <p className="page-lead animate-fade-up" style={{ animationDelay: "120ms" }}>
                 {t.home.heroDescription}
               </p>
             </div>
@@ -111,12 +105,9 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
             style={{ animationDelay: "240ms" }}
           >
             {metrics.map((metric) => (
-              <Card
-                key={metric.label}
-                className="border-border/70 bg-white/92 shadow-soft transition-transform duration-200 hover:-translate-y-1"
-              >
+              <Card key={metric.label} className="border-border/70 bg-card/92 shadow-soft">
                 <CardContent className="space-y-2 p-5">
-                  <p className="font-display text-3xl font-semibold">{metric.value}</p>
+                  <p className="metric-value">{metric.value}</p>
                   <p className="text-sm text-muted-foreground">{metric.label}</p>
                 </CardContent>
               </Card>
@@ -127,7 +118,7 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
             {trustPoints.map((point) => (
               <div
                 key={point}
-                className="rounded-[1.5rem] border border-border/70 bg-white/82 px-4 py-4 text-sm leading-7 text-muted-foreground shadow-soft"
+                className="rounded-xl border border-border/70 bg-card/82 px-4 py-4 text-sm leading-7 text-muted-foreground shadow-soft"
               >
                 <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-accent text-primary">
                   <CheckCircle2 className="h-4 w-4" />
@@ -140,7 +131,7 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
 
         <div className="relative lg:pt-4">
           <div className="absolute inset-x-10 top-10 h-48 rounded-full bg-primary/18 blur-3xl" />
-          <Card className="relative overflow-hidden border-primary/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,247,255,0.98))] shadow-panel">
+          <Card className="relative overflow-hidden border-primary/10 bg-card shadow-panel">
             <CardContent className="space-y-6 p-6 sm:p-7">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-2">
@@ -148,13 +139,13 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
                     {dashboardCopy.activeTrack}
                   </Badge>
                   <div>
-                    <p className="font-display text-2xl font-semibold text-foreground">
+                    <p className="card-title text-foreground">
                       {locale === "uz" ? "AI bilan real loyihalar" : "AI with Real Projects"}
                     </p>
                     <p className="text-sm text-muted-foreground">{dashboardCopy.lessonMeta}</p>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-border/70 bg-white px-3 py-2 text-right shadow-soft">
+                <div className="rounded-xl border border-border/70 bg-card px-3 py-2 text-right shadow-soft">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     {dashboardCopy.progress}
                   </p>
@@ -162,8 +153,8 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
                 </div>
               </div>
 
-              <div className="relative overflow-hidden rounded-[1.85rem] border border-primary/12 bg-[linear-gradient(135deg,#4f46e5,#6366f1_58%,#a5b4fc)] p-6 text-white">
-                <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+              <div className="relative overflow-hidden rounded-2xl border border-primary/12 bg-primary p-6 text-white">
+                <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-card/10 blur-2xl" />
                 <div className="relative space-y-5">
                   <div className="flex items-center justify-between">
                     <p className="text-sm uppercase tracking-[0.16em] text-white/72">
@@ -172,9 +163,7 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
                     <Sparkles className="h-5 w-5 text-white/80" />
                   </div>
                   <div className="space-y-2">
-                    <h2 className="font-display text-3xl font-semibold leading-tight">
-                      {dashboardCopy.lessonTitle}
-                    </h2>
+                    <h2 className="section-title text-white">{dashboardCopy.lessonTitle}</h2>
                     <p className="max-w-md text-sm leading-7 text-white/78">
                       {locale === "uz"
                         ? "Nazariya, amaliy prompt yozish va qisqa loyiha vazifalari bir sahifada jamlangan."
@@ -182,12 +171,12 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-sm">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-card/12 px-3 py-2 text-sm">
                       <PlayCircle className="h-4 w-4" />
                       {dashboardCopy.continueLearning}
                     </div>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-sm">
-                      <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                    <div className="inline-flex items-center gap-2 rounded-full bg-card/12 px-3 py-2 text-sm">
+                      <span className="h-2 w-2 rounded-full bg-success/40" />
                       {dashboardCopy.thisWeek}: 3 lessons
                     </div>
                   </div>
@@ -195,7 +184,7 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
               </div>
 
               <div className="grid gap-4 md:grid-cols-[1.2fr,0.8fr]">
-                <div className="rounded-[1.6rem] border border-border/70 bg-white p-5 shadow-soft">
+                <div className="rounded-xl border border-border/70 bg-card p-5 shadow-soft">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
@@ -207,29 +196,24 @@ export function HeroSection({ locale, stats }: HeroSectionProps) {
                           : "Steady movement toward your weekly study target"}
                       </p>
                     </div>
-                    <p className="font-display text-3xl font-semibold text-foreground">4/5</p>
+                    <p className="font-display text-[2rem] font-semibold leading-none text-foreground">4/5</p>
                   </div>
                   <div className="mt-5 space-y-3">
                     {[78, 54, 92].map((value, index) => (
                       <div key={value} className="space-y-2">
                         <div className="flex items-center justify-between text-sm text-muted-foreground">
-                          <span>
-                            {locale === "uz" ? `Modul ${index + 1}` : `Module ${index + 1}`}
-                          </span>
+                          <span>{locale === "uz" ? `Modul ${index + 1}` : `Module ${index + 1}`}</span>
                           <span>{value}%</span>
                         </div>
                         <div className="h-2 rounded-full bg-secondary">
-                          <div
-                            className="h-2 rounded-full bg-primary"
-                            style={{ width: `${value}%` }}
-                          />
+                          <div className="h-2 rounded-full bg-primary" style={{ width: `${value}%` }} />
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="rounded-[1.6rem] border border-border/70 bg-white p-5 shadow-soft">
+                <div className="rounded-xl border border-border/70 bg-card p-5 shadow-soft">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     {dashboardCopy.mentorFeedback}
                   </p>

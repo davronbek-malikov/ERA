@@ -22,6 +22,7 @@ type CourseFiltersProps = {
     category?: string;
     difficulty?: string;
     search?: string;
+    sort?: string;
   };
   locale: Locale;
 };
@@ -35,7 +36,7 @@ export function CourseFilters({ subjects, selected, locale }: CourseFiltersProps
   return (
     <Card>
       <CardContent className="p-6">
-        <form className="grid gap-4 lg:grid-cols-[1.2fr,1fr,1fr,1fr,auto]">
+        <form className="grid gap-4 lg:grid-cols-[1.2fr,1fr,1fr,1fr,1fr,auto]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -49,7 +50,7 @@ export function CourseFilters({ subjects, selected, locale }: CourseFiltersProps
           <select
             name="subject"
             defaultValue={selected.subject ?? ""}
-            className="h-12 rounded-2xl border border-border bg-white/80 px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="form-control"
           >
             <option value="">{t.courses.allSubjects}</option>
             {subjects.map((subject) => (
@@ -62,7 +63,7 @@ export function CourseFilters({ subjects, selected, locale }: CourseFiltersProps
           <select
             name="category"
             defaultValue={selected.category ?? ""}
-            className="h-12 rounded-2xl border border-border bg-white/80 px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="form-control"
           >
             <option value="">{t.courses.allCategories}</option>
             {categories.map((category) => (
@@ -75,7 +76,7 @@ export function CourseFilters({ subjects, selected, locale }: CourseFiltersProps
           <select
             name="difficulty"
             defaultValue={selected.difficulty ?? ""}
-            className="h-12 rounded-2xl border border-border bg-white/80 px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="form-control"
           >
             <option value="">{t.courses.allLevels}</option>
             {difficultyOptions.map((difficulty) => (
@@ -85,7 +86,16 @@ export function CourseFilters({ subjects, selected, locale }: CourseFiltersProps
             ))}
           </select>
 
-          <Button type="submit">{t.courses.applyFilters}</Button>
+          <select
+            name="sort"
+            defaultValue={selected.sort ?? "popularity"}
+            className="form-control"
+          >
+            <option value="popularity">{locale === "uz" ? "Mashhurlik bo'yicha" : "Sort by popularity"}</option>
+            <option value="rating">{locale === "uz" ? "Reyting bo'yicha" : "Sort by rating"}</option>
+          </select>
+
+          <Button type="submit" size="md">{t.courses.applyFilters}</Button>
         </form>
       </CardContent>
     </Card>

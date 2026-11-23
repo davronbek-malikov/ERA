@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { KeyRound, Mail, Phone } from "lucide-react";
+import { KeyRound, Mail, Phone, ShieldCheck } from "lucide-react";
 
 import { signUpAction } from "@/app/(public)/sign-up/actions";
 import { SignUpSubmitButton } from "@/components/auth/sign-up-submit-button";
@@ -37,29 +37,28 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
   const message = errorKey ? t.signUp.errors[errorKey as keyof typeof t.signUp.errors] : null;
 
   return (
-    <Section className="py-8 sm:py-12 lg:py-16">
-      <Container className="grid items-start gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
-        <Card className="order-1 border-white/70 bg-white/92 shadow-panel lg:order-2">
-          <CardHeader className="space-y-3 px-5 pb-4 pt-5 sm:px-8 sm:pt-8">
+    <Section className="py-6 sm:py-12 lg:py-14">
+      <Container className="grid items-start gap-5 sm:gap-6 lg:grid-cols-[0.95fr,1.05fr] lg:gap-10">
+        <Card className="order-1 border-white/70 bg-card/92 shadow-panel lg:order-2">
+          <CardHeader className="space-y-3 px-4 pb-4 pt-4 sm:px-7 sm:pt-7">
             <div className="inline-flex w-fit rounded-full bg-primary/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
               {t.signUp.join}
             </div>
-            <CardTitle className="text-2xl sm:text-3xl">{t.signUp.join}</CardTitle>
+            <CardTitle>{t.signUp.join}</CardTitle>
             <p className="text-sm leading-7 text-muted-foreground sm:text-base">
               {t.signUp.details}
             </p>
           </CardHeader>
-          <CardContent className="space-y-5 px-5 pb-5 sm:px-8 sm:pb-8">
+          <CardContent className="space-y-5 px-4 pb-4 sm:px-8 sm:pb-8">
             {message ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="rounded-2xl border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
                 {message}
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
-              {locale === "uz"
-                ? "Email va parol bilan tezda akkaunt yarating. Telefon raqami ixtiyoriy, lekin keyinroq telefon orqali kirish uchun foydali."
-                : "Create your account quickly with email and password. A phone number is optional, but helpful if you want phone login later."}
+            <div className="flex gap-3 rounded-2xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm leading-6 text-muted-foreground">
+              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+              <p>{t.signUp.approvalNote}</p>
             </div>
 
             <form action={signUpAction} className="space-y-4">
@@ -72,7 +71,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   name="name"
                   placeholder={t.signUp.namePlaceholder}
                   autoComplete="name"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -88,7 +87,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                   required
                 />
               </div>
@@ -102,9 +101,23 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                   placeholder={t.signUp.phonePlaceholder}
                   autoComplete="tel"
                   inputMode="tel"
-                  className="h-12 text-base sm:h-14"
+                  className="h-12"
                 />
               </div>
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">{t.signUp.language}</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["uz", "en"] as const).map((value) => (
+                    <label
+                      key={value}
+                      className="flex h-12 cursor-pointer items-center gap-2 rounded-xl border border-border px-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+                    >
+                      <input type="radio" name="preferredLanguage" value={value} defaultChecked={value === (locale === "en" ? "en" : "uz")} className="accent-primary" />
+                      {value === "uz" ? t.signUp.languageUz : t.signUp.languageEn}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label htmlFor="password" className="text-sm font-medium">
@@ -116,7 +129,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                     type="password"
                     placeholder={t.signUp.passwordPlaceholder}
                     autoComplete="new-password"
-                    className="h-12 text-base sm:h-14"
+                    className="h-12"
                     required
                   />
                 </div>
@@ -130,7 +143,7 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
                     type="password"
                     placeholder={t.signUp.confirmPasswordPlaceholder}
                     autoComplete="new-password"
-                    className="h-12 text-base sm:h-14"
+                    className="h-12"
                     required
                   />
                 </div>
@@ -149,30 +162,26 @@ export default async function SignUpPage({ searchParams }: SignUpPageProps) {
           </CardContent>
         </Card>
 
-        <div className="order-2 space-y-5 lg:order-1 lg:space-y-6">
+        <div className="order-2 min-w-0 space-y-4 sm:space-y-5 lg:order-1 lg:space-y-6">
           <Badge>{t.signUp.badge}</Badge>
-          <h1 className="font-display text-3xl leading-tight sm:text-5xl lg:text-6xl">
-            {t.signUp.title}
-          </h1>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-            {t.signUp.description}
-          </p>
+          <h1 className="page-title">{t.signUp.title}</h1>
+          <p className="page-lead">{t.signUp.description}</p>
 
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <Mail className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[0]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <Phone className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[1]}</p>
               </CardContent>
             </Card>
-            <Card className="bg-white/70">
-              <CardContent className="space-y-3 p-5">
+            <Card className="bg-card/70">
+              <CardContent className="space-y-3 p-4 sm:p-5">
                 <KeyRound className="h-5 w-5 text-primary" />
                 <p className="text-sm text-muted-foreground">{t.signUp.cards[2]}</p>
               </CardContent>

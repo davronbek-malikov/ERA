@@ -13,15 +13,15 @@ export const messages = {
       brandTagline: "Modern learning",
       subjects: "Subjects",
       courses: "Courses",
-      learningPaths: "Paths",
+      learningPaths: "Learning paths",
       faq: "FAQ",
       signedInAs: "Account",
-      myLearning: "My Learning",
+      myLearning: "My learning",
       dashboard: "Dashboard",
-      signOut: "Sign Out",
-      signIn: "Sign In",
-      signUp: "Sign Up",
-      startLearning: "Start Learning"
+      signOut: "Sign out",
+      signIn: "Sign in",
+      signUp: "Sign up",
+      startLearning: "Start learning"
     },
     footer: {
       description:
@@ -32,20 +32,20 @@ export const messages = {
       contact: "Contact"
     },
     home: {
-      heroBadge: "Now Enrolling",
+      heroBadge: "Now enrolling",
       heroTitle:
         "Learn AI with real projects, clear mentorship, and a study path built for momentum.",
       heroDescription:
         "ERA Academy gives students one calm place to learn AI, math, English, and exam prep through guided tracks, project-based lessons, and progress they can actually see.",
-      exploreCourses: "Start Learning",
-      browseSubjects: "See Learning Paths",
+      exploreCourses: "Start learning",
+      browseSubjects: "See learning paths",
       publishedCourses: "Published courses",
       lessonModules: "Lesson modules",
       subjectTracks: "Subject tracks",
       viewCourse: "View course"
     },
     signIn: {
-      badge: "Secure Access",
+      badge: "Secure access",
       title: "Sign in with your email or phone number.",
       description:
         "Use one account to manage the admin workspace and review your learning platform. Admin users will be sent to the CMS automatically after login.",
@@ -63,19 +63,20 @@ export const messages = {
       createAccount: "Create an account",
       needCatalog: "Need the catalog instead?",
       browseCourses: "Browse courses",
-      submit: "Sign In",
+      submit: "Sign in",
       submitting: "Signing in...",
       errors: {
         "missing-fields": "Enter your email or phone number and your password.",
         "invalid-credentials": "We could not sign you in with those credentials.",
         "inactive-account": "This account is not active. Contact support if you need access restored.",
+        "pending-approval": "Your account is waiting for your teacher's approval. You can sign in once it is approved.",
         "rate-limited": "Too many sign-in attempts. Please wait a little and try again.",
         "service-unavailable":
           "Sign-in is temporarily unavailable because the database is busy. Please try again in a moment."
       }
     },
     signUp: {
-      badge: "New Account",
+      badge: "New account",
       title: "Create your account with Gmail and phone number.",
       description:
         "Students can create an ERA Academy account with their name, email, and password, then add a phone number if they want phone-based sign-in later.",
@@ -92,9 +93,19 @@ export const messages = {
       passwordPlaceholder: "At least 8 characters",
       confirmPassword: "Confirm password",
       confirmPasswordPlaceholder: "Repeat password",
-      submit: "Create Account",
+      submit: "Create account",
       already: "Already registered?",
       signInHere: "Sign in here",
+      language: "Preferred language",
+      languageUz: "O'zbekcha",
+      languageEn: "English",
+      approvalNote: "After you register, your teacher checks and approves your account. You can open lessons once it is approved.",
+      pendingBadge: "Registration received",
+      pendingTitle: "Thank you! Your account is waiting for approval.",
+      pendingBody: "Your teacher needs to approve your account before you can open lessons and learning materials. This usually happens within a day.",
+      pendingSteps: ["Your teacher checks your details.", "Your account is approved.", "Sign in with your email and password and start learning."],
+      pendingSignIn: "Go to sign in",
+      pendingHome: "Back to the home page",
       errors: {
         "missing-fields": "Please complete your name, Gmail, and password.",
         "invalid-email": "Enter a valid email address.",
@@ -106,7 +117,11 @@ export const messages = {
         "duplicate-email": "That Gmail address is already being used.",
         "duplicate-phone": "That phone number is already being used.",
         "duplicate-record": "An account with those details already exists.",
-        "service-unavailable": "Sign-up is temporarily unavailable. Please try again in a moment."
+        "service-unavailable": "Sign-up is temporarily unavailable. Please try again in a moment.",
+        "invalid-name": "Enter your full name (2–100 characters).",
+        "invalid-language": "Choose Uzbek or English.",
+        "password-too-long": "Passwords can be at most 72 characters long.",
+        "rate-limited": "Too many registrations from this network. Please try again in an hour."
       }
     },
     courses: {
@@ -118,17 +133,17 @@ export const messages = {
       signedIn:
         "Signed in successfully. Your course progress will stay synced to your account.",
       myLearningHint: "Looking for your selected courses only?",
-      openMyLearning: "Open My Learning",
+      openMyLearning: "Open my learning",
       noMatchTitle: "No courses matched your filters",
       noMatchDescription: "Try widening your search or clearing one of the selected filters.",
-      resetCatalog: "Reset Catalog",
+      resetCatalog: "Reset catalog",
       searchPlaceholder: "Search courses, instructors, or topics",
       allSubjects: "All subjects",
       allCategories: "All categories",
       allLevels: "All levels",
       applyFilters: "Apply filters",
       add: "Add",
-      myLearningShort: "My Learning",
+      myLearningShort: "My learning",
       structuredOverview: "Structured course overview",
       curriculumSoon: "Curriculum details coming soon",
       selectedCourseFallback: "A structured course selected for your personal learning list.",
@@ -140,18 +155,18 @@ export const messages = {
       successSignedUp:
         "Account created successfully. Choose a course to start building your learning list.",
       successSignedIn: "Signed in successfully. Your selected courses will appear here.",
-      badge: "My Learning",
+      badge: "My learning",
       title: "Keep your selected courses in one focused place.",
       description:
         "This area is only for courses you have chosen. New students start with an empty learning list, then build it course by course.",
       emptyTitle: "Your learning list is empty",
       emptyDescription:
-        "You have not added any courses yet. Browse the catalog, open a course, and use Add to My Learning to build your study space.",
-      browseCourses: "Browse Courses",
+        "You have not added any courses yet. Browse the catalog, open a course, and use Add to my learning to build your study space.",
+      browseCourses: "Browse courses",
       complete: "complete",
       lastUpdated: "Last updated",
-      continueCourse: "Continue Course",
-      browseMoreCourses: "Browse More Courses"
+      continueCourse: "Continue course",
+      browseMoreCourses: "Browse more courses"
     },
     subjects: {
       title: "Four core domains, each ready to scale into a full catalog.",
@@ -160,7 +175,7 @@ export const messages = {
       noSubjectsTitle: "No subjects yet",
       noSubjectsDescription:
         "Add subjects from the admin CMS to start structuring the learning catalog.",
-      openAdmin: "Open Admin",
+      openAdmin: "Open admin",
       courses: "courses",
       fallback:
         "A well-structured subject space designed to expand into categories, courses, and lesson sequences.",
@@ -173,8 +188,8 @@ export const messages = {
       popular: "Popular",
       instructor: "Instructor",
       difficulty: "Difficulty",
-      lessonCount: "Lesson Count",
-      studyTime: "Study Time",
+      lessonCount: "Lesson count",
+      studyTime: "Study time",
       category: "Category",
       viewCurriculum: "View curriculum",
       curriculumPreparing:
@@ -182,17 +197,17 @@ export const messages = {
       watchPromo: "Watch promo video",
       addDescription:
         "Add this course to your learning list so you can come back to it quickly from one focused place.",
-      addCta: "Add to My Learning",
-      goToMyLearning: "Go to My Learning",
+      addCta: "Add to my learning",
+      goToMyLearning: "Go to my learning",
       selectedSeparate: "Your selected courses stay separate from the full public catalog.",
-      learningOutcomes: "Learning Outcomes",
+      learningOutcomes: "Learning outcomes",
       achieve: "What students will achieve",
-      relatedCourses: "Related Courses",
+      relatedCourses: "Related courses",
       momentum: "Keep the learning momentum going.",
       noRelatedTitle: "No related courses yet",
       noRelatedDescription:
         "As the catalog grows, related courses from the same category or subject will appear here.",
-      browseAllCourses: "Browse All Courses",
+      browseAllCourses: "Browse all courses",
       curriculum: "Curriculum",
       curriculumDescription:
         "Follow the lessons in order, mark completed lessons, and download supporting study materials.",
@@ -213,12 +228,12 @@ export const messages = {
       pageNotFound: "This page does not exist.",
       pageNotFoundDescription:
         "The page you requested could not be found. It may have moved, or the slug may no longer be valid.",
-      returnHome: "Return Home",
+      returnHome: "Return home",
       somethingWentWrong: "Something went wrong",
       pageCouldNotLoad: "The page could not be loaded.",
       pageCouldNotLoadDescription:
         "An unexpected error occurred while rendering this route. Try again, and if the issue persists, check your environment variables and database connection.",
-      tryAgain: "Try Again"
+      tryAgain: "Try again"
     }
   },
   uz: {
@@ -283,6 +298,7 @@ export const messages = {
         "missing-fields": "Email yoki telefon raqamingiz va parolingizni kiriting.",
         "invalid-credentials": "Bu ma'lumotlar bilan tizimga kira olmadik.",
         "inactive-account": "Bu akkaunt faol emas. Kirish kerak bo'lsa, qo'llab-quvvatlash bilan bog'laning.",
+        "pending-approval": "Akkauntingiz o'qituvchingiz tasdiqlashini kutmoqda. Tasdiqlangandan keyin kira olasiz.",
         "rate-limited": "Juda ko'p kirish urinishi bo'ldi. Biroz kutib, qayta urinib ko'ring.",
         "service-unavailable":
           "Ma'lumotlar bazasi bandligi sababli kirish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
@@ -309,6 +325,16 @@ export const messages = {
       submit: "Akkaunt yaratish",
       already: "Avval ro'yxatdan o'tganmisiz?",
       signInHere: "Bu yerda kiring",
+      language: "Qaysi tilda o'qiysiz",
+      languageUz: "O'zbekcha",
+      languageEn: "English",
+      approvalNote: "Ro'yxatdan o'tganingizdan keyin o'qituvchingiz akkauntingizni tekshirib tasdiqlaydi. Tasdiqlangach darslarni ocha olasiz.",
+      pendingBadge: "Ariza qabul qilindi",
+      pendingTitle: "Rahmat! Akkauntingiz tasdiqlanishini kutmoqda.",
+      pendingBody: "Darslar va o'quv materiallarini ochishdan oldin o'qituvchingiz akkauntingizni tasdiqlashi kerak. Odatda bu bir kun ichida bo'ladi.",
+      pendingSteps: ["O'qituvchingiz ma'lumotlaringizni tekshiradi.", "Akkauntingiz tasdiqlanadi.", "Email va parolingiz bilan kiring va o'qishni boshlang."],
+      pendingSignIn: "Kirish sahifasiga o'tish",
+      pendingHome: "Bosh sahifaga qaytish",
       errors: {
         "missing-fields": "Iltimos, ism, Gmail va parolni to'liq kiriting.",
         "invalid-email": "Yaroqli email manzilini kiriting.",
@@ -320,7 +346,11 @@ export const messages = {
         "duplicate-email": "Bu Gmail manzili allaqachon ishlatilmoqda.",
         "duplicate-phone": "Bu telefon raqami allaqachon ishlatilmoqda.",
         "duplicate-record": "Bu ma'lumotlar bilan akkaunt allaqachon mavjud.",
-        "service-unavailable": "Ro'yxatdan o'tish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring."
+        "service-unavailable": "Ro'yxatdan o'tish vaqtincha mavjud emas. Birozdan so'ng qayta urinib ko'ring.",
+        "invalid-name": "To'liq ismingizni kiriting (2–100 belgi).",
+        "invalid-language": "O'zbekcha yoki English tilini tanlang.",
+        "password-too-long": "Parol ko'pi bilan 72 belgidan iborat bo'lishi mumkin.",
+        "rate-limited": "Bu tarmoqdan juda ko'p ro'yxatdan o'tildi. Bir soatdan keyin qayta urinib ko'ring."
       }
     },
     courses: {

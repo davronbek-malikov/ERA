@@ -1,35 +1,28 @@
 import type { MetadataRoute } from "next";
 import { PublicationStatus } from "@prisma/client";
 
-import { demoCourses, demoSubjects } from "@/lib/demo-data";
-import { withDatabaseFallback } from "@/lib/server-data";
+import { isDatabaseOfflineError } from "@/lib/server-data";
 import { siteConfig } from "@/lib/site";
 import { prisma } from "@/lib/prisma";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [subjects, courses] = await withDatabaseFallback(
-    async () => [
-      await prisma.subject.findMany({
-        where: { status: PublicationStatus.PUBLISHED },
-        select: { slug: true, updatedAt: true }
-      }),
-      await prisma.course.findMany({
-        where: { status: PublicationStatus.PUBLISHED },
-        select: { slug: true, updatedAt: true }
-      })
-    ],
-    () =>
-      [
-        demoSubjects.map((subject) => ({
-          slug: subject.slug,
-          updatedAt: subject.updatedAt
-        })),
-        demoCourses.map((course) => ({
-          slug: course.slug,
-          updatedAt: course.updatedAt
-        }))
-      ] as const
-  );
+  const [subjects, courses] = await Promise.all([
+    prisma.subject.findMany({
+      where: { status: PublicationStatus.PUBLISHED },
+      select: { slug: true, updatedAt: true }
+    }),
+    prisma.course.findMany({
+      where: { status: PublicationStatus.PUBLISHED },
+      select: { slug: true, updatedAt: true }
+    })
+  ]).catch((error) => {
+    if (!isDatabaseOfflineError(error)) {
+      throw error;
+    }
+
+    // List static pages only while the database is unreachable.
+    return [[], []] as const;
+  });
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
@@ -48,6 +41,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${siteConfig.url}/courses`,
       lastModified: new Date(),
       changeFrequency: "daily",
+      priority: 0.9
+    },
+    {
+      url: `${siteConfig.url}/learning-paths`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
       priority: 0.9
     }
   ];

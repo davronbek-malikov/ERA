@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { retryOnDatabaseFailure } from "@/lib/server-data";
 
 type CurrentUser = {
   id: string;
@@ -16,81 +17,44 @@ export function isAdmin(role?: string | null) {
   return role === UserRole.ADMIN;
 }
 
+const instructorSelect = { id: true, name: true, userId: true, email: true } as const;
+
+/**
+ * The instructor profile of an INSTRUCTOR account. Deterministic and fail-closed:
+ *  1. the profile explicitly linked to this user (`Instructor.userId`), otherwise
+ *  2. a profile created by an admin for this email that is not linked to anyone yet — it is linked now.
+ * A profile already linked to another user is never returned. Ownership checks live in src/server/authz.ts.
+ */
 export async function getInstructorRecordForUser(user: CurrentUser) {
   if (user.role !== UserRole.INSTRUCTOR) {
     return null;
   }
 
-  const instructor = await prisma.instructor.findFirst({
-    where: {
-      OR: [{ userId: user.id }, { email: user.email }]
-    },
-    select: {
-      id: true,
-      name: true,
-      userId: true,
-      email: true
-    }
-  });
+  const linked = await retryOnDatabaseFailure(() =>
+    prisma.instructor.findUnique({ where: { userId: user.id }, select: instructorSelect })
+  );
+  if (linked) {
+    return linked;
+  }
 
-  if (!instructor) {
+  if (!user.email) {
     return null;
   }
 
-  if (!instructor.userId) {
-    await prisma.instructor.update({
-      where: { id: instructor.id },
-      data: { userId: user.id }
-    });
+  const unclaimed = await retryOnDatabaseFailure(() =>
+    prisma.instructor.findFirst({
+      where: { email: { equals: user.email, mode: "insensitive" }, userId: null },
+      orderBy: { createdAt: "asc" },
+      select: instructorSelect
+    })
+  );
+  if (!unclaimed) {
+    return null;
   }
 
-  return {
-    ...instructor,
-    userId: instructor.userId ?? user.id
-  };
-}
-
-export async function assertCourseManagementAccess(courseId: string, user: CurrentUser) {
-  if (user.role === UserRole.ADMIN) {
-    return {
-      allowed: true as const,
-      course: await prisma.course.findUnique({
-        where: { id: courseId },
-        select: {
-          id: true,
-          slug: true,
-          instructorId: true
-        }
-      })
-    };
-  }
-
-  const instructor = await getInstructorRecordForUser(user);
-  if (!instructor) {
-    return {
-      allowed: false as const,
-      course: null
-    };
-  }
-
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: {
-      id: true,
-      slug: true,
-      instructorId: true
-    }
-  });
-
-  if (!course || course.instructorId !== instructor.id) {
-    return {
-      allowed: false as const,
-      course
-    };
-  }
-
-  return {
-    allowed: true as const,
-    course
-  };
+  // Conditional claim: only succeeds while the profile is still unlinked (no race with another account).
+  const claimed = await retryOnDatabaseFailure(() =>
+    prisma.instructor.updateMany({ where: { id: unclaimed.id, userId: null }, data: { userId: user.id } })
+  );
+  return claimed.count === 1 ? { ...unclaimed, userId: user.id } : null;
 }

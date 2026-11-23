@@ -27,7 +27,7 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
           />
         ) : (
           activity.map((item) => (
-            <div key={item.id} className="rounded-[1.5rem] border border-border/70 bg-secondary/30 p-4">
+            <div key={item.id} className="rounded-xl border border-border/70 bg-secondary/30 p-4">
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm uppercase tracking-[0.18em] text-muted-foreground">
                   {item.type.replaceAll("_", " ")}

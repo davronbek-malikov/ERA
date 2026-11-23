@@ -14,7 +14,7 @@ export function CourseEnrollmentPanel({ courseSlug, locale }: CourseEnrollmentPa
   const t = getMessages(locale);
   return (
     <div className="space-y-3">
-      <div className="rounded-[1.5rem] border border-border/70 bg-secondary/35 px-4 py-4 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-border/70 bg-secondary/35 px-4 py-4 text-sm text-muted-foreground">
         {t.courseDetail.addDescription}
       </div>
       <CourseEnrollmentButton
