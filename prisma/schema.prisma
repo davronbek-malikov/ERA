@@ -168,6 +168,7 @@ model User {
   aiPendingActions         AiPendingAction[]
   instructorPermissionsSet InstructorPermission[]
   homeworkReviewsChecked   HomeworkReview[]       @relation("HomeworkReviewedBy")
+  studyAttempts            StudyAttempt[]
 }
 
 model UserOnboarding {
@@ -447,8 +448,8 @@ model Lesson {
   /// The homework given in this lesson, as the teacher wrote it.
   homework      String?
 
-  course             Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  module             CourseModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  course             Course                @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module             CourseModule?         @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   materials          CourseMaterial[]
   completions        LessonCompletion[]
   content            LessonContent?
@@ -457,8 +458,12 @@ model Lesson {
   subskills          LessonSubskill[]
   quizQuestions      LessonQuizQuestion[]
   practiceExercises  PracticeExercise[]
-  currentEnrollments Enrollment[]         @relation("EnrollmentCurrentLesson")
+  currentEnrollments Enrollment[]          @relation("EnrollmentCurrentLesson")
   homeworkReviews    HomeworkReview[]
+  studyMaterials     LessonStudyMaterial[]
+  studyGuide         LessonStudyGuide?
+  studyAttempts      StudyAttempt[]
+  studyAskCache      StudyAskCache[]
 
   @@unique([courseId, slug])
   @@unique([courseId, position])
@@ -1229,4 +1234,94 @@ model TelegramAccount {
   instructor Instructor @relation(fields: [instructorId], references: [id], onDelete: Cascade)
 
   @@map("telegram_accounts")
+}
+
+// ------------------------------------------------------------------------------------------------
+// Lesson study room (docs/ERA_STUDY_ROOM.md): the teacher uploads the lesson's materials, ERA writes a study guide
+// with AI (full text, summary, checkpoints and 5 easy / 5 medium / 5 advanced questions in Uzbek and English),
+// the teacher reviews and publishes it, and every student of the course studies the same guide.
+// ------------------------------------------------------------------------------------------------
+
+enum StudyGuideStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// A file the teacher uploaded for a lesson; only its extracted text is kept here.
+model LessonStudyMaterial {
+  id           String   @id @default(cuid())
+  lessonId     String   @map("lesson_id")
+  filename     String
+  fileType     String   @map("file_type")
+  pageCount    Int?     @map("page_count")
+  text         String
+  charCount    Int      @map("char_count")
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+  @@map("lesson_study_materials")
+}
+
+/// The AI-written, teacher-reviewed study guide of one lesson (content per language as JSON).
+model LessonStudyGuide {
+  id            String           @id @default(cuid())
+  lessonId      String           @unique @map("lesson_id")
+  status        StudyGuideStatus @default(DRAFT)
+  contentUz     Json?            @map("content_uz")
+  contentEn     Json?            @map("content_en")
+  generatedWith String?          @map("generated_with")
+  generatedAt   DateTime?        @map("generated_at")
+  publishedAt   DateTime?        @map("published_at")
+  publishedById String?          @map("published_by_id")
+  updatedById   String?          @map("updated_by_id")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_study_guides")
+}
+
+/// One answer a student gave in "Test yourself" or a checkpoint.
+model StudyAttempt {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  lessonId   String   @map("lesson_id")
+  questionId String   @map("question_id")
+  level      String
+  answer     String
+  correct    Boolean?
+  score      Int?
+  feedback   String?
+  followUp   String?  @map("follow_up")
+  language   String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, userId])
+  @@index([userId, createdAt])
+  @@map("study_attempts")
+}
+
+/// Answers to questions already asked about a lesson, so the same question never costs tokens twice.
+model StudyAskCache {
+  id          String   @id @default(cuid())
+  lessonId    String   @map("lesson_id")
+  language    String
+  questionKey String   @map("question_key")
+  question    String
+  answer      String
+  sources     Json?
+  hits        Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, language, questionKey])
+  @@map("study_ask_cache")
 }

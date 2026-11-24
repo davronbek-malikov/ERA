@@ -7,7 +7,7 @@ import type { KnowledgeSource } from "@/server/ai/knowledge";
  * Everything in src/server/ai is server-only: provider keys, prompts and context never reach the browser.
  */
 
-export type ProviderName = "anthropic" | "openai" | "groq" | "ollama";
+export type ProviderName = "anthropic" | "openai" | "gemini" | "groq" | "ollama";
 
 export type AgentKind = "student" | "teacher" | "admin";
 
@@ -41,6 +41,10 @@ export type ProviderRequest = {
   maxOutputTokens: number;
   signal: AbortSignal;
   tools?: ToolDefinition[];
+  /** Content generation (study guides) needs long answers; chat answers are kept short on small free plans. */
+  allowLongOutput?: boolean;
+  /** Ask for a JSON object as the answer (providers that support it). */
+  json?: boolean;
 };
 
 export type ProviderUsage = {

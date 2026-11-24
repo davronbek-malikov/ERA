@@ -59,6 +59,11 @@ const env = {
   OPENAI_API_KEY: "",
   // Never call real providers from tests (.env may hold real keys; process env wins over .env).
   GROQ_API_KEY: "",
+  ANTHROPIC_API_KEY: "",
+  GEMINI_API_KEY: "",
+  GOOGLE_API_KEY: "",
+  // One provider only in the HTTP tests (fallback switching has its own adapter test).
+  ERA_LLM_FALLBACKS: "none",
   // Telegram homework reminders talk to the fake storage server, never to api.telegram.org.
   TELEGRAM_BOT_TOKEN: "test-bot-token-123",
   TELEGRAM_BOT_USERNAME: "era_test_bot",

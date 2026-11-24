@@ -1,9 +1,12 @@
+import Link from "next/link";
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronRight } from "lucide-react";
 
 import type { Workspace } from "@/components/management/enrollment-forms";
 import { CourseOrderButtons, CreateCourseButton, LessonEditorButton } from "@/components/management/teaching-forms";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ManagementActor } from "@/server/management/actor";
 import { listInstructorsForActor } from "@/server/management/queries";
 import { listTeachingCourses } from "@/server/management/teaching";
@@ -86,8 +89,12 @@ export async function TeachingCoursesView({ actor, workspace }: { actor: Managem
                                     <p className="whitespace-pre-wrap">{lesson.homework || "—"}</p>
                                   </div>
                                 </div>
-                                <div>
+                                <div className="flex flex-wrap gap-2">
                                   <LessonEditorButton workspace={workspace} courseId={course.id} mode="edit" lesson={lesson} />
+                                  <Link href={`/teacher/study/${lesson.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+                                    <BookOpen aria-hidden="true" />
+                                    {T("Study guide (AI)")}
+                                  </Link>
                                 </div>
                               </div>
                             </details>

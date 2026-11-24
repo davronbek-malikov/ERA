@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bot, MessageSquareText, BookOpenCheck, CalendarDays, Compass, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
+import { BarChart3, BookOpen, BookOpenText, Bot, MessageSquareText, BookOpenCheck, CalendarDays, Compass, FolderTree, GraduationCap, Home, KeyRound, LayoutDashboard, Library, LineChart, Settings, Sparkles, Tags, UserRoundCog, Users, Wallet } from "lucide-react";
 
 import { signOutAction } from "@/app/(public)/sign-in/actions";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -34,6 +34,7 @@ const copy = {
     assistant: "ERA Assistant",
     chatbot: "Chatbot",
     messages: "Messages",
+    studyRoom: "Study room",
     contentTools: "Content tools",
     courseEditor: "Course editor",
     lessonEditor: "Lesson editor",
@@ -76,6 +77,7 @@ const copy = {
     assistant: "ERA Assistant",
     chatbot: "Chatbot",
     messages: "Xabarlar",
+    studyRoom: "O'quv xonasi",
     contentTools: "Kontent vositalari",
     courseEditor: "Kurs muharriri",
     lessonEditor: "Dars muharriri",
@@ -121,11 +123,13 @@ function buildNav(workspace: WorkspaceKind, locale: Locale, options: { teacherPa
     const students: NavItem = { href: "/teacher/my-students", label: t.myStudents, icon: <Users /> };
     const chatbot: NavItem = { href: "/teacher/assistant", label: t.chatbot, icon: <Bot />, matchNested: false };
     const messages: NavItem = { href: "/teacher/assistant/messages", label: t.messages, icon: <MessageSquareText /> };
+    // Lesson study room: upload materials, AI writes the guide, the teacher reviews and publishes it.
+    const study: NavItem = { href: "/teacher/study", label: t.studyRoom, icon: <BookOpenText /> };
     void options;
     return {
       home: "/teacher/my-students",
-      nav: [{ items: [students] }, { label: t.assistant, items: [chatbot, messages] }],
-      tabs: [students, chatbot, messages]
+      nav: [{ items: [students, study] }, { label: t.assistant, items: [chatbot, messages] }],
+      tabs: [students, study, chatbot, messages]
     };
   }
 

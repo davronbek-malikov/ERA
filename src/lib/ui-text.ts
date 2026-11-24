@@ -720,7 +720,8 @@ const UZ: Record<string, string> = {
   "{course} still owes ₩{amount}. The debt stays on {course}: when the student pays it, confirm the payment on {course} (Unpaid months on the profile), not on the new month.": "{course} bo'yicha hali ₩{amount} qarz bor. Qarz {course} da qoladi: o'quvchi to'laganda, to'lovni yangi oyda emas, {course} da tasdiqlang (profildagi \"To'lanmagan oylar\").",
   "The payment is already on this course.": "To'lov allaqachon shu kursda.",
   "A payment can only be moved to another course of the same student.": "To'lovni faqat shu o'quvchining boshqa kursiga o'tkazish mumkin.",
-  "This student was removed from this course earlier. To bring them back, open the student's profile → Previous courses → this course → Return to course. Their homework and payments come back too.": "Bu o'quvchi avval shu kursdan chiqarilgan. Qaytarish uchun o'quvchi profilini oching → Avvalgi kurslar → shu kurs → \"Kursga qaytarish\". Uy vazifalari va to'lovlari ham qaytadi."
+  "This student was removed from this course earlier. To bring them back, open the student's profile → Previous courses → this course → Return to course. Their homework and payments come back too.": "Bu o'quvchi avval shu kursdan chiqarilgan. Qaytarish uchun o'quvchi profilini oching → Avvalgi kurslar → shu kurs → \"Kursga qaytarish\". Uy vazifalari va to'lovlari ham qaytadi.",
+  "Study guide (AI)": "O'quv qo'llanma (AI)"
 };
 
 export function translate(locale: Locale, text: string, vars?: Record<string, string | number>): string {

@@ -1137,3 +1137,172 @@ describe("A new teacher works on their own right away (multi-teacher)", () => {
     assert.equal((await next(nt.session, { courseId: second.data.courseId, startDate: today, priceAmount: 100000 })).status, 409, "already moved");
   });
 });
+
+describe("Lesson study room: upload → AI guide → review → publish → study, ask, test yourself", () => {
+  const lessonId = l.lessonA1.id;
+  const studyPath = "/learn/courses/course-a/lessons/a-1/study";
+  const studentC = as(u.studentC);
+  const step = (session, name) => post(`/api/teacher/study/${lessonId}/generate`, { session, json: { step: name } });
+  const answer = (session, json) => post(`/api/learn/study/${lessonId}/answer`, { session, json: { language: "uz", ...json } });
+  const ask = (session, json) => post(`/api/learn/study/${lessonId}/ask`, { session, json: { language: "uz", ...json } });
+  const llmCalls = async () => (await storageLog()).filter((entry) => /^(ollama|anthropic|openai):/.test(entry.path)).length;
+  let savedAccess = null;
+
+  async function upload(session, filename, text) {
+    const content = Buffer.from(text, "utf8");
+    const signed = await post("/api/admin/storage/upload", { session, json: { filename, contentType: "text/plain", folder: "knowledge-documents", fileSize: content.length } });
+    if (signed.status !== 200) return signed;
+    const put = await fetch(signed.data.uploadUrl, { method: "PUT", body: content, headers: { "content-type": "text/plain" } });
+    assert.equal(put.status, 200);
+    return post(`/api/teacher/study/${lessonId}/materials`, { session, json: { storagePath: signed.data.path, filename, mimeType: "text/plain", fileSize: content.length } });
+  }
+
+  const cleanup = async () => {
+    await prisma.studyAttempt.deleteMany({ where: { lessonId } });
+    await prisma.studyAskCache.deleteMany({ where: { lessonId } });
+    await prisma.lessonStudyGuide.deleteMany({ where: { lessonId } });
+    await prisma.lessonStudyMaterial.deleteMany({ where: { lessonId } });
+  };
+
+  test("setup: student A can open lesson A1 (enrolled, access on)", async () => {
+    await cleanup();
+    const enrollment = await prisma.enrollment.findUnique({ where: { userId_courseId: { userId: u.studentA.id, courseId: c.courseA.id } } });
+    assert.ok(enrollment, "fixture enrollment");
+    savedAccess = { id: enrollment.id, status: enrollment.status, accessStatus: enrollment.accessStatus, accessExpiresAt: enrollment.accessExpiresAt, restrictWhenOverdue: enrollment.restrictWhenOverdue };
+    await prisma.enrollment.update({ where: { id: enrollment.id }, data: { status: "ACTIVE", accessStatus: "ACTIVE", accessExpiresAt: null, restrictWhenOverdue: false } });
+  });
+
+  test("only the lesson's own teacher manages its materials and guide", async () => {
+    assert.equal((await step(teacherB, "chapter")).status, 404, "another teacher");
+    assert.equal((await step(studentA, "chapter")).status, 403, "a student");
+    assert.equal((await step(anonymous, "chapter")).status, 401);
+    assert.equal((await post(`/api/teacher/study/${lessonId}/publish`, { session: teacherB, json: { publish: true } })).status, 404);
+    assert.equal((await call("PUT", `/api/teacher/study/${lessonId}/guide`, { session: studentA, json: { language: "uz", content: {} } })).status, 403);
+    // Streaming pages answer 200 with the not-found content: what matters is that nothing of the lesson is shown.
+    const otherTeacher = await get(`/teacher/study/${lessonId}`, { session: teacherB });
+    assert.ok([200, 404].includes(otherTeacher.status));
+    assert.doesNotMatch(otherTeacher.text, /Dars materiallari|AI bilan darslik yaratish/);
+    assert.equal((await step(teacherA, "chapter")).status, 422, "nothing to write from yet");
+    assert.equal((await step(teacherA, "invalid")).status, 400);
+  });
+
+  test("teacher uploads the lesson material; AI writes the guide in 3 steps (Uzbek, questions, English)", async () => {
+    const added = await upload(teacherA, "lesson-3.txt", "Data preprocessing. SOURCE_MARK_PREPROCESSING. Missing values, normalization, one-hot encoding. ".repeat(5));
+    assert.equal(added.status, 201, added.text);
+    assert.equal((await upload(teacherB, "x.txt", "Another teacher's text about anything at all, long enough to be read.")).status, 404);
+
+    assert.equal((await step(teacherA, "questions")).status, 409, "the text comes first");
+    const chapter = await step(teacherA, "chapter");
+    assert.equal(chapter.status, 200, chapter.text);
+    const questions = await step(teacherA, "questions");
+    assert.equal(questions.status, 200, questions.text);
+    assert.deepEqual(questions.data.counts, { EASY: 5, MEDIUM: 5, ADVANCED: 5, CHECKPOINT: 6 });
+    const english = await step(teacherA, "english");
+    assert.equal(english.status, 200, english.text);
+
+    const guide = await prisma.lessonStudyGuide.findUnique({ where: { lessonId } });
+    assert.equal(guide.status, "DRAFT", "students don't see it before the teacher publishes");
+    assert.match(JSON.stringify(guide.contentUz), /SOURCE_MARK_PREPROCESSING/, "written from the uploaded material");
+    const uzQuestion = guide.contentUz.questions[1];
+    const enQuestion = guide.contentEn.questions.find((question) => question.id === uzQuestion.id);
+    assert.equal(enQuestion.correct, uzQuestion.correct, "the translation can't change the right answers");
+    assert.ok(await prisma.managementAuditLog.findFirst({ where: { action: "study.generate_chapter", entityId: lessonId } }));
+  });
+
+  test("a draft: students can't open it; the teacher previews it", async () => {
+    const page = await get(studyPath, { session: studentA });
+    assert.equal(page.status, 200);
+    assert.match(page.text, /hali darslik tayyor emas|no study guide yet/);
+    assert.equal((await ask(studentA, { question: "Normalizatsiya nima?" })).status, 404);
+    const preview = await get(studyPath, { session: teacherA });
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, /Ko&#x27;rib chiqish rejimi|Ko'rib chiqish rejimi/);
+  });
+
+  test("published: every enrolled student studies the same guide; answers stay on the server", async () => {
+    const published = await post(`/api/teacher/study/${lessonId}/publish`, { session: teacherA, json: { publish: true } });
+    assert.equal(published.status, 200, published.text);
+    const page = await get(studyPath, { session: studentA });
+    assert.equal(page.status, 200);
+    assert.match(page.text, /Yetishmayotgan qiymatlar/);
+    assert.match(page.text, /O(&#x27;|')zingizni sinang/);
+    assert.doesNotMatch(page.text, /Masofaga asoslangan modellar uchun|Because of Oson/, "model answers and explanations are not sent before answering");
+    const english = await get(`${studyPath}?lang=en`, { session: studentA });
+    assert.match(english.text, /EN Ma(&#x27;|')lumotlarni tayyorlash/);
+
+    // Not enrolled → no guide.
+    const outsider = await get(studyPath, { session: studentC });
+    assert.doesNotMatch(outsider.text, /Yetishmayotgan qiymatlar/);
+    assert.ok([403, 404].includes((await ask(studentC, { question: "Normalizatsiya nima?" })).status));
+    assert.ok([403, 404].includes((await answer(studentC, { questionId: "q1", choice: 0 })).status));
+  });
+
+  test("test yourself: multiple choice is graded instantly; interview answers get a score and a follow-up", async () => {
+    const guide = await prisma.lessonStudyGuide.findUnique({ where: { lessonId } });
+    const easy = guide.contentUz.questions.find((question) => question.level === "EASY");
+    const right = await answer(studentA, { questionId: easy.id, choice: easy.correct });
+    assert.equal(right.status, 200, right.text);
+    assert.equal(right.data.correct, true);
+    const wrong = await answer(studentA, { questionId: easy.id, choice: (easy.correct + 1) % 4 });
+    assert.equal(wrong.data.correct, false);
+    assert.equal(wrong.data.correctIndex, easy.correct);
+    assert.equal((await answer(studentA, { questionId: easy.id, choice: 9 })).status, 400);
+    assert.equal((await answer(studentA, { questionId: "no-such-question", choice: 0 })).status, 404);
+
+    const checkpoint = guide.contentUz.sections[0].checkpoint[0];
+    assert.equal((await answer(studentA, { questionId: checkpoint.id, choice: checkpoint.correct })).data.correct, true);
+
+    const advanced = guide.contentUz.questions.find((question) => question.level === "ADVANCED");
+    const graded = await answer(studentA, { questionId: advanced.id, answer: "Masshtablash masofani to'g'ri hisoblash uchun kerak." });
+    assert.equal(graded.status, 200, graded.text);
+    assert.equal(graded.data.score, 65);
+    assert.ok(graded.data.followUp, "an interview follow-up question");
+    const follow = await answer(studentA, { questionId: advanced.id, answer: "Chunki katta qiymatli belgi masofani boshqaradi.", followUp: graded.data.followUp });
+    assert.equal(follow.data.score, 80);
+    assert.equal(follow.data.followUp, "", "only one follow-up");
+
+    const attempts = await prisma.studyAttempt.count({ where: { lessonId, userId: u.studentA.id } });
+    assert.ok(attempts >= 5);
+    const results = await get(`/teacher/study/${lessonId}`, { session: teacherA });
+    assert.match(results.text, new RegExp(u.studentA.name), "the teacher sees the student's results");
+  });
+
+  test("ask a question: smart search + AI; the same question again costs no tokens", async () => {
+    const before = await llmCalls();
+    const first = await ask(studentA, { question: "Normalizatsiya nima uchun kerak?" });
+    assert.equal(first.status, 200, first.text);
+    assert.equal(first.data.cached, false);
+    assert.ok(first.data.answer);
+    const sent = (await storageLog()).filter((entry) => /^(ollama|anthropic|openai):/.test(entry.path)).at(-1);
+    assert.match(JSON.stringify(sent.messages), /Normalizatsiya/, "the matching passage was sent");
+    assert.ok(JSON.stringify(sent.messages).length < 12_000, "only a few passages, not the whole lesson");
+    const again = await ask(studentA, { question: "normalizatsiya nima uchun kerak" });
+    assert.equal(again.data.cached, true);
+    assert.equal(again.data.answer, first.data.answer);
+    assert.equal(await llmCalls(), before + 1, "one AI call for two identical questions");
+    const selected = await ask(studentA, { question: "Bu formulani tushuntiring", selection: "x' = (x - min)/(max - min)" });
+    assert.equal(selected.status, 200);
+    assert.equal(selected.data.cached, false, "questions about a selection are not cached");
+    assert.equal((await ask(studentA, { question: "x" })).status, 400);
+  });
+
+  test("editing puts the guide back to draft until it is published again", async () => {
+    const guide = await prisma.lessonStudyGuide.findUnique({ where: { lessonId } });
+    const edited = { ...guide.contentUz, title: "Tahrirlangan sarlavha" };
+    const saved = await call("PUT", `/api/teacher/study/${lessonId}/guide`, { session: teacherA, json: { language: "uz", content: edited } });
+    assert.equal(saved.status, 200, saved.text);
+    assert.equal((await prisma.lessonStudyGuide.findUnique({ where: { lessonId } })).status, "DRAFT");
+    assert.equal((await ask(studentA, { question: "Normalizatsiya nima?" })).status, 404);
+    await post(`/api/teacher/study/${lessonId}/publish`, { session: teacherA, json: { publish: true } });
+    assert.match((await get(studyPath, { session: studentA })).text, /Tahrirlangan sarlavha/);
+    assert.equal(await prisma.studyAskCache.count({ where: { lessonId } }), 0, "old cached answers are cleared on publish");
+  });
+
+  test("cleanup", async () => {
+    await cleanup();
+    if (savedAccess) {
+      const { id, ...data } = savedAccess;
+      await prisma.enrollment.update({ where: { id }, data });
+    }
+  });
+});
