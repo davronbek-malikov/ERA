@@ -169,6 +169,7 @@ model User {
   instructorPermissionsSet InstructorPermission[]
   homeworkReviewsChecked   HomeworkReview[]       @relation("HomeworkReviewedBy")
   studyAttempts            StudyAttempt[]
+  studyAnnotations         StudyAnnotation[]
 }
 
 model UserOnboarding {
@@ -464,6 +465,7 @@ model Lesson {
   studyGuide         LessonStudyGuide?
   studyAttempts      StudyAttempt[]
   studyAskCache      StudyAskCache[]
+  studyAnnotations   StudyAnnotation[]
 
   @@unique([courseId, slug])
   @@unique([courseId, position])
@@ -1324,4 +1326,26 @@ model StudyAskCache {
 
   @@unique([lessonId, language, questionKey])
   @@map("study_ask_cache")
+}
+
+/// A student's own highlight (and optional note) on a piece of a study guide. Private to that student.
+model StudyAnnotation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  lessonId  String   @map("lesson_id")
+  language  String
+  sectionId String   @map("section_id")
+  /// The selected text and where it starts in the section's text (to find it again).
+  quote     String
+  start     Int
+  color     String   @default("yellow")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId])
+  @@map("study_annotations")
 }

@@ -27,7 +27,8 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       if (error instanceof RateLimitError) return createApiErrorResponse(429, "rate-limited", "You're asking very fast. Please wait a few minutes.");
       throw error;
     }
-    return createApiSuccessResponse(await askStudyQuestion(user, lessonId, { question, selection, language }));
+    const mode = body.mode === "explain" ? "explain" : "ask";
+    return createApiSuccessResponse(await askStudyQuestion(user, lessonId, { question, selection, language, mode }));
   } catch (error) {
     return toApiErrorResponse(error, { code: "ask-failed", message: "ERA couldn't answer right now. Please try again in a moment.", log: "study-ask" });
   }

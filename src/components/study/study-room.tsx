@@ -11,16 +11,32 @@ import {
   Languages,
   Loader2,
   MessageCircleQuestion,
+  NotebookPen,
   Send,
   Sparkles,
   Target,
+  Trash2,
   XCircle,
   Zap
 } from "lucide-react";
 
 import { TutorMarkdown } from "@/components/classroom/tutor-markdown";
+import {
+  clearHighlights,
+  COLOR_SWATCH,
+  describeSelection,
+  HighlightPopover,
+  paintHighlights,
+  SelectionToolbar,
+  textFragmentLink,
+  TOOLBAR_COPY,
+  type Annotation,
+  type HighlightColor,
+  type SelectionInfo
+} from "@/components/study/selection-toolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { PublicQuestion, PublicStudyContent, StudyLanguage } from "@/server/study/content";
 
@@ -31,7 +47,7 @@ import type { PublicQuestion, PublicStudyContent, StudyLanguage } from "@/server
  */
 
 type Progress = Record<string, { correct: boolean | null; score: number | null }>;
-type Tab = "summary" | "ask" | "test";
+type Tab = "summary" | "ask" | "test" | "notes";
 
 const COPY = {
   uz: {
@@ -39,8 +55,12 @@ const COPY = {
     contents: "Mundarija",
     lesson: "Dars",
     summary: "Xulosa",
-    ask: "Savol berish",
-    test: "O'zingizni sinang",
+    ask: "Savol",
+    test: "Test",
+    notes: "Izohlar",
+    notesEmpty: "Hali belgi yo'q. Dars matnidan biror joyni belgilang va \"Belgilash\" yoki \"Izoh\"ni bosing.",
+    show: "Ko'rsatish",
+    noteLabel: "Izoh",
     preview: "Ko'rib chiqish rejimi: bu qoralama, o'quvchilar uni nashr qilingandan keyin ko'radi.",
     briefing: "Dars haqida qisqacha",
     outcomes: "Nimalarni o'rganasiz",
@@ -80,8 +100,12 @@ const COPY = {
     contents: "Contents",
     lesson: "Lesson",
     summary: "Summary",
-    ask: "Ask a question",
-    test: "Test yourself",
+    ask: "Ask",
+    test: "Test",
+    notes: "Notes",
+    notesEmpty: "No highlights yet. Select text in the lesson and press \"Highlight\" or \"Add note\".",
+    show: "Show",
+    noteLabel: "Note",
     preview: "Preview: this is a draft. Students see it after it is published.",
     briefing: "Lesson briefing",
     outcomes: "What you will learn",
@@ -297,26 +321,56 @@ function QuestionBlock(props: { question: PublicQuestion; lessonId: string; lang
 
 type Message = { role: "user" | "assistant"; text: string; selection?: string; cached?: boolean; sources?: string[]; error?: boolean };
 
-function AskPanel({ lessonId, language, t, content, selection, clearSelection }: { lessonId: string; language: StudyLanguage; t: Copy; content: PublicStudyContent; selection: string; clearSelection: () => void }) {
-  const [messages, setMessages] = React.useState<Message[]>([]);
+export type AskRequest = { id: number; question: string; selection: string; mode: "ask" | "explain" };
+
+function AskPanel({
+  lessonId,
+  language,
+  t,
+  content,
+  selection,
+  clearSelection,
+  messages,
+  setMessages,
+  request
+}: {
+  lessonId: string;
+  language: StudyLanguage;
+  t: Copy;
+  content: PublicStudyContent;
+  selection: string;
+  clearSelection: () => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  request: AskRequest | null;
+}) {
   const [question, setQuestion] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const endRef = React.useRef<HTMLDivElement>(null);
+  const handled = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, busy]);
 
-  async function ask(text: string) {
+  // "Explain this concept" from the selection toolbar: asked as soon as the tab opens.
+  React.useEffect(() => {
+    if (!request || handled.current === request.id) return;
+    handled.current = request.id;
+    void ask(request.question, request.selection, request.mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
+
+  async function ask(text: string, withSelection = selection, mode: "ask" | "explain" = "ask") {
     const value = text.trim();
     if (value.length < 2 || busy) return;
-    const usedSelection = selection;
+    const usedSelection = withSelection;
     setMessages((current) => [...current, { role: "user", text: value, selection: usedSelection || undefined }]);
     setQuestion("");
     clearSelection();
     setBusy(true);
     try {
-      const data = await postJson<{ answer: string; sources: string[]; cached: boolean }>(`/api/learn/study/${lessonId}/ask`, { question: value, selection: usedSelection || null, language });
+      const data = await postJson<{ answer: string; sources: string[]; cached: boolean }>(`/api/learn/study/${lessonId}/ask`, { question: value, selection: usedSelection || null, language, mode });
       setMessages((current) => [...current, { role: "assistant", text: data.answer, cached: data.cached, sources: data.sources }]);
     } catch (caught) {
       setMessages((current) => [...current, { role: "assistant", text: (caught as Error).message || t.error, error: true }]);
@@ -422,6 +476,97 @@ function AskPanel({ lessonId, language, t, content, selection, clearSelection }:
 
 // ------------------------------------------------------------------------------------------------
 
+function NotesPanel({
+  annotations,
+  sections,
+  t,
+  onShow,
+  onSave,
+  onDelete
+}: {
+  annotations: Annotation[];
+  sections: PublicStudyContent["sections"];
+  t: Copy;
+  onShow: (annotation: Annotation) => void;
+  onSave: (id: string, note: string | null) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState("");
+  const order = new Map(sections.map((section, index) => [section.id, index]));
+  const sorted = [...annotations].sort((a, b) => (order.get(a.sectionId) ?? 99) - (order.get(b.sectionId) ?? 99) || a.start - b.start);
+  if (!sorted.length) return <p className="text-sm text-muted-foreground">{t.notesEmpty}</p>;
+  return (
+    <ol className="flex flex-col gap-3">
+      {sorted.map((annotation) => {
+        const section = sections.find((item) => item.id === annotation.sectionId);
+        return (
+          <li key={annotation.id} className="flex flex-col gap-2 rounded-xl border border-border p-3 text-sm">
+            <span className="text-xs text-muted-foreground">
+              {(order.get(annotation.sectionId) ?? 0) + 1}. {section?.title}
+            </span>
+            <blockquote className="line-clamp-4 border-l-4 pl-2 leading-6" style={{ borderColor: COLOR_SWATCH[(annotation.color as HighlightColor)] ?? COLOR_SWATCH.yellow }}>
+              {annotation.quote}
+            </blockquote>
+            {editing === annotation.id ? (
+              <div className="flex flex-col gap-2">
+                <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label={t.noteLabel} />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      await onSave(annotation.id, draft.trim() || null);
+                      setEditing(null);
+                    }}
+                  >
+                    {TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].save}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                    {TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].cancel}
+                  </Button>
+                </div>
+              </div>
+            ) : annotation.note ? (
+              <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-3 py-2">{annotation.note}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-1">
+              <Button size="sm" variant="outline" onClick={() => onShow(annotation)}>
+                {t.show}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDraft(annotation.note ?? "");
+                  setEditing(annotation.id);
+                }}
+              >
+                <NotebookPen />
+                {t.noteLabel}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-error hover:bg-error/10 hover:text-error" onClick={() => onDelete(annotation.id)} aria-label={TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].remove}>
+                <Trash2 />
+              </Button>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Text position under the pointer (Chrome/Safari: caretRangeFromPoint; Firefox: caretPositionFromPoint). */
+function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const position = doc.caretPositionFromPoint?.(x, y);
+  if (position) return { node: position.offsetNode, offset: position.offset };
+  const range = doc.caretRangeFromPoint?.(x, y);
+  return range ? { node: range.startContainer, offset: range.startOffset } : null;
+}
+
 export function StudyRoom({
   lessonId,
   lessonTitle,
@@ -431,7 +576,8 @@ export function StudyRoom({
   englishAvailable,
   preview,
   content,
-  progress: initialProgress
+  progress: initialProgress,
+  annotations: initialAnnotations = []
 }: {
   lessonId: string;
   lessonTitle: string;
@@ -442,15 +588,148 @@ export function StudyRoom({
   preview: boolean;
   content: PublicStudyContent;
   progress: Progress;
+  annotations?: Annotation[];
 }) {
   const t = COPY[language];
+  const tt = TOOLBAR_COPY[language];
   const [tab, setTab] = React.useState<Tab>("summary");
   const [mobileView, setMobileView] = React.useState<"lesson" | "panel">("lesson");
   const [selection, setSelection] = React.useState("");
-  const [floating, setFloating] = React.useState<{ x: number; y: number; text: string } | null>(null);
   const [progress, setProgress] = React.useState<Progress>(initialProgress);
   const [level, setLevel] = React.useState<"ALL" | "EASY" | "MEDIUM" | "ADVANCED">("ALL");
   const articleRef = React.useRef<HTMLElement>(null);
+  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [askRequest, setAskRequest] = React.useState<AskRequest | null>(null);
+  const [annotations, setAnnotations] = React.useState<Annotation[]>(initialAnnotations);
+  const [toolbar, setToolbar] = React.useState<SelectionInfo | null>(null);
+  const [popover, setPopover] = React.useState<{ id: string; rect: DOMRect } | null>(null);
+  const [color, setColor] = React.useState<HighlightColor>("yellow");
+  const pinned = React.useRef(false);
+  const ranges = React.useRef<Map<string, Range>>(new Map());
+  const requestId = React.useRef(0);
+
+  // Draw the student's highlights (CSS Custom Highlight API) whenever they change.
+  React.useEffect(() => {
+    ranges.current = paintHighlights(articleRef.current, annotations);
+  }, [annotations]);
+  React.useEffect(() => () => clearHighlights(), []);
+
+  // Selecting text in the lesson opens the toolbar; clicking a highlight opens its popover.
+  React.useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function onSelectionChange() {
+      if (pinned.current) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const selected = window.getSelection();
+        const info = selected ? describeSelection(selected) : null;
+        setToolbar(info);
+        if (info) setPopover(null);
+      }, 180);
+    }
+    function onClick(event: MouseEvent) {
+      if (pinned.current) return;
+      const target = event.target as Node | null;
+      if (!articleRef.current || !target || !articleRef.current.contains(target)) return;
+      if (window.getSelection()?.isCollapsed === false) return;
+      const caret = caretAt(event.clientX, event.clientY);
+      if (!caret) return;
+      for (const [id, range] of ranges.current) {
+        try {
+          if (range.isPointInRange(caret.node, caret.offset)) {
+            setPopover({ id, rect: range.getBoundingClientRect() });
+            return;
+          }
+        } catch {
+          // a range from removed nodes: ignore
+        }
+      }
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("click", onClick);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
+
+  // The toolbar follows its text when the page scrolls; it closes if the text scrolls away.
+  React.useEffect(() => {
+    if (!toolbar) return;
+    function onScroll() {
+      if (pinned.current) return;
+      const selected = window.getSelection();
+      if (!selected?.rangeCount) return setToolbar(null);
+      const rect = selected.getRangeAt(0).getBoundingClientRect();
+      setToolbar((current) => (current ? { ...current, rect } : current));
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [toolbar]);
+
+  function closeToolbar() {
+    pinned.current = false;
+    setToolbar(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function explain(quote: string) {
+    requestId.current += 1;
+    setAskRequest({ id: requestId.current, question: `${tt.explain}: ${quote.length > 120 ? `${quote.slice(0, 120)}…` : quote}`, selection: quote, mode: "explain" });
+    closeToolbar();
+    setPopover(null);
+    openTab("ask");
+  }
+
+  async function saveAnnotation(info: SelectionInfo, note: string | null) {
+    if (!info.sectionId) return;
+    try {
+      const data = await postJson<{ annotation: Annotation }>(`/api/learn/study/${lessonId}/annotations`, { language, sectionId: info.sectionId, quote: info.quote, start: info.start, color, note });
+      setAnnotations((current) => [...current, data.annotation]);
+      closeToolbar();
+    } catch (caught) {
+      toast({ title: (caught as Error).message || t.error, variant: "error" });
+    }
+  }
+
+  async function patchAnnotation(id: string, body: { color?: string; note?: string | null }) {
+    try {
+      const response = await fetch(`/api/learn/study/${lessonId}/annotations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; annotation?: Annotation; message?: string } | null;
+      if (!response.ok || !data?.annotation) throw new Error(data?.message ?? "");
+      setAnnotations((current) => current.map((item) => (item.id === id ? data.annotation! : item)));
+    } catch (caught) {
+      toast({ title: (caught as Error).message || t.error, variant: "error" });
+    }
+  }
+
+  async function removeAnnotation(id: string) {
+    try {
+      const response = await fetch(`/api/learn/study/${lessonId}/annotations/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("");
+      setAnnotations((current) => current.filter((item) => item.id !== id));
+      setPopover(null);
+    } catch {
+      toast({ title: t.error, variant: "error" });
+    }
+  }
+
+  function showAnnotation(annotation: Annotation) {
+    setMobileView("lesson");
+    requestAnimationFrame(() => {
+      const range = ranges.current.get(annotation.id);
+      const target = range?.getBoundingClientRect();
+      if (range && target) {
+        window.scrollBy({ top: target.top - window.innerHeight / 3, behavior: "smooth" });
+        const selected = window.getSelection();
+        selected?.removeAllRanges();
+        selected?.addRange(range.cloneRange());
+      } else {
+        document.getElementById(annotation.sectionId)?.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  }
 
   // Remember the language the student studies in.
   React.useEffect(() => {
@@ -459,26 +738,6 @@ export function StudyRoom({
 
   const markAnswered = React.useCallback((id: string, correct: boolean | null) => {
     setProgress((current) => ({ ...current, [id]: { correct, score: current[id]?.score ?? null } }));
-  }, []);
-
-  // Select text in the lesson → "Ask about this".
-  React.useEffect(() => {
-    function onUp() {
-      const selected = window.getSelection();
-      const text = selected?.toString().trim() ?? "";
-      if (!selected || text.length < 3 || !articleRef.current || !selected.anchorNode || !articleRef.current.contains(selected.anchorNode)) {
-        setFloating(null);
-        return;
-      }
-      const rect = selected.getRangeAt(0).getBoundingClientRect();
-      setFloating({ x: Math.min(rect.left + rect.width / 2, window.innerWidth - 90), y: Math.max(rect.top - 44, 8), text: text.slice(0, 2000) });
-    }
-    document.addEventListener("mouseup", onUp);
-    document.addEventListener("touchend", onUp);
-    return () => {
-      document.removeEventListener("mouseup", onUp);
-      document.removeEventListener("touchend", onUp);
-    };
   }, []);
 
   function openTab(next: Tab) {
@@ -495,7 +754,8 @@ export function StudyRoom({
   const tabs: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
     { value: "summary", label: t.summary, icon: <Sparkles className="size-4" aria-hidden="true" /> },
     { value: "ask", label: t.ask, icon: <MessageCircleQuestion className="size-4" aria-hidden="true" /> },
-    { value: "test", label: t.test, icon: <ClipboardCheck className="size-4" aria-hidden="true" /> }
+    { value: "test", label: t.test, icon: <ClipboardCheck className="size-4" aria-hidden="true" /> },
+    { value: "notes", label: `${t.notes}${annotations.length ? ` (${annotations.length})` : ""}`, icon: <NotebookPen className="size-4" aria-hidden="true" /> }
   ];
 
   return (
@@ -535,7 +795,7 @@ export function StudyRoom({
       </nav>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-        <article ref={articleRef} className={cn("min-w-0 flex-col gap-6", mobileView === "lesson" ? "flex" : "hidden lg:flex")} aria-label={lessonTitle}>
+        <article ref={articleRef} data-study-article className={cn("min-w-0 flex-col gap-6", mobileView === "lesson" ? "flex" : "hidden lg:flex")} aria-label={lessonTitle}>
           <header className="flex flex-col gap-1">
             <p className="text-xs font-medium text-muted-foreground">{courseTitle}</p>
             <h1 className="page-title">{content.title || lessonTitle}</h1>
@@ -560,7 +820,7 @@ export function StudyRoom({
               <h2 className="text-xl font-semibold leading-snug">
                 {index + 1}. {section.title}
               </h2>
-              <div className="text-[0.95rem] leading-7">
+              <div className="text-[0.95rem] leading-7" data-section-body={section.id}>
                 <TutorMarkdown text={section.body} locale={language} />
               </div>
               {section.checkpoint.length ? (
@@ -638,7 +898,26 @@ export function StudyRoom({
                   ) : null}
                 </div>
               ) : tab === "ask" ? (
-                <AskPanel lessonId={lessonId} language={language} t={t} content={content} selection={selection} clearSelection={() => setSelection("")} />
+                <AskPanel
+                  lessonId={lessonId}
+                  language={language}
+                  t={t}
+                  content={content}
+                  selection={selection}
+                  clearSelection={() => setSelection("")}
+                  messages={messages}
+                  setMessages={setMessages}
+                  request={askRequest}
+                />
+              ) : tab === "notes" ? (
+                <NotesPanel
+                  annotations={annotations}
+                  sections={content.sections}
+                  t={t}
+                  onShow={showAnnotation}
+                  onSave={(id, note) => patchAnnotation(id, { note })}
+                  onDelete={removeAnnotation}
+                />
               ) : (
                 <div className="flex flex-col gap-4">
                   <p className="text-sm text-muted-foreground" role="status">
@@ -676,22 +955,51 @@ export function StudyRoom({
         </aside>
       </div>
 
-      {floating ? (
-        <button
-          type="button"
-          style={{ left: floating.x, top: floating.y }}
-          className="fixed z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background shadow-lg"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            setSelection(floating.text);
-            setFloating(null);
-            window.getSelection()?.removeAllRanges();
+      {toolbar ? (
+        <SelectionToolbar
+          info={toolbar}
+          language={language}
+          color={color}
+          onColor={setColor}
+          onPin={(value) => {
+            pinned.current = value;
+          }}
+          onExplain={() => explain(toolbar.quote)}
+          onHighlight={() => saveAnnotation(toolbar, null)}
+          onNote={(note) => saveAnnotation(toolbar, note)}
+          onAsk={() => {
+            setSelection(toolbar.quote);
+            closeToolbar();
             openTab("ask");
           }}
-        >
-          <MessageCircleQuestion className="size-3.5" aria-hidden="true" />
-          {t.askAbout}
-        </button>
+          onCopy={async () => {
+            await navigator.clipboard?.writeText(toolbar.quote).catch(() => undefined);
+            toast({ title: tt.copied, variant: "success" });
+            closeToolbar();
+          }}
+          onLink={async () => {
+            await navigator.clipboard?.writeText(textFragmentLink(toolbar.quote)).catch(() => undefined);
+            toast({ title: tt.linkCopied, variant: "success" });
+            closeToolbar();
+          }}
+          onClose={closeToolbar}
+        />
+      ) : null}
+      {popover && annotations.find((item) => item.id === popover.id) ? (
+        <HighlightPopover
+          key={popover.id}
+          annotation={annotations.find((item) => item.id === popover.id)!}
+          rect={popover.rect}
+          language={language}
+          onColor={(next) => patchAnnotation(popover.id, { color: next })}
+          onSaveNote={async (note) => {
+            await patchAnnotation(popover.id, { note });
+            setPopover(null);
+          }}
+          onExplain={() => explain(annotations.find((item) => item.id === popover.id)!.quote)}
+          onDelete={() => removeAnnotation(popover.id)}
+          onClose={() => setPopover(null)}
+        />
       ) : null}
     </div>
   );

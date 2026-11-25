@@ -87,6 +87,7 @@ export default async function StudyRoomPage({ params, searchParams }: PageProps)
           preview={data.preview}
           content={data.content}
           progress={data.progress}
+          annotations={data.annotations}
         />
       </WorkspacePage>
     </WorkspaceShell>

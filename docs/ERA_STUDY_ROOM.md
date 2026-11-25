@@ -17,6 +17,24 @@ reviews and edits it, then publishes it. Every student of the course then studie
 The guide is in **Uzbek by default**. Students can switch to English; their choice is remembered in the
 `era_study_lang` cookie.
 
+## Selection toolbar (highlights and notes)
+
+Selecting text in the lesson opens a toolbar (`src/components/study/selection-toolbar.tsx`):
+
+| Button | What it does |
+|---|---|
+| ✨ Tushuntirib ber (Explain this concept) | Opens the Ask tab with an AI explanation of the selected text, based on this lesson. Explanations of short selections (300 characters or less) are cached per lesson and language, so the same term costs tokens once |
+| ● color · Belgilash (Highlight) | Saves a highlight in yellow, green, blue or pink |
+| Izoh (Add note) | Saves a highlight with the student's own note |
+| Savol (Ask) | Puts the selection into the Ask box |
+| Nusxa (Copy) / 🔗 (Link) | Copies the text, or a link that opens the page at that text (URL text fragment) |
+
+- **Stored per student.** Highlights and notes are private (`study_annotations`): only the student who made them can see, change or delete them. Teachers can't.
+- **How a highlight is found again.** It is saved as `{ sectionId, start, quote }`, where `start` is the quote's offset in the section's text.
+- **How it is drawn.** With the CSS Custom Highlight API, so the lesson's DOM is never changed. Notes get a dotted underline.
+- **Clicking a highlight** opens a popover: change the color, edit the note, explain, or delete.
+- **Notes tab.** "Izohlar" lists every highlight and note in lesson order, with "Ko'rsatish" (show), edit and delete.
+
 ## Pages and API
 
 | Who | Page / route | Purpose |
@@ -31,6 +49,7 @@ The guide is in **Uzbek by default**. Students can switch to English; their choi
 | API | `POST /api/teacher/study/[lessonId]/publish` `{publish}` | Publish or unpublish. Also clears the answer cache |
 | API | `POST /api/learn/study/[lessonId]/ask` | Smart search, then the cache, then AI |
 | API | `POST /api/learn/study/[lessonId]/answer` | Grade one answer |
+| API | `POST /api/learn/study/[lessonId]/annotations`; `PATCH`/`DELETE …/annotations/[id]` | The student's own highlights and notes |
 
 ## Rules
 

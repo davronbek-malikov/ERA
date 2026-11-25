@@ -231,6 +231,11 @@ export async function getStudentStudy(user: AuthUser, lessonId: string, language
     select: { questionId: true, correct: true, score: true }
   });
   const latest = new Map(attempts.map((attempt) => [attempt.questionId, { correct: attempt.correct, score: attempt.score }]));
+  const annotations = await prisma.studyAnnotation.findMany({
+    where: { lessonId, userId: user.id, language: picked.language },
+    orderBy: { createdAt: "asc" },
+    select: ANNOTATION_SELECT
+  });
   return {
     lesson: access.lesson,
     course: access.course,
@@ -239,7 +244,8 @@ export async function getStudentStudy(user: AuthUser, lessonId: string, language
     language: picked.language,
     englishAvailable: contentOf(guide.contentEn).sections.length > 0,
     content: publicContent(picked.content),
-    progress: Object.fromEntries(latest)
+    progress: Object.fromEntries(latest),
+    annotations: annotations.map(annotationView)
   };
 }
 
@@ -258,11 +264,20 @@ const ASK_SYSTEM = (language: StudyLanguage) =>
  * Ask a question about the lesson. Smart search picks the few relevant passages (no tokens); the same question
  * asked before is answered from the cache (no tokens); only then is the AI called, with just those passages.
  */
-export async function askStudyQuestion(user: AuthUser, lessonId: string, input: { question: string; selection: string | null; language: StudyLanguage }) {
+export async function askStudyQuestion(
+  user: AuthUser,
+  lessonId: string,
+  input: { question: string; selection: string | null; language: StudyLanguage; mode?: "ask" | "explain" }
+) {
   const { access, guide } = await requireStudyGuide(user, lessonId);
   const { content, language } = pickLanguage(guide, input.language);
-  const canCache = !input.selection;
-  const questionKey = createHash("sha256").update(normalizeQuestion(input.question)).digest("hex");
+  // "Explain this concept" on a short selection (a term, a formula) is asked by many students: it is cached by the
+  // selected text. Free questions about a selection are not cached (they differ every time).
+  const explain = input.mode === "explain" && Boolean(input.selection);
+  const canCache = !input.selection || (explain && (input.selection?.length ?? 0) <= 300);
+  const questionKey = createHash("sha256")
+    .update(explain ? `explain:${normalizeQuestion(input.selection ?? "")}` : normalizeQuestion(input.question))
+    .digest("hex");
 
   if (canCache) {
     const cached = await prisma.studyAskCache.findUnique({ where: { lessonId_language_questionKey: { lessonId, language, questionKey } } });
@@ -285,7 +300,9 @@ export async function askStudyQuestion(user: AuthUser, lessonId: string, input: 
     `Lesson: ${access.lesson.title} (course: ${access.course.title})`,
     ...picked.map((passage) => `<passage source="${passage.source.replace(/"/g, "'")}">\n${passage.text}\n</passage>`),
     input.selection ? `<selected>\n${input.selection}\n</selected>\nThe student selected the text above and asks about it.` : "",
-    `Student's question: ${input.question}`
+    explain
+      ? "Explain the selected concept simply for a beginner: what it means, why it matters in this lesson, and a tiny example. 120-200 words."
+      : `Student's question: ${input.question}`
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -348,4 +365,52 @@ export async function answerStudyQuestion(
     data: { userId: user.id, lessonId, questionId: isFollowUp ? `${question.id}:follow-up` : question.id, level: question.level, answer: answer.slice(0, 4000), score, feedback, followUp: isFollowUp ? input.followUp!.slice(0, 500) : followUp || null, language }
   });
   return { kind: "open" as const, score, feedback, followUp, modelAnswer: question.modelAnswer, explanation: question.explanation };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Highlights and notes (selection toolbar). Private: a student only ever sees and changes their own.
+// ------------------------------------------------------------------------------------------------
+
+export const ANNOTATION_COLORS = ["yellow", "green", "blue", "pink"] as const;
+export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
+const MAX_ANNOTATIONS_PER_LESSON = 300;
+
+const ANNOTATION_SELECT = { id: true, sectionId: true, quote: true, start: true, color: true, note: true, createdAt: true } as const;
+function annotationView(row: { id: string; sectionId: string; quote: string; start: number; color: string; note: string | null; createdAt: Date }) {
+  return { ...row, createdAt: row.createdAt.toISOString() };
+}
+export type AnnotationView = ReturnType<typeof annotationView>;
+
+export async function createAnnotation(
+  user: AuthUser,
+  lessonId: string,
+  input: { language: StudyLanguage; sectionId: string; quote: string; start: number; color: AnnotationColor; note: string | null }
+) {
+  const { guide } = await requireStudyGuide(user, lessonId);
+  const { content, language } = pickLanguage(guide, input.language);
+  const section = content.sections.find((item) => item.id === input.sectionId);
+  if (!section) throw new RequestError(400, "invalid-section", "That part of the lesson wasn't found.");
+  if ((await prisma.studyAnnotation.count({ where: { userId: user.id, lessonId } })) >= MAX_ANNOTATIONS_PER_LESSON) {
+    throw new RequestError(409, "too-many-annotations", "You have too many highlights in this lesson. Delete some first.");
+  }
+  const row = await prisma.studyAnnotation.create({
+    data: { userId: user.id, lessonId, language, sectionId: section.id, quote: input.quote, start: input.start, color: input.color, note: input.note },
+    select: ANNOTATION_SELECT
+  });
+  return annotationView(row);
+}
+
+export async function updateAnnotation(user: AuthUser, lessonId: string, id: string, input: { color?: AnnotationColor; note?: string | null }) {
+  await requireStudyGuide(user, lessonId);
+  const changed = await prisma.studyAnnotation.updateMany({
+    where: { id, lessonId, userId: user.id },
+    data: { ...(input.color ? { color: input.color } : {}), ...(input.note !== undefined ? { note: input.note } : {}) }
+  });
+  if (!changed.count) throw authErrors.notFound("Highlight not found.");
+  return annotationView(await prisma.studyAnnotation.findUniqueOrThrow({ where: { id }, select: ANNOTATION_SELECT }));
+}
+
+export async function deleteAnnotation(user: AuthUser, lessonId: string, id: string) {
+  const removed = await prisma.studyAnnotation.deleteMany({ where: { id, lessonId, userId: user.id } });
+  if (!removed.count) throw authErrors.notFound("Highlight not found.");
 }

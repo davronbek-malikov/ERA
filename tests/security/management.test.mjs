@@ -1160,6 +1160,7 @@ describe("Lesson study room: upload → AI guide → review → publish → stud
   const cleanup = async () => {
     await prisma.studyAttempt.deleteMany({ where: { lessonId } });
     await prisma.studyAskCache.deleteMany({ where: { lessonId } });
+    await prisma.studyAnnotation.deleteMany({ where: { lessonId } });
     await prisma.lessonStudyGuide.deleteMany({ where: { lessonId } });
     await prisma.lessonStudyMaterial.deleteMany({ where: { lessonId } });
   };
@@ -1225,7 +1226,8 @@ describe("Lesson study room: upload → AI guide → review → publish → stud
     const page = await get(studyPath, { session: studentA });
     assert.equal(page.status, 200);
     assert.match(page.text, /Yetishmayotgan qiymatlar/);
-    assert.match(page.text, /O(&#x27;|')zingizni sinang/);
+    assert.match(page.text, /Xulosa/);
+    assert.match(page.text, /Izohlar/);
     assert.doesNotMatch(page.text, /Masofaga asoslangan modellar uchun|Because of Oson/, "model answers and explanations are not sent before answering");
     const english = await get(`${studyPath}?lang=en`, { session: studentA });
     assert.match(english.text, /EN Ma(&#x27;|')lumotlarni tayyorlash/);
@@ -1284,6 +1286,50 @@ describe("Lesson study room: upload → AI guide → review → publish → stud
     assert.equal(selected.status, 200);
     assert.equal(selected.data.cached, false, "questions about a selection are not cached");
     assert.equal((await ask(studentA, { question: "x" })).status, 400);
+  });
+
+  test("selection toolbar: highlights and notes are private to the student; Explain this concept is cached", async () => {
+    const guide = await prisma.lessonStudyGuide.findUnique({ where: { lessonId } });
+    const sectionId = guide.contentUz.sections[0].id;
+    const annotate = (session, json) => post(`/api/learn/study/${lessonId}/annotations`, { session, json: { language: "uz", ...json } });
+    const edit = (session, id, json) => call("PATCH", `/api/learn/study/${lessonId}/annotations/${id}`, { session, json });
+    const remove = (session, id) => call("DELETE", `/api/learn/study/${lessonId}/annotations/${id}`, { session });
+
+    const created = await annotate(studentA, { sectionId, quote: "Yetishmayotgan qiymatlarni", start: 0, color: "green" });
+    assert.equal(created.status, 201, created.text);
+    const id = created.data.annotation.id;
+    assert.equal(created.data.annotation.color, "green");
+    assert.equal((await annotate(studentA, { sectionId: "no-such-section", quote: "x y", start: 0 })).status, 400);
+    assert.equal((await annotate(studentA, { sectionId, quote: "abc", start: -1 })).status, 400);
+    assert.equal((await annotate(studentA, { sectionId, quote: "x".repeat(1001), start: 0 })).status, 400);
+    assert.equal((await annotate(studentA, { sectionId, quote: "abc", start: 0, color: "purple" })).data.annotation.color, "yellow", "unknown colors fall back to yellow");
+    assert.ok([403, 404].includes((await annotate(studentC, { sectionId, quote: "abc", start: 0 })).status), "not enrolled");
+
+    // Only the owner can see, change or delete it (the teacher can open the guide but not the student's notes).
+    assert.equal((await edit(teacherA, id, { note: "hijack" })).status, 404);
+    assert.equal((await remove(teacherA, id)).status, 404);
+    assert.doesNotMatch((await get(studyPath, { session: teacherA })).text, new RegExp(id));
+    assert.match((await get(studyPath, { session: studentA })).text, new RegExp(id), "the student's page carries their highlights");
+
+    const noted = await edit(studentA, id, { note: "Imtihonda kerak", color: "pink" });
+    assert.equal(noted.status, 200, noted.text);
+    assert.equal(noted.data.annotation.note, "Imtihonda kerak");
+    assert.equal(noted.data.annotation.color, "pink");
+    assert.equal((await edit(studentA, id, { note: "" })).data.annotation.note, null, "an empty note removes it");
+
+    // Explain this concept: the same selected term is explained once, then served from the cache.
+    const before = (await storageLog()).filter((entry) => /^(ollama|anthropic|openai):/.test(entry.path)).length;
+    const first = await ask(studentA, { question: "Tushuntirib ber: Normalizatsiya", selection: "Normalizatsiya", mode: "explain" });
+    assert.equal(first.status, 200, first.text);
+    assert.equal(first.data.cached, false);
+    const second = await ask(studentA, { question: "Tushuntirib ber: normalizatsiya", selection: "normalizatsiya", mode: "explain" });
+    assert.equal(second.data.cached, true);
+    const after = (await storageLog()).filter((entry) => /^(ollama|anthropic|openai):/.test(entry.path)).length;
+    assert.equal(after, before + 1);
+
+    assert.equal((await remove(studentA, id)).status, 200);
+    assert.equal((await remove(studentA, id)).status, 404);
+    await prisma.studyAnnotation.deleteMany({ where: { lessonId } });
   });
 
   test("editing puts the guide back to draft until it is published again", async () => {
