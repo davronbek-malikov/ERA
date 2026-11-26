@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, CheckCircle2, ChevronLeft, ChevronRight, FileText, ListTree, Trash2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpenText, CheckCircle2, ChevronLeft, ChevronRight, FileText, ListTree, Trash2 } from "lucide-react";
 
 import { AskEraZone } from "@/components/ai/ask-era-zone";
 import { ClassroomTutor, useTutorApi } from "@/components/classroom/classroom-tutor";
@@ -96,7 +96,7 @@ const copy = {
   }
 };
 
-type Props = { data: ClassroomData; locale: Locale };
+type Props = { data: ClassroomData; locale: Locale; /** The lesson's study room, when its guide is published (or previewable). */ studyHref?: string | null };
 
 function useBookmarks(lessonId: string) {
   const key = `era:bookmarks:${lessonId}`;
@@ -121,7 +121,7 @@ function useBookmarks(lessonId: string) {
   };
 }
 
-function LessonContent({ data, locale }: Props) {
+function LessonContent({ data, locale, studyHref }: Props) {
   const t = copy[locale];
   const router = useRouter();
   const tutor = useTutorApi();
@@ -203,6 +203,12 @@ function LessonContent({ data, locale }: Props) {
         <h1 className="page-title">{data.lesson.title}</h1>
         {data.lesson.description ? <p className="page-lead">{data.lesson.description}</p> : null}
         <div className="flex flex-wrap items-center gap-2 pt-1">
+          {studyHref ? (
+            <Link href={studyHref} className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <BookOpenText aria-hidden="true" />
+              {locale === "uz" ? "O'quv xonasi: darslik, savol-javob, test" : "Study room: guide, Q&A, self-test"}
+            </Link>
+          ) : null}
           {isStudent ? (
             completed ? (
               <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
@@ -380,7 +386,7 @@ function LessonContent({ data, locale }: Props) {
   );
 }
 
-function Layout({ data, locale, panel }: Props & { panel: React.ReactNode }) {
+function Layout({ data, locale, panel, studyHref }: Props & { panel: React.ReactNode }) {
   const t = copy[locale];
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const nav = (onNavigate?: () => void) => (
@@ -433,7 +439,7 @@ function Layout({ data, locale, panel }: Props & { panel: React.ReactNode }) {
           {nav()}
         </aside>
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 pb-24 focus:outline-none xl:pb-6">
-          <LessonContent data={data} locale={locale} />
+          <LessonContent data={data} locale={locale} studyHref={studyHref} />
         </main>
         {panel}
       </div>
@@ -446,16 +452,16 @@ function Layout({ data, locale, panel }: Props & { panel: React.ReactNode }) {
  * The tutor is mounted only in Student Lesson Mode. Teacher Preview and Admin inspection never
  * enable it (docs/ERA_DESIGN_SYSTEM.md §7).
  */
-export function Classroom({ data, locale }: Props) {
+export function Classroom({ data, locale, studyHref }: Props) {
   // Keyed by lesson: moving to another lesson starts with fresh player, progress and tutor state.
   return (
     <PlayerProvider key={data.lesson.id}>
       {data.mode === "student" ? (
         <ClassroomTutor lessonId={data.lesson.id} courseTitle={data.course.title} lessonTitle={data.lesson.title} locale={locale}>
-          {(panel) => <Layout data={data} locale={locale} panel={panel} />}
+          {(panel) => <Layout data={data} locale={locale} panel={panel} studyHref={studyHref} />}
         </ClassroomTutor>
       ) : (
-        <Layout data={data} locale={locale} panel={null} />
+        <Layout data={data} locale={locale} panel={null} studyHref={studyHref} />
       )}
     </PlayerProvider>
   );

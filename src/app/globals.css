@@ -371,3 +371,21 @@ button {
     gap: var(--space-8);
   }
 }
+
+/* Study room highlights (CSS Custom Highlight API, src/components/study/selection-toolbar.tsx). */
+::highlight(era-yellow) {
+  background-color: rgb(253 224 71 / 0.55);
+}
+::highlight(era-green) {
+  background-color: rgb(134 239 172 / 0.55);
+}
+::highlight(era-blue) {
+  background-color: rgb(147 197 253 / 0.55);
+}
+::highlight(era-pink) {
+  background-color: rgb(249 168 212 / 0.55);
+}
+::highlight(era-note) {
+  text-decoration: underline dotted 2px;
+  text-underline-offset: 3px;
+}

@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { getLocale } from "@/lib/i18n-server";
 import { cn } from "@/lib/utils";
 import { getClassroom } from "@/server/student";
+import { studyGuideStatus } from "@/server/study/service";
 import { requireSignedIn } from "@/server/workspace";
 
 export const metadata: Metadata = { title: "Lesson", robots: { index: false } };
@@ -77,5 +78,8 @@ export default async function ClassroomPage({ params }: PageProps) {
     );
   }
 
-  return <Classroom data={classroom} locale={locale} />;
+  // Students see the study room once the teacher published it; the teacher (preview) as soon as a draft exists.
+  const guide = await studyGuideStatus(classroom.lesson.id);
+  const studyHref = guide === "PUBLISHED" || (guide && classroom.mode !== "student") ? `/learn/courses/${courseSlug}/lessons/${lessonSlug}/study` : null;
+  return <Classroom data={classroom} locale={locale} studyHref={studyHref} />;
 }

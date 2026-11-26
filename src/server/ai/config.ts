@@ -23,6 +23,63 @@ const DEFAULT_MODELS: Partial<Record<ProviderName, string>> = {
   groq: "openai/gpt-oss-120b"
 };
 
+/** Models used when a provider serves as a FALLBACK (override with ERA_MODEL_ANTHROPIC / _OPENAI / _GEMINI / _GROQ). */
+const FALLBACK_MODELS: Record<Exclude<ProviderName, "ollama">, string> = {
+  anthropic: "claude-opus-5-5",
+  openai: "gpt-4.1-mini",
+  gemini: "gemini-2.5-flash",
+  groq: "openai/gpt-oss-120b"
+};
+
+const AUTO_ORDER: Array<Exclude<ProviderName, "ollama">> = ["anthropic", "openai", "gemini", "groq"];
+
+function hasKey(provider: ProviderName) {
+  switch (provider) {
+    case "anthropic":
+      return Boolean(env("ANTHROPIC_API_KEY") ?? env("ANTHROPIC_AUTH_TOKEN"));
+    case "openai":
+      return Boolean(env("OPENAI_API_KEY") ?? env("ERA_API_KEY"));
+    case "gemini":
+      return Boolean(env("GEMINI_API_KEY") ?? env("GOOGLE_API_KEY"));
+    case "groq":
+      return Boolean(env("GROQ_API_KEY"));
+    case "ollama":
+      return true;
+  }
+}
+
+function modelFor(provider: ProviderName) {
+  const specific = env(`ERA_MODEL_${provider.toUpperCase()}`);
+  if (specific) return specific;
+  return provider === "ollama" ? env("OLLAMA_MODEL") : FALLBACK_MODELS[provider];
+}
+
+export type ProviderChain = { ok: true; providers: Array<{ provider: ProviderName; model: string }> } | { ok: false; reason: string };
+
+/**
+ * The provider used first (ERA_LLM_PROVIDER) and the ones ERA switches to when it runs out of tokens, is rate
+ * limited or is down. ERA_LLM_FALLBACKS="openai,gemini,groq" sets the order; when it isn't set, every other
+ * provider that has an API key is used, in the order Anthropic → OpenAI → Gemini → Groq. "none" turns it off.
+ */
+export function getProviderChain(): ProviderChain {
+  const primary = getProviderConfig();
+  if (!primary.ok) return primary;
+  const providers = [{ provider: primary.provider, model: primary.model }];
+  const raw = env("ERA_LLM_FALLBACKS")?.toLowerCase();
+  if (raw === "none" || raw === "off") return { ok: true, providers };
+  const wanted = raw
+    ? raw.split(/[\s,]+/).filter(Boolean).map((name) => (name === "claude" ? "anthropic" : name))
+    : AUTO_ORDER.filter((name) => hasKey(name));
+  for (const name of wanted) {
+    if (!["anthropic", "openai", "gemini", "groq", "ollama"].includes(name)) continue;
+    const provider = name as ProviderName;
+    if (providers.some((entry) => entry.provider === provider) || !hasKey(provider)) continue;
+    const model = modelFor(provider);
+    if (model) providers.push({ provider, model });
+  }
+  return { ok: true, providers };
+}
+
 export type ProviderConfig =
   | { ok: true; provider: ProviderName; model: string }
   | { ok: false; reason: string };
@@ -32,7 +89,7 @@ export function getProviderConfig(): ProviderConfig {
   const raw = env("ERA_LLM_PROVIDER")?.toLowerCase();
   if (!raw) return { ok: false, reason: "ERA_LLM_PROVIDER is not set" };
   const provider = raw === "claude" ? "anthropic" : raw;
-  if (provider !== "anthropic" && provider !== "openai" && provider !== "groq" && provider !== "ollama") {
+  if (provider !== "anthropic" && provider !== "openai" && provider !== "gemini" && provider !== "groq" && provider !== "ollama") {
     return { ok: false, reason: `ERA_LLM_PROVIDER "${raw}" is not supported` };
   }
   const model = env("ERA_MODEL_NAME") ?? DEFAULT_MODELS[provider];
@@ -97,6 +154,8 @@ export function providerEnv() {
     openaiApiKey: env("OPENAI_API_KEY") ?? env("ERA_API_KEY"),
     openaiBaseUrl: (env("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/+$/, ""),
     groqApiKey: env("GROQ_API_KEY"),
+    geminiApiKey: env("GEMINI_API_KEY") ?? env("GOOGLE_API_KEY"),
+    geminiBaseUrl: (env("GEMINI_BASE_URL") ?? "https://generativelanguage.googleapis.com/v1beta/openai").replace(/\/+$/, ""),
     groqBaseUrl: (env("GROQ_BASE_URL") ?? "https://api.groq.com/openai/v1").replace(/\/+$/, ""),
     ollamaBaseUrl: (env("OLLAMA_BASE_URL") ?? "http://127.0.0.1:11434").replace(/\/+$/, "")
   };

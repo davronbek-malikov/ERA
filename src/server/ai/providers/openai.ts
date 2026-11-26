@@ -68,15 +68,16 @@ function toOpenAiMessages(messages: ProviderMessage[]) {
  * `flavor: "groq"` uses the same Chat Completions protocol against Groq (https://api.groq.com/openai/v1) with
  * GROQ_API_KEY (GROQ_BASE_URL overrides the address).
  */
-export function createOpenAiProvider(model: string, flavor: "openai" | "groq" = "openai"): AiProvider {
+export function createOpenAiProvider(model: string, flavor: "openai" | "groq" | "gemini" = "openai"): AiProvider {
   return {
     name: flavor,
     model,
     async *stream(request: ProviderRequest): AsyncGenerator<ProviderEvent> {
       const env = providerEnv();
-      const apiKey = flavor === "groq" ? env.groqApiKey : env.openaiApiKey;
-      const baseUrl = flavor === "groq" ? env.groqBaseUrl : env.openaiBaseUrl;
-      if (!apiKey) throw new AiError("ai-not-configured", flavor === "groq" ? "GROQ_API_KEY is not set" : "OPENAI_API_KEY is not set");
+      const apiKey = flavor === "groq" ? env.groqApiKey : flavor === "gemini" ? env.geminiApiKey : env.openaiApiKey;
+      const baseUrl = flavor === "groq" ? env.groqBaseUrl : flavor === "gemini" ? env.geminiBaseUrl : env.openaiBaseUrl;
+      if (!apiKey) throw new AiError("ai-not-configured", `${flavor.toUpperCase()}_API_KEY is not set`);
+      const maxTokens = flavor === "groq" && !request.allowLongOutput ? Math.min(request.maxOutputTokens, GROQ_MAX_OUTPUT_TOKENS) : request.maxOutputTokens;
 
       const body = JSON.stringify({
         model,
@@ -84,7 +85,9 @@ export function createOpenAiProvider(model: string, flavor: "openai" | "groq" = 
         stream_options: { include_usage: true },
         // Groq's free plan counts the requested answer size against a small per-minute token budget, so a
         // big reservation alone can trip its limit. A chat answer never needs more than this.
-        max_completion_tokens: flavor === "groq" ? Math.min(request.maxOutputTokens, GROQ_MAX_OUTPUT_TOKENS) : request.maxOutputTokens,
+        // Gemini's OpenAI-compatible API takes max_tokens; OpenAI and Groq take max_completion_tokens.
+        ...(flavor === "gemini" ? { max_tokens: maxTokens } : { max_completion_tokens: maxTokens }),
+        ...(request.json && !request.tools?.length ? { response_format: { type: "json_object" } } : {}),
         messages: [{ role: "system", content: request.system }, ...toOpenAiMessages(request.messages)],
         ...(request.tools?.length
           ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })) }

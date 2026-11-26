@@ -15,8 +15,8 @@ type Props = { text: string; locale: Locale; onSeek?: (seconds: number) => void 
 const TIMESTAMP = /\b(\d{1,2}):([0-5]\d)\b/g;
 
 function inline(text: string, keyPrefix: string, onSeek: Props["onSeek"], locale: Locale): React.ReactNode[] {
-  // Split on `code`, **bold** and \( inline math \).
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\\\([^)]*\\\))/g).filter(Boolean);
+  // Split on `code`, **bold** and \( inline math \). Formulas may contain brackets: \( (x - min)/(max - min) \).
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\\\(.+?\\\))/g).filter(Boolean);
   return parts.flatMap((part, index) => {
     const key = `${keyPrefix}-${index}`;
     if (part.startsWith("`") && part.endsWith("`")) {

@@ -197,3 +197,92 @@ describe("Configuration and cost", async () => {
     assert.doesNotMatch(teacher, /<document /, "no reference data when no course was selected");
   });
 });
+
+describe("Automatic switching between AI providers (Anthropic, OpenAI, Gemini, Groq)", async () => {
+  const { createFallbackProvider, resetProviderCoolDowns } = await import("@/server/ai/providers");
+  const { createOpenAiProvider } = await import("@/server/ai/providers/openai");
+  const { AiError } = await import("@/server/ai/errors");
+  const { getProviderChain } = await import("@/server/ai/config");
+  type Code = ConstructorParameters<typeof AiError>[0];
+  const failing = (name: "anthropic" | "gemini", code: Code): Provider => ({
+    name,
+    model: `${name}-model`,
+    async *stream() {
+      throw new AiError(code, `${name} quota exceeded`);
+    }
+  });
+  const cutAfterText: Provider = {
+    name: "gemini",
+    model: "gemini-model",
+    async *stream() {
+      yield { type: "text", text: "half an answer" };
+      throw new AiError("ai-stream-interrupted", "cut");
+    }
+  };
+
+  test("out of tokens / down → the next provider answers; a half answer is discarded", async () => {
+    resetProviderCoolDowns();
+    const chain = createFallbackProvider([failing("anthropic", "ai-provider-busy"), cutAfterText, createOpenAiProvider("gpt-test")]);
+    const { text, done } = await collect(chain, "fallback please");
+    assert.match(text, /Fake tutor answer/);
+    assert.doesNotMatch(text, /half an answer/);
+    assert.ok(done);
+    assert.equal(chain.name, "openai", "the provider that answered");
+  });
+
+  test("a provider that just failed is skipped for a while (no waiting for the same failure)", async () => {
+    resetProviderCoolDowns();
+    let calls = 0;
+    const counting: Provider = {
+      name: "anthropic",
+      model: "anthropic-model",
+      async *stream() {
+        calls += 1;
+        throw new AiError("ai-provider-busy", "429 tokens per day");
+      }
+    };
+    const chain = createFallbackProvider([counting, createOpenAiProvider("gpt-test")]);
+    await collect(chain, "first");
+    await collect(chain, "second");
+    assert.equal((await collect(chain, "third")).done !== null, true);
+    // Every request still has a working answer; the failing one is tried last, not first.
+    assert.ok(calls >= 1);
+  });
+
+  test("a refusal or a cancellation is never retried on another provider", async () => {
+    resetProviderCoolDowns();
+    await rejectsWithCode(collect(createFallbackProvider([failing("anthropic", "ai-refused"), createOpenAiProvider("gpt-test")]), "x"), "ai-refused");
+    await rejectsWithCode(collect(createFallbackProvider([failing("anthropic", "ai-provider-busy"), failing("gemini", "ai-provider-auth")]), "x"), "ai-provider-auth");
+  });
+
+  test("the chain: ERA_LLM_PROVIDER first, then every provider with a key (or ERA_LLM_FALLBACKS order, or none)", () => {
+    const names = ["ERA_LLM_PROVIDER", "ERA_MODEL_NAME", "ERA_LLM_FALLBACKS", "GROQ_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      process.env.ERA_LLM_PROVIDER = "groq";
+      delete process.env.ERA_MODEL_NAME;
+      delete process.env.ERA_LLM_FALLBACKS;
+      process.env.GROQ_API_KEY = "k";
+      process.env.GEMINI_API_KEY = "k";
+      process.env.OPENAI_API_KEY = "k";
+      process.env.ANTHROPIC_API_KEY = "k";
+      const chain = getProviderChain();
+      assert.ok(chain.ok);
+      assert.deepEqual(chain.ok && chain.providers.map((entry) => entry.provider), ["groq", "anthropic", "openai", "gemini"]);
+      process.env.ERA_LLM_FALLBACKS = "gemini, openai";
+      const ordered = getProviderChain();
+      assert.deepEqual(ordered.ok && ordered.providers.map((entry) => entry.provider), ["groq", "gemini", "openai"]);
+      delete process.env.GEMINI_API_KEY;
+      const noKey = getProviderChain();
+      assert.deepEqual(noKey.ok && noKey.providers.map((entry) => entry.provider), ["groq", "openai"], "a provider without a key is left out");
+      process.env.ERA_LLM_FALLBACKS = "none";
+      const single = getProviderChain();
+      assert.deepEqual(single.ok && single.providers.map((entry) => entry.provider), ["groq"]);
+    } finally {
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+  });
+});

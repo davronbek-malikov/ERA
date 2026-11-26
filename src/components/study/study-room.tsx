@@ -1,0 +1,1006 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  BookOpenText,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Languages,
+  Loader2,
+  MessageCircleQuestion,
+  NotebookPen,
+  Send,
+  Sparkles,
+  Target,
+  Trash2,
+  XCircle,
+  Zap
+} from "lucide-react";
+
+import { TutorMarkdown } from "@/components/classroom/tutor-markdown";
+import {
+  clearHighlights,
+  COLOR_SWATCH,
+  describeSelection,
+  HighlightPopover,
+  paintHighlights,
+  SelectionToolbar,
+  textFragmentLink,
+  TOOLBAR_COPY,
+  type Annotation,
+  type HighlightColor,
+  type SelectionInfo
+} from "@/components/study/selection-toolbar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
+import type { PublicQuestion, PublicStudyContent, StudyLanguage } from "@/server/study/content";
+
+/*
+ * Lesson study room (docs/ERA_STUDY_ROOM.md). Left: the full lesson, section by section, with short checkpoints.
+ * Right: Summary · Ask a question · Test yourself. On phones a tab bar switches between the lesson and the three
+ * tabs. Correct answers come from the server only after the student answers.
+ */
+
+type Progress = Record<string, { correct: boolean | null; score: number | null }>;
+type Tab = "summary" | "ask" | "test" | "notes";
+
+const COPY = {
+  uz: {
+    back: "Darsga qaytish",
+    contents: "Mundarija",
+    lesson: "Dars",
+    summary: "Xulosa",
+    ask: "Savol",
+    test: "Test",
+    notes: "Izohlar",
+    notesEmpty: "Hali belgi yo'q. Dars matnidan biror joyni belgilang va \"Belgilash\" yoki \"Izoh\"ni bosing.",
+    show: "Ko'rsatish",
+    noteLabel: "Izoh",
+    preview: "Ko'rib chiqish rejimi: bu qoralama, o'quvchilar uni nashr qilingandan keyin ko'radi.",
+    briefing: "Dars haqida qisqacha",
+    outcomes: "Nimalarni o'rganasiz",
+    keyPoints: "Asosiy fikrlar",
+    keyTerms: "Muhim atamalar",
+    checkpoint: "Tekshiruv nuqtasi",
+    check: "Tekshirish",
+    correct: "To'g'ri!",
+    wrong: "Noto'g'ri",
+    rightAnswer: "To'g'ri javob",
+    answeredBefore: "Avval javob bergansiz",
+    askIntro: "Tushunmagan joyingizni yozing — ERA shu dars asosida tushuntiradi. Matndan biror joyni belgilab, \"Shu haqida so'rash\"ni ham bosishingiz mumkin.",
+    askPlaceholder: "Masalan: normalizatsiya nima uchun kerak?",
+    askAbout: "Shu haqida so'rash",
+    selected: "Belgilangan matn",
+    thinking: "ERA o'ylayapti…",
+    fromCache: "Tezkor javob",
+    sources: "Manba",
+    suggestions: "Masalan:",
+    whatIs: (term: string) => `${term} nima?`,
+    all: "Hammasi",
+    easy: "Oson",
+    medium: "O'rta",
+    advanced: "Qiyin (intervyu)",
+    yourAnswer: "Javobingizni yozing…",
+    submit: "Javob berish",
+    score: "Ball",
+    followUp: "Qo'shimcha savol (intervyu)",
+    modelAnswer: "Namunaviy javob",
+    review: "Takrorlash uchun",
+    done: (done: number, total: number) => `${done}/${total} ta savolga javob berdingiz`,
+    error: "Xatolik yuz berdi. Qayta urinib ko'ring.",
+    noQuestions: "Bu darajada savollar yo'q."
+  },
+  en: {
+    back: "Back to the lesson",
+    contents: "Contents",
+    lesson: "Lesson",
+    summary: "Summary",
+    ask: "Ask",
+    test: "Test",
+    notes: "Notes",
+    notesEmpty: "No highlights yet. Select text in the lesson and press \"Highlight\" or \"Add note\".",
+    show: "Show",
+    noteLabel: "Note",
+    preview: "Preview: this is a draft. Students see it after it is published.",
+    briefing: "Lesson briefing",
+    outcomes: "What you will learn",
+    keyPoints: "Key points",
+    keyTerms: "Key terms",
+    checkpoint: "Checkpoint",
+    check: "Check",
+    correct: "Correct!",
+    wrong: "Not quite",
+    rightAnswer: "Right answer",
+    answeredBefore: "You answered this before",
+    askIntro: "Write what you didn't understand — ERA explains it from this lesson. You can also select text in the lesson and press \"Ask about this\".",
+    askPlaceholder: "e.g. Why do we need normalization?",
+    askAbout: "Ask about this",
+    selected: "Selected text",
+    thinking: "ERA is thinking…",
+    fromCache: "Instant answer",
+    sources: "Source",
+    suggestions: "Try:",
+    whatIs: (term: string) => `What is ${term}?`,
+    all: "All",
+    easy: "Easy",
+    medium: "Medium",
+    advanced: "Advanced (interview)",
+    yourAnswer: "Write your answer…",
+    submit: "Submit answer",
+    score: "Score",
+    followUp: "Follow-up question (interview)",
+    modelAnswer: "Model answer",
+    review: "To review",
+    done: (done: number, total: number) => `You answered ${done} of ${total} questions`,
+    error: "Something went wrong. Please try again.",
+    noQuestions: "No questions at this level."
+  }
+} as const;
+
+type Copy = (typeof COPY)[StudyLanguage];
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const payload = (await response.json().catch(() => null)) as ({ ok?: boolean; error?: string; message?: string } & T) | null;
+  if (!response.ok || !payload?.ok) throw new Error(payload?.message ?? payload?.error ?? "");
+  return payload;
+}
+
+// ------------------------------------------------------------------------------------------------
+
+function ChoiceQuestion({ question, lessonId, language, t, previous, onAnswered }: { question: PublicQuestion; lessonId: string; language: StudyLanguage; t: Copy; previous?: Progress[string]; onAnswered: (correct: boolean) => void }) {
+  const [choice, setChoice] = React.useState<number | null>(null);
+  const [result, setResult] = React.useState<{ correct: boolean; correctIndex: number | null; explanation: string } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function check() {
+    if (choice === null) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await postJson<{ correct: boolean; correctIndex: number | null; explanation: string }>(`/api/learn/study/${lessonId}/answer`, { questionId: question.id, choice, language });
+      setResult(data);
+      onAnswered(data.correct);
+    } catch (caught) {
+      setError((caught as Error).message || t.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-sm font-medium leading-6">{question.prompt}</legend>
+      {previous && !result ? <span className="text-xs text-muted-foreground">✓ {t.answeredBefore}</span> : null}
+      <div className="flex flex-col gap-1.5" role="radiogroup">
+        {question.options.map((option, index) => {
+          const isRight = result && result.correctIndex === index;
+          const isWrongPick = result && !result.correct && choice === index;
+          return (
+            <label
+              key={index}
+              className={cn(
+                "flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                result ? "cursor-default" : "hover:bg-muted/60",
+                choice === index && !result ? "border-primary bg-primary/5" : "border-border",
+                isRight ? "border-success bg-success/10" : "",
+                isWrongPick ? "border-error bg-error/10" : ""
+              )}
+            >
+              <input type="radio" name={`q-${question.id}`} className="mt-1 accent-primary" disabled={Boolean(result)} checked={choice === index} onChange={() => setChoice(index)} />
+              <span>{option}</span>
+            </label>
+          );
+        })}
+      </div>
+      {result ? (
+        <div className={cn("rounded-lg px-3 py-2 text-sm", result.correct ? "bg-success/10" : "bg-error/10")} role="status">
+          <p className="flex items-center gap-1.5 font-semibold">
+            {result.correct ? <CheckCircle2 className="size-4 text-success" aria-hidden="true" /> : <XCircle className="size-4 text-error" aria-hidden="true" />}
+            {result.correct ? t.correct : t.wrong}
+          </p>
+          {result.explanation ? <p className="mt-1 text-muted-foreground">{result.explanation}</p> : null}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={check} disabled={choice === null || busy}>
+            {busy ? <Loader2 className="animate-spin" /> : null}
+            {t.check}
+          </Button>
+          {error ? <span className="text-xs text-error">{error}</span> : null}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+function OpenQuestion({ question, lessonId, language, t, previous, onAnswered }: { question: PublicQuestion; lessonId: string; language: StudyLanguage; t: Copy; previous?: Progress[string]; onAnswered: () => void }) {
+  const [answer, setAnswer] = React.useState("");
+  const [first, setFirst] = React.useState<{ score: number; feedback: string; followUp: string; modelAnswer: string; explanation: string } | null>(null);
+  const [followAnswer, setFollowAnswer] = React.useState("");
+  const [second, setSecond] = React.useState<{ score: number; feedback: string } | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  async function submit(followUp: string | null) {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await postJson<{ score: number; feedback: string; followUp: string; modelAnswer: string; explanation: string }>(`/api/learn/study/${lessonId}/answer`, {
+        questionId: question.id,
+        answer: followUp ? followAnswer : answer,
+        followUp,
+        language
+      });
+      if (followUp) setSecond(data);
+      else {
+        setFirst(data);
+        onAnswered();
+      }
+    } catch (caught) {
+      setError((caught as Error).message || t.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const scoreBadge = (score: number) => (
+    <Badge variant={score >= 70 ? "success" : score >= 40 ? "warning" : "error"}>
+      {t.score}: {score}/100
+    </Badge>
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium leading-6">{question.prompt}</p>
+      {previous?.score !== null && previous?.score !== undefined && !first ? <span className="text-xs text-muted-foreground">✓ {t.answeredBefore} · {t.score}: {previous.score}/100</span> : null}
+      {!first ? (
+        <>
+          <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={4} maxLength={4000} placeholder={t.yourAnswer} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => submit(null)} disabled={answer.trim().length < 3 || busy}>
+              {busy ? <Loader2 className="animate-spin" /> : <Send />}
+              {t.submit}
+            </Button>
+            {error ? <span className="text-xs text-error">{error}</span> : null}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-lg bg-muted/50 p-3 text-sm" role="status">
+          <div>{scoreBadge(first.score)}</div>
+          <p>{first.feedback}</p>
+          {first.followUp && !second ? (
+            <div className="flex flex-col gap-2 border-t border-border pt-2">
+              <p className="font-medium">
+                <Target className="mr-1 inline size-4 text-primary" aria-hidden="true" />
+                {t.followUp}: {first.followUp}
+              </p>
+              <textarea value={followAnswer} onChange={(event) => setFollowAnswer(event.target.value)} rows={3} maxLength={4000} placeholder={t.yourAnswer} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => submit(first.followUp)} disabled={followAnswer.trim().length < 3 || busy}>
+                  {busy ? <Loader2 className="animate-spin" /> : <Send />}
+                  {t.submit}
+                </Button>
+                {error ? <span className="text-xs text-error">{error}</span> : null}
+              </div>
+            </div>
+          ) : null}
+          {second ? (
+            <div className="flex flex-col gap-1 border-t border-border pt-2">
+              <div>{scoreBadge(second.score)}</div>
+              <p>{second.feedback}</p>
+            </div>
+          ) : null}
+          {first.modelAnswer || first.explanation ? (
+            <details className="border-t border-border pt-2">
+              <summary className="cursor-pointer text-xs font-semibold text-primary">{t.modelAnswer}</summary>
+              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{first.modelAnswer || first.explanation}</p>
+            </details>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionBlock(props: { question: PublicQuestion; lessonId: string; language: StudyLanguage; t: Copy; previous?: Progress[string]; onAnswered: (id: string, correct: boolean | null) => void }) {
+  return props.question.kind === "choice" ? (
+    <ChoiceQuestion {...props} onAnswered={(correct) => props.onAnswered(props.question.id, correct)} />
+  ) : (
+    <OpenQuestion {...props} onAnswered={() => props.onAnswered(props.question.id, null)} />
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+
+type Message = { role: "user" | "assistant"; text: string; selection?: string; cached?: boolean; sources?: string[]; error?: boolean };
+
+export type AskRequest = { id: number; question: string; selection: string; mode: "ask" | "explain" };
+
+function AskPanel({
+  lessonId,
+  language,
+  t,
+  content,
+  selection,
+  clearSelection,
+  messages,
+  setMessages,
+  request
+}: {
+  lessonId: string;
+  language: StudyLanguage;
+  t: Copy;
+  content: PublicStudyContent;
+  selection: string;
+  clearSelection: () => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  request: AskRequest | null;
+}) {
+  const [question, setQuestion] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const endRef = React.useRef<HTMLDivElement>(null);
+  const handled = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, busy]);
+
+  // "Explain this concept" from the selection toolbar: asked as soon as the tab opens.
+  React.useEffect(() => {
+    if (!request || handled.current === request.id) return;
+    handled.current = request.id;
+    void ask(request.question, request.selection, request.mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
+
+  async function ask(text: string, withSelection = selection, mode: "ask" | "explain" = "ask") {
+    const value = text.trim();
+    if (value.length < 2 || busy) return;
+    const usedSelection = withSelection;
+    setMessages((current) => [...current, { role: "user", text: value, selection: usedSelection || undefined }]);
+    setQuestion("");
+    clearSelection();
+    setBusy(true);
+    try {
+      const data = await postJson<{ answer: string; sources: string[]; cached: boolean }>(`/api/learn/study/${lessonId}/ask`, { question: value, selection: usedSelection || null, language, mode });
+      setMessages((current) => [...current, { role: "assistant", text: data.answer, cached: data.cached, sources: data.sources }]);
+    } catch (caught) {
+      setMessages((current) => [...current, { role: "assistant", text: (caught as Error).message || t.error, error: true }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+        {!messages.length ? (
+          <div className="flex flex-col gap-3 text-sm text-muted-foreground">
+            <p>{t.askIntro}</p>
+            {content.keyTerms.length ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs">{t.suggestions}</span>
+                {content.keyTerms.slice(0, 4).map((term) => (
+                  <button key={term.term} type="button" onClick={() => ask(t.whatIs(term.term))} className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10">
+                    {t.whatIs(term.term)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {messages.map((message, index) =>
+          message.role === "user" ? (
+            <div key={index} className="ml-6 flex flex-col gap-1 self-end rounded-xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+              {message.selection ? <span className="line-clamp-2 border-l-2 border-primary-foreground/50 pl-2 text-xs opacity-80">{message.selection}</span> : null}
+              <span className="whitespace-pre-wrap">{message.text}</span>
+            </div>
+          ) : (
+            <div key={index} className={cn("mr-2 flex flex-col gap-2 rounded-xl border px-3 py-2 text-sm", message.error ? "border-error/30 bg-error/5 text-error" : "border-border bg-card")}>
+              {message.error ? <p>{message.text}</p> : <TutorMarkdown text={message.text} locale={language} />}
+              {message.cached || message.sources?.length ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {message.cached ? (
+                    <Badge variant="outline">
+                      <Zap className="size-3" aria-hidden="true" />
+                      {t.fromCache}
+                    </Badge>
+                  ) : null}
+                  {message.sources?.map((source) => (
+                    <Badge key={source} variant="neutral">
+                      {t.sources}: {source}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )
+        )}
+        {busy ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            {t.thinking}
+          </p>
+        ) : null}
+        <div ref={endRef} />
+      </div>
+      <form
+        className="flex flex-col gap-2 border-t border-border pt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void ask(question);
+        }}
+      >
+        {selection ? (
+          <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs">
+            <span className="line-clamp-3 flex-1">
+              <strong>{t.selected}:</strong> {selection}
+            </span>
+            <button type="button" onClick={clearSelection} aria-label="✕" className="text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
+          </div>
+        ) : null}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void ask(question);
+              }
+            }}
+            rows={2}
+            maxLength={1000}
+            placeholder={t.askPlaceholder}
+            aria-label={t.ask}
+            className="min-h-[44px] flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <Button type="submit" size="icon" disabled={question.trim().length < 2 || busy} aria-label={t.ask}>
+            <Send />
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------------
+
+function NotesPanel({
+  annotations,
+  sections,
+  t,
+  onShow,
+  onSave,
+  onDelete
+}: {
+  annotations: Annotation[];
+  sections: PublicStudyContent["sections"];
+  t: Copy;
+  onShow: (annotation: Annotation) => void;
+  onSave: (id: string, note: string | null) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState("");
+  const order = new Map(sections.map((section, index) => [section.id, index]));
+  const sorted = [...annotations].sort((a, b) => (order.get(a.sectionId) ?? 99) - (order.get(b.sectionId) ?? 99) || a.start - b.start);
+  if (!sorted.length) return <p className="text-sm text-muted-foreground">{t.notesEmpty}</p>;
+  return (
+    <ol className="flex flex-col gap-3">
+      {sorted.map((annotation) => {
+        const section = sections.find((item) => item.id === annotation.sectionId);
+        return (
+          <li key={annotation.id} className="flex flex-col gap-2 rounded-xl border border-border p-3 text-sm">
+            <span className="text-xs text-muted-foreground">
+              {(order.get(annotation.sectionId) ?? 0) + 1}. {section?.title}
+            </span>
+            <blockquote className="line-clamp-4 border-l-4 pl-2 leading-6" style={{ borderColor: COLOR_SWATCH[(annotation.color as HighlightColor)] ?? COLOR_SWATCH.yellow }}>
+              {annotation.quote}
+            </blockquote>
+            {editing === annotation.id ? (
+              <div className="flex flex-col gap-2">
+                <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} maxLength={2000} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label={t.noteLabel} />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      await onSave(annotation.id, draft.trim() || null);
+                      setEditing(null);
+                    }}
+                  >
+                    {TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].save}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                    {TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].cancel}
+                  </Button>
+                </div>
+              </div>
+            ) : annotation.note ? (
+              <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-3 py-2">{annotation.note}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-1">
+              <Button size="sm" variant="outline" onClick={() => onShow(annotation)}>
+                {t.show}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDraft(annotation.note ?? "");
+                  setEditing(annotation.id);
+                }}
+              >
+                <NotebookPen />
+                {t.noteLabel}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-error hover:bg-error/10 hover:text-error" onClick={() => onDelete(annotation.id)} aria-label={TOOLBAR_COPY[t === COPY.en ? "en" : "uz"].remove}>
+                <Trash2 />
+              </Button>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Text position under the pointer (Chrome/Safari: caretRangeFromPoint; Firefox: caretPositionFromPoint). */
+function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const position = doc.caretPositionFromPoint?.(x, y);
+  if (position) return { node: position.offsetNode, offset: position.offset };
+  const range = doc.caretRangeFromPoint?.(x, y);
+  return range ? { node: range.startContainer, offset: range.startOffset } : null;
+}
+
+export function StudyRoom({
+  lessonId,
+  lessonTitle,
+  courseTitle,
+  backHref,
+  language,
+  englishAvailable,
+  preview,
+  content,
+  progress: initialProgress,
+  annotations: initialAnnotations = []
+}: {
+  lessonId: string;
+  lessonTitle: string;
+  courseTitle: string;
+  backHref: string;
+  language: StudyLanguage;
+  englishAvailable: boolean;
+  preview: boolean;
+  content: PublicStudyContent;
+  progress: Progress;
+  annotations?: Annotation[];
+}) {
+  const t = COPY[language];
+  const tt = TOOLBAR_COPY[language];
+  const [tab, setTab] = React.useState<Tab>("summary");
+  const [mobileView, setMobileView] = React.useState<"lesson" | "panel">("lesson");
+  const [selection, setSelection] = React.useState("");
+  const [progress, setProgress] = React.useState<Progress>(initialProgress);
+  const [level, setLevel] = React.useState<"ALL" | "EASY" | "MEDIUM" | "ADVANCED">("ALL");
+  const articleRef = React.useRef<HTMLElement>(null);
+  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [askRequest, setAskRequest] = React.useState<AskRequest | null>(null);
+  const [annotations, setAnnotations] = React.useState<Annotation[]>(initialAnnotations);
+  const [toolbar, setToolbar] = React.useState<SelectionInfo | null>(null);
+  const [popover, setPopover] = React.useState<{ id: string; rect: DOMRect } | null>(null);
+  const [color, setColor] = React.useState<HighlightColor>("yellow");
+  const pinned = React.useRef(false);
+  const ranges = React.useRef<Map<string, Range>>(new Map());
+  const requestId = React.useRef(0);
+
+  // Draw the student's highlights (CSS Custom Highlight API) whenever they change.
+  React.useEffect(() => {
+    ranges.current = paintHighlights(articleRef.current, annotations);
+  }, [annotations]);
+  React.useEffect(() => () => clearHighlights(), []);
+
+  // Selecting text in the lesson opens the toolbar; clicking a highlight opens its popover.
+  React.useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function onSelectionChange() {
+      if (pinned.current) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const selected = window.getSelection();
+        const info = selected ? describeSelection(selected) : null;
+        setToolbar(info);
+        if (info) setPopover(null);
+      }, 180);
+    }
+    function onClick(event: MouseEvent) {
+      if (pinned.current) return;
+      const target = event.target as Node | null;
+      if (!articleRef.current || !target || !articleRef.current.contains(target)) return;
+      if (window.getSelection()?.isCollapsed === false) return;
+      const caret = caretAt(event.clientX, event.clientY);
+      if (!caret) return;
+      for (const [id, range] of ranges.current) {
+        try {
+          if (range.isPointInRange(caret.node, caret.offset)) {
+            setPopover({ id, rect: range.getBoundingClientRect() });
+            return;
+          }
+        } catch {
+          // a range from removed nodes: ignore
+        }
+      }
+    }
+    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("click", onClick);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
+
+  // The toolbar follows its text when the page scrolls; it closes if the text scrolls away.
+  React.useEffect(() => {
+    if (!toolbar) return;
+    function onScroll() {
+      if (pinned.current) return;
+      const selected = window.getSelection();
+      if (!selected?.rangeCount) return setToolbar(null);
+      const rect = selected.getRangeAt(0).getBoundingClientRect();
+      setToolbar((current) => (current ? { ...current, rect } : current));
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [toolbar]);
+
+  function closeToolbar() {
+    pinned.current = false;
+    setToolbar(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function explain(quote: string) {
+    requestId.current += 1;
+    setAskRequest({ id: requestId.current, question: `${tt.explain}: ${quote.length > 120 ? `${quote.slice(0, 120)}…` : quote}`, selection: quote, mode: "explain" });
+    closeToolbar();
+    setPopover(null);
+    openTab("ask");
+  }
+
+  async function saveAnnotation(info: SelectionInfo, note: string | null) {
+    if (!info.sectionId) return;
+    try {
+      const data = await postJson<{ annotation: Annotation }>(`/api/learn/study/${lessonId}/annotations`, { language, sectionId: info.sectionId, quote: info.quote, start: info.start, color, note });
+      setAnnotations((current) => [...current, data.annotation]);
+      closeToolbar();
+    } catch (caught) {
+      toast({ title: (caught as Error).message || t.error, variant: "error" });
+    }
+  }
+
+  async function patchAnnotation(id: string, body: { color?: string; note?: string | null }) {
+    try {
+      const response = await fetch(`/api/learn/study/${lessonId}/annotations/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; annotation?: Annotation; message?: string } | null;
+      if (!response.ok || !data?.annotation) throw new Error(data?.message ?? "");
+      setAnnotations((current) => current.map((item) => (item.id === id ? data.annotation! : item)));
+    } catch (caught) {
+      toast({ title: (caught as Error).message || t.error, variant: "error" });
+    }
+  }
+
+  async function removeAnnotation(id: string) {
+    try {
+      const response = await fetch(`/api/learn/study/${lessonId}/annotations/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("");
+      setAnnotations((current) => current.filter((item) => item.id !== id));
+      setPopover(null);
+    } catch {
+      toast({ title: t.error, variant: "error" });
+    }
+  }
+
+  function showAnnotation(annotation: Annotation) {
+    setMobileView("lesson");
+    requestAnimationFrame(() => {
+      const range = ranges.current.get(annotation.id);
+      const target = range?.getBoundingClientRect();
+      if (range && target) {
+        window.scrollBy({ top: target.top - window.innerHeight / 3, behavior: "smooth" });
+        const selected = window.getSelection();
+        selected?.removeAllRanges();
+        selected?.addRange(range.cloneRange());
+      } else {
+        document.getElementById(annotation.sectionId)?.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  }
+
+  // Remember the language the student studies in.
+  React.useEffect(() => {
+    document.cookie = `era_study_lang=${language}; path=/; max-age=31536000; samesite=lax`;
+  }, [language]);
+
+  const markAnswered = React.useCallback((id: string, correct: boolean | null) => {
+    setProgress((current) => ({ ...current, [id]: { correct, score: current[id]?.score ?? null } }));
+  }, []);
+
+  function openTab(next: Tab) {
+    setTab(next);
+    setMobileView("panel");
+  }
+
+  const allQuestions = content.questions;
+  const shown = level === "ALL" ? allQuestions : allQuestions.filter((question) => question.level === level);
+  const answered = allQuestions.filter((question) => progress[question.id]).length;
+  const levelLabel = { EASY: t.easy, MEDIUM: t.medium, ADVANCED: t.advanced } as const;
+  const langHref = (next: StudyLanguage) => `?lang=${next}`;
+
+  const tabs: Array<{ value: Tab; label: string; icon: React.ReactNode }> = [
+    { value: "summary", label: t.summary, icon: <Sparkles className="size-4" aria-hidden="true" /> },
+    { value: "ask", label: t.ask, icon: <MessageCircleQuestion className="size-4" aria-hidden="true" /> },
+    { value: "test", label: t.test, icon: <ClipboardCheck className="size-4" aria-hidden="true" /> },
+    { value: "notes", label: `${t.notes}${annotations.length ? ` (${annotations.length})` : ""}`, icon: <NotebookPen className="size-4" aria-hidden="true" /> }
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          {t.back}
+        </Link>
+        <div className="inline-flex items-center gap-1 rounded-full border border-border p-0.5 text-xs" role="group" aria-label="Language">
+          <Languages className="ml-1.5 size-3.5 text-muted-foreground" aria-hidden="true" />
+          <Link href={langHref("uz")} aria-current={language === "uz" ? "true" : undefined} className={cn("rounded-full px-2.5 py-1", language === "uz" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
+            O&apos;zbekcha
+          </Link>
+          {englishAvailable ? (
+            <Link href={langHref("en")} aria-current={language === "en" ? "true" : undefined} className={cn("rounded-full px-2.5 py-1", language === "en" ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
+              English
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      {preview ? <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">{t.preview}</p> : null}
+
+      {/* Phones: one view at a time. */}
+      <nav className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto bg-background/95 px-1 py-1 backdrop-blur lg:hidden" aria-label={t.contents}>
+        <button type="button" onClick={() => setMobileView("lesson")} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm", mobileView === "lesson" ? "bg-primary text-primary-foreground" : "bg-muted")}>
+          <BookOpenText className="size-4" aria-hidden="true" />
+          {t.lesson}
+        </button>
+        {tabs.map((item) => (
+          <button key={item.value} type="button" onClick={() => openTab(item.value)} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm", mobileView === "panel" && tab === item.value ? "bg-primary text-primary-foreground" : "bg-muted")}>
+            {item.icon}
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
+        <article ref={articleRef} data-study-article className={cn("min-w-0 flex-col gap-6", mobileView === "lesson" ? "flex" : "hidden lg:flex")} aria-label={lessonTitle}>
+          <header className="flex flex-col gap-1">
+            <p className="text-xs font-medium text-muted-foreground">{courseTitle}</p>
+            <h1 className="page-title">{content.title || lessonTitle}</h1>
+          </header>
+
+          <details className="rounded-xl border border-border bg-card">
+            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold">{t.contents}</summary>
+            <ol className="flex flex-col gap-1 border-t border-border px-4 py-3 text-sm">
+              {content.sections.map((section, index) => (
+                <li key={section.id}>
+                  <a href={`#${section.id}`} className="flex items-center gap-1 text-primary hover:underline">
+                    <ChevronRight className="size-3.5" aria-hidden="true" />
+                    {index + 1}. {section.title}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </details>
+
+          {content.sections.map((section, index) => (
+            <section key={section.id} id={section.id} className="flex scroll-mt-20 flex-col gap-4">
+              <h2 className="text-xl font-semibold leading-snug">
+                {index + 1}. {section.title}
+              </h2>
+              <div className="text-[0.95rem] leading-7" data-section-body={section.id}>
+                <TutorMarkdown text={section.body} locale={language} />
+              </div>
+              {section.checkpoint.length ? (
+                <aside className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4" aria-label={t.checkpoint}>
+                  <p className="flex items-center gap-2 text-sm font-semibold text-primary">
+                    <ClipboardCheck className="size-4" aria-hidden="true" />
+                    {t.checkpoint}
+                  </p>
+                  {section.checkpoint.map((question) => (
+                    <QuestionBlock key={question.id} question={question} lessonId={lessonId} language={language} t={t} previous={progress[question.id]} onAnswered={markAnswered} />
+                  ))}
+                </aside>
+              ) : null}
+            </section>
+          ))}
+        </article>
+
+        <aside className={cn("min-w-0 flex-col lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-6rem)]", mobileView === "panel" ? "flex" : "hidden")} aria-label={t.summary}>
+          <div className="flex h-full min-h-[70vh] flex-col overflow-hidden rounded-xl border border-border bg-card lg:min-h-0">
+            <div className="hidden border-b border-border lg:flex" role="tablist">
+              {tabs.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === item.value}
+                  onClick={() => setTab(item.value)}
+                  className={cn("flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium", tab === item.value ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" role="tabpanel">
+              {tab === "summary" ? (
+                <div className="flex flex-col gap-5 text-sm">
+                  <section className="flex flex-col gap-1.5">
+                    <h3 className="text-base font-semibold">{t.briefing}</h3>
+                    <p className="leading-6 text-muted-foreground">{content.briefing}</p>
+                  </section>
+                  {content.outcomes.length ? (
+                    <section className="flex flex-col gap-1.5">
+                      <h3 className="font-semibold">{t.outcomes}</h3>
+                      <ul className="flex list-disc flex-col gap-1 pl-5 leading-6">
+                        {content.outcomes.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {content.keyPoints.length ? (
+                    <section className="flex flex-col gap-1.5">
+                      <h3 className="font-semibold">{t.keyPoints}</h3>
+                      <ul className="flex list-disc flex-col gap-1 pl-5 leading-6">
+                        {content.keyPoints.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {content.keyTerms.length ? (
+                    <section className="flex flex-col gap-1.5">
+                      <h3 className="font-semibold">{t.keyTerms}</h3>
+                      <dl className="flex flex-col gap-2">
+                        {content.keyTerms.map((term) => (
+                          <div key={term.term} className="rounded-lg bg-muted/50 px-3 py-2">
+                            <dt className="font-medium">{term.term}</dt>
+                            <dd className="text-muted-foreground">{term.definition}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </section>
+                  ) : null}
+                </div>
+              ) : tab === "ask" ? (
+                <AskPanel
+                  lessonId={lessonId}
+                  language={language}
+                  t={t}
+                  content={content}
+                  selection={selection}
+                  clearSelection={() => setSelection("")}
+                  messages={messages}
+                  setMessages={setMessages}
+                  request={askRequest}
+                />
+              ) : tab === "notes" ? (
+                <NotesPanel
+                  annotations={annotations}
+                  sections={content.sections}
+                  t={t}
+                  onShow={showAnnotation}
+                  onSave={(id, note) => patchAnnotation(id, { note })}
+                  onDelete={removeAnnotation}
+                />
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {t.done(answered, allQuestions.length)}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5" role="group">
+                    {(["ALL", "EASY", "MEDIUM", "ADVANCED"] as const).map((value) => {
+                      const count = value === "ALL" ? allQuestions.length : allQuestions.filter((question) => question.level === value).length;
+                      return (
+                        <button key={value} type="button" onClick={() => setLevel(value)} aria-pressed={level === value} className={cn("rounded-full border px-3 py-1 text-xs font-medium", level === value ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}>
+                          {value === "ALL" ? t.all : levelLabel[value]} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {shown.length ? (
+                    <ol className="flex flex-col gap-4">
+                      {shown.map((question, index) => (
+                        <li key={question.id} className="flex flex-col gap-2 rounded-xl border border-border p-3">
+                          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {index + 1}.
+                            <Badge variant={question.level === "EASY" ? "success" : question.level === "MEDIUM" ? "warning" : "primary"}>{levelLabel[question.level as "EASY" | "MEDIUM" | "ADVANCED"] ?? question.level}</Badge>
+                          </span>
+                          <QuestionBlock question={question} lessonId={lessonId} language={language} t={t} previous={progress[question.id]} onAnswered={markAnswered} />
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t.noQuestions}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {toolbar ? (
+        <SelectionToolbar
+          info={toolbar}
+          language={language}
+          color={color}
+          onColor={setColor}
+          onPin={(value) => {
+            pinned.current = value;
+          }}
+          onExplain={() => explain(toolbar.quote)}
+          onHighlight={() => saveAnnotation(toolbar, null)}
+          onNote={(note) => saveAnnotation(toolbar, note)}
+          onAsk={() => {
+            setSelection(toolbar.quote);
+            closeToolbar();
+            openTab("ask");
+          }}
+          onCopy={async () => {
+            await navigator.clipboard?.writeText(toolbar.quote).catch(() => undefined);
+            toast({ title: tt.copied, variant: "success" });
+            closeToolbar();
+          }}
+          onLink={async () => {
+            await navigator.clipboard?.writeText(textFragmentLink(toolbar.quote)).catch(() => undefined);
+            toast({ title: tt.linkCopied, variant: "success" });
+            closeToolbar();
+          }}
+          onClose={closeToolbar}
+        />
+      ) : null}
+      {popover && annotations.find((item) => item.id === popover.id) ? (
+        <HighlightPopover
+          key={popover.id}
+          annotation={annotations.find((item) => item.id === popover.id)!}
+          rect={popover.rect}
+          language={language}
+          onColor={(next) => patchAnnotation(popover.id, { color: next })}
+          onSaveNote={async (note) => {
+            await patchAnnotation(popover.id, { note });
+            setPopover(null);
+          }}
+          onExplain={() => explain(annotations.find((item) => item.id === popover.id)!.quote)}
+          onDelete={() => removeAnnotation(popover.id)}
+          onClose={() => setPopover(null)}
+        />
+      ) : null}
+    </div>
+  );
+}

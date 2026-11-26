@@ -179,7 +179,10 @@ export function startFakeServices({ storagePort, ollamaPort, serviceRoleKey }) {
     const kind = url.pathname === "/api/chat" ? "ollama" : url.pathname === "/v1/messages" ? "anthropic" : url.pathname === "/v1/chat/completions" ? "openai" : "unknown";
     log.push({ method: req.method, path: `${kind === "ollama" ? "ollama" : kind}:${url.pathname}`, question: last, system, messages, model: body.model, auth: req.headers.authorization ?? req.headers["x-api-key"] ?? null, body });
 
-    const answer = toolResults.length
+    const studyAnswer = studyFake(system, last);
+    const answer = studyAnswer
+      ? studyAnswer
+      : toolResults.length
       ? `Tool results: ${toolResults.join(" | ").slice(0, 6000)}`
       : directives.length && !offeredTools.length
         ? "No tools were offered to me."
@@ -298,4 +301,52 @@ function safeJson(text) {
   } catch {
     return text;
   }
+}
+
+/**
+ * Study room (docs/ERA_STUDY_ROOM.md): the fake model returns valid JSON for the generation and grading prompts.
+ * The chapter echoes SOURCE_MARK_* words from the teacher's material, so tests can see the material was used.
+ */
+function studyFake(system, last) {
+  const choice = (prompt, correct = 1) => ({ prompt, options: ["A variant", "B variant", "C variant", "D variant"], correct, explanation: `Because of ${prompt}` });
+  if (system.includes("writing a study guide")) {
+    if (last.includes("Write the study guide as JSON")) {
+      const mark = (last.match(/SOURCE_MARK_\w+/) ?? ["NO_SOURCE"])[0];
+      return JSON.stringify({
+        title: "Ma'lumotlarni tayyorlash",
+        briefing: `Bu dars ma'lumotlarni tozalash haqida. ${mark}`,
+        outcomes: ["Yetishmayotgan qiymatlar", "Normalizatsiya"],
+        keyPoints: ["Tozalash muhim", "Masshtablash"],
+        keyTerms: [{ term: "Normalizatsiya", definition: "Qiymatlarni 0 va 1 oralig'iga keltirish" }],
+        sections: [
+          { title: "Yetishmayotgan qiymatlar", body: `Yetishmayotgan qiymatlarni o'rtacha bilan to'ldirish mumkin. ${mark}` },
+          { title: "Normalizatsiya", body: "Normalizatsiya \\( x' = (x - min)/(max - min) \\) formulasi bilan qilinadi." },
+          { title: "Kategorik belgilar", body: "One-hot encoding kategoriyalarni ustunlarga aylantiradi." }
+        ]
+      });
+    }
+    if (last.includes("Write practice questions")) {
+      const many = (level, count) => Array.from({ length: count }, (_, index) => choice(`${level} savol ${index + 1}`, index % 4));
+      return JSON.stringify({
+        checkpoints: [1, 2, 3].map((section) => ({ section, questions: [choice(`Tekshiruv ${section}.1`, 0), choice(`Tekshiruv ${section}.2`, 2)] })),
+        easy: many("Oson", 5),
+        medium: many("O'rta", 5),
+        advanced: Array.from({ length: 5 }, (_, index) => ({ prompt: `Intervyu savoli ${index + 1}: nega masshtablash kerak?`, modelAnswer: "Masofaga asoslangan modellar uchun.", explanation: "Masshtab" }))
+      });
+    }
+    if (last.includes("Translate this Uzbek study guide")) {
+      const json = JSON.parse(last.slice(last.indexOf("{")));
+      json.title = `EN ${json.title}`;
+      json.sections = json.sections.map((section) => ({ ...section, title: `EN ${section.title}` }));
+      // A "translation" that tries to change the right answers: the server must keep the reviewed ones.
+      json.questions = json.questions.map((question) => ({ ...question, prompt: `EN ${question.prompt}`, correct: question.correct === null ? null : 3 }));
+      return JSON.stringify(json);
+    }
+  }
+  if (system.includes("grading a student's written answer")) {
+    return last.includes("answer to the follow-up question")
+      ? JSON.stringify({ score: 80, feedback: "Yaxshi qo'shimcha javob.", followUp: "" })
+      : JSON.stringify({ score: 65, feedback: "Qisman to'g'ri.", followUp: "k-NN uchun masshtab nega muhim?" });
+  }
+  return null;
 }
